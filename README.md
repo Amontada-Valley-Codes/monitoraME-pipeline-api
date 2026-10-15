@@ -1,4 +1,4 @@
-# monitoraME Pipeline API
+﻿# monitoraME Pipeline API
 
 API em FastAPI para o módulo analítico retrospectivo do MonitoraME. O serviço coleta despesas empenhadas do TCE-CE, trata anulações, enriquece fornecedores com dados cadastrais e calcula indicadores de participação por porte empresarial, natureza da despesa e origem geográfica.
 
@@ -93,9 +93,7 @@ O Compose constrói a imagem da API, espera o PostgreSQL ficar saudável, aplica
 as duas trilhas de migrations pelo serviço `migrate` e somente então inicia o
 serviço `api`. A documentação OpenAPI fica em `http://127.0.0.1:8000/docs`.
 
-O PostgreSQL não usa volumes ou bind mounts. O diretório de dados é um
-`tmpfs`, portanto fica apenas em memória e é descartado ao reiniciar ou remover
-o container.
+O PostgreSQL usa o volume nomeado `postgres_data`. Os dados persistem ao reiniciar ou recriar o container. Preserve os backups; `docker compose down -v` remove os volumes.
 
 ## Execução local
 
@@ -143,9 +141,7 @@ docker push registry.example.com/monitorame/pipeline-api:1.0.0
 ```
 
 Em produção, configure `DATABASE_URL`, `LOG_DATABASE_URL` e os modos SSL para
-um PostgreSQL persistente externo. O serviço `postgres` deste Compose usa
-`tmpfs`, perde todos os dados ao reiniciar e é destinado apenas a ambientes
-efêmeros de desenvolvimento ou homologação.
+um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva os dados em volume nomeado. Configure backups e retenção adequados ao ambiente.
 
 ## Rotas do pipeline
 
@@ -426,3 +422,8 @@ A migration `0003_remove_pncp` exclui as antigas tabelas do módulo de oportunid
 ```bash
 python -m unittest discover -s tests
 ```
+
+## Observações mensais de porte (PEN-003)
+
+Publicações versionadas, importação dos dados reais e contrato das rotas: [histórico mensal](docs/portes-mensais.md). O porte observado na fotografia não comprova vigência na data do empenho.
+

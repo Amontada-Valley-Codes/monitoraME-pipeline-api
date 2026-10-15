@@ -28,6 +28,8 @@ def _url_psycopg(url: str) -> str:
 class OrmMetadataTest(unittest.TestCase):
     def test_main_metadata_registra_tabelas_do_banco_principal(self) -> None:
         esperado = {
+            "porte_publicacoes",
+            "porte_observacoes",
             "ibge_municipios",
             "tce_municipios",
             "fornecedores_me",
