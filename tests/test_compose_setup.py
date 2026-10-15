@@ -8,12 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ComposeSetupTest(unittest.TestCase):
-    def test_compose_declara_postgres_efemero_e_healthcheck(self) -> None:
+    def test_compose_declara_postgres_persistente_e_healthcheck(self) -> None:
         compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
 
         self.assertIn("postgres:16-alpine", compose)
-        self.assertNotIn("volumes:", compose)
-        self.assertIn("tmpfs:", compose)
+        self.assertIn("volumes:", compose)
+        self.assertNotIn("tmpfs:", compose)
+        self.assertIn("postgres_data:/var/lib/postgresql/data", compose)
         self.assertIn("/var/lib/postgresql/data", compose)
         self.assertIn("pg_isready", compose)
 

@@ -251,3 +251,6 @@ __all__ = [
     "TceEmpenho",
     "TceMunicipio",
 ]
+
+# Registra as tabelas de observacoes mensais no metadata Alembic.
+from app.core.porte_models import PortePublicacao, PorteObservacao  # noqa: E402,F401

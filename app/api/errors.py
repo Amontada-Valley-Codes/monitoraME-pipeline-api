@@ -48,7 +48,8 @@ def resposta_erro(
 
 def usa_erro_padronizado(path: str) -> bool:
     return (
-        path == COMPARISONS_PATH
+        path.startswith("/pipeline/tce/portes/")
+        or path == COMPARISONS_PATH
         or path == EMPENHOS_PATH
         or path.startswith(f"{EMPENHOS_PATH}/")
         or path == FORNECEDORES_PATH

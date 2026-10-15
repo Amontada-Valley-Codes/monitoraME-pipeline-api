@@ -396,6 +396,7 @@ def montar_base_analitica_tce(
         competencias=competencias,
         codigo_municipio=codigo_municipio,
     )
+    municipio_comprador = municipio_comprador or _resolver_nome_municipio_tce(codigo_municipio)
     empenhos = tce_despesas_persistence.listar_empenhos_liquidos_publicados(
         codigo_municipio_tce=codigo_municipio,
         data_inicial=date.fromisoformat(data_inicial),
@@ -408,7 +409,6 @@ def montar_base_analitica_tce(
         if str(empenho.get("data_empenho", ""))[:7] in competencias_validas
     ]
 
-    municipio_comprador = municipio_comprador or _resolver_nome_municipio_tce(codigo_municipio)
     base = pd.DataFrame(empenhos)
     fornecedores_df = None
     if not base.empty:

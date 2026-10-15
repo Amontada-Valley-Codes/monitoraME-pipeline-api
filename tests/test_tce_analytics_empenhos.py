@@ -92,6 +92,33 @@ FORNECEDORES_LIMPOS = opencnpj_cleaning.limpar_fornecedores(FORNECEDORES)
 
 
 class BaseAnaliticaEmpenhosTest(unittest.TestCase):
+    def test_sincroniza_municipio_antes_de_ler_empenhos(self) -> None:
+        municipio_cadastrado = False
+
+        def resolver(codigo):
+            nonlocal municipio_cadastrado
+            self.assertEqual(codigo, "010")
+            municipio_cadastrado = True
+            return "Amontada"
+
+        def listar(**kwargs):
+            self.assertTrue(municipio_cadastrado)
+            return [_empenho("31010002", "2025-01-31", "30", 100000, 0,
+                             "11444777000161", "Comercio Local LTDA")]
+
+        with (
+            patch("app.pipeline.analisys._atualizar_competencias_tce", return_value=SimpleNamespace(
+                publicadas=["2025-01"], atualizadas=[], reutilizadas=["2025-01"],
+                desatualizadas=[], ausentes=[], falhas=[])),
+            patch("app.pipeline.analisys._resolver_nome_municipio_tce", side_effect=resolver),
+            patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados", side_effect=listar),
+            patch("app.pipeline.analisys._coletar_fornecedores", return_value=FORNECEDORES_LIMPOS),
+        ):
+            base, _ = analisys.montar_base_analitica_tce(
+                "2025-01-01", "2025-02-01", codigo_municipio="010",
+                throttle_fornecedores=0)
+        self.assertEqual(len(base), 1)
+
     @patch("app.pipeline.analisys.fornecedores.obter_fornecedores_com_cache")
     @patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch(
