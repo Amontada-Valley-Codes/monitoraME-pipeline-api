@@ -82,6 +82,70 @@ class FornecedorCache(MainBase):
     )
 
 
+class RawPncpRecord(MainBase):
+    """Versao imutavel de uma resposta publica do PNCP."""
+
+    __tablename__ = "raw_pncp_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "source", "entity_type", "external_id", "payload_hash",
+            name="uq_raw_pncp_record_version",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(Text)
+    entity_type: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str] = mapped_column(Text)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payload_hash: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    run_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class IngestionJob(MainBase):
+    """Fila persistente. O worker sera adicionado em uma entrega posterior."""
+
+    __tablename__ = "ingestion_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING', 'RUNNING', 'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'QUARANTINED')",
+            name="ck_ingestion_jobs_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    job_type: Mapped[str] = mapped_column(Text)
+    entity_type: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    scope_key: Mapped[str] = mapped_column(Text)
+    dedupe_key: Mapped[str] = mapped_column(Text)
+    raw_record_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT")
+    )
+    priority: Mapped[int] = mapped_column(Integer, server_default=text("60"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'PENDING'"))
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    page: Mapped[int | None] = mapped_column(Integer)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    max_attempts: Mapped[int] = mapped_column(Integer, server_default=text("5"))
+    locked_by: Mapped[str | None] = mapped_column(Text)
+    lease_token: Mapped[str | None] = mapped_column(Text)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
+
+
 class TceDespesaIngestionRun(MainBase):
     __tablename__ = "tce_despesa_ingestion_runs"
     __table_args__ = (
@@ -211,6 +275,15 @@ class TceAnulacaoEmpenho(MainBase):
 
 Index("idx_ibge_municipios_uf_nome", IbgeMunicipio.uf, IbgeMunicipio.nome)
 Index("idx_fornecedores_cache_expira_em", FornecedorCache.expira_em)
+Index("idx_raw_pncp_records_entidade_identificador", RawPncpRecord.source, RawPncpRecord.entity_type, RawPncpRecord.external_id)
+Index(
+    "uq_ingestion_jobs_dedupe_ativo",
+    IngestionJob.dedupe_key,
+    unique=True,
+    postgresql_where=text("status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')"),
+)
+Index("idx_ingestion_jobs_agendamento", IngestionJob.status, IngestionJob.next_run_at, IngestionJob.priority)
+Index("idx_ingestion_jobs_lease", IngestionJob.status, IngestionJob.lease_until)
 Index(
     "uq_tce_despesa_run_publicado_competencia",
     TceDespesaIngestionRun.codigo_municipio_tce,
@@ -245,7 +318,9 @@ Index("idx_tce_anulacoes_chave_empenho", TceAnulacaoEmpenho.chave_empenho)
 __all__ = [
     "FornecedorCache",
     "FornecedorMe",
+    "IngestionJob",
     "IbgeMunicipio",
+    "RawPncpRecord",
     "TceAnulacaoEmpenho",
     "TceDespesaIngestionRun",
     "TceEmpenho",

@@ -185,6 +185,18 @@ class AlembicSetupTest(unittest.TestCase):
         self.assertTrue(callable(modulo.upgrade))
         self.assertTrue(callable(modulo.downgrade))
 
+    def test_migration_adiciona_raw_pncp_e_jobs_de_normalizacao(self) -> None:
+        migration = ROOT / "alembic" / "main" / "versions" / "0008_pncp_raw_records.py"
+        modulo = _carregar_migration(migration)
+        texto = migration.read_text(encoding="utf-8")
+
+        self.assertEqual(modulo.revision, "0008_pncp_raw_records")
+        self.assertEqual(modulo.down_revision, "0007_portes_mensais")
+        self.assertIn('"raw_pncp_records"', texto)
+        self.assertIn('"ingestion_jobs"', texto)
+        self.assertIn("uq_raw_pncp_record_version", texto)
+        self.assertIn("uq_ingestion_jobs_dedupe_ativo", texto)
+
 
 if __name__ == "__main__":
     unittest.main()

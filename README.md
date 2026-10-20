@@ -2,7 +2,9 @@
 
 API em FastAPI para o módulo analítico retrospectivo do MonitoraME. O serviço coleta despesas empenhadas do TCE-CE, trata anulações, enriquece fornecedores com dados cadastrais e calcula indicadores de participação por porte empresarial, natureza da despesa e origem geográfica.
 
-O módulo usa TCE-CE, IBGE e OpenCNPJ. Dados de editais, dispensas, PCA e demais oportunidades de contratação não fazem parte desta codebase.
+O módulo usa TCE-CE, IBGE e OpenCNPJ. A base do módulo de oportunidades PNCP
+também começou pelo histórico RAW reprocessável; a coleta e a normalização ainda
+serão entregues em etapas próprias.
 
 ## Funcionalidades
 
@@ -66,6 +68,9 @@ Variáveis usadas pela aplicação:
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
+| `PNCP_BASE_URL` | Não | Base pública de consultas do PNCP; padrão oficial. |
+| `PNCP_CONNECT_TIMEOUT_SECONDS` | Não | Timeout de conexão PNCP; padrão `10`. |
+| `PNCP_READ_TIMEOUT_SECONDS` | Não | Timeout de leitura PNCP; padrão `30`. |
 | `UF_PADRAO` | Sim | UF compradora usada pela análise. |
 | `CODIGO_MUNICIPIO_TCE_PADRAO` | Sim | Código interno padrão do município no TCE-CE. |
 
@@ -385,6 +390,8 @@ O banco principal mantém:
 - `tce_despesa_ingestion_runs`, com o estado de cada carga mensal;
 - `tce_empenhos`, com as notas de empenho versionadas por lote;
 - `tce_anulacoes_empenhos`, com as anulações vinculadas aos empenhos.
+- `raw_pncp_records`, com versões originais JSONB do PNCP, e `ingestion_jobs`,
+  cuja criação do job `normalize` é atômica com a gravação RAW.
 
 A resolução do código interno de município do TCE consulta primeiro
 `tce_municipios`, associada a `ibge_municipios`. Quando o código ainda não
@@ -416,6 +423,9 @@ o pipeline principal. Logs `WARNING`, `ERROR` e `CRITICAL` são persistidos em
 volume desnecessário no PostgreSQL.
 
 A migration `0003_remove_pncp` exclui as antigas tabelas do módulo de oportunidades. A aplicação dessa migration remove definitivamente os dados existentes nessas tabelas.
+
+O contrato RAW, a política inicial de retenção e as garantias de idempotência
+estão em [docs/pncp-raw.md](docs/pncp-raw.md).
 
 ## Testes
 
