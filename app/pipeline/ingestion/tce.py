@@ -135,7 +135,7 @@ def listar_registros(
             opcoes_requisicao["preservar_decimais"] = True
         if falhar_ao_esgotar:
             opcoes_requisicao["falhar_ao_esgotar"] = True
-        pagina = buscar_dados_tce(
+        resposta = buscar_dados_tce(
             endpoint,
             {
                 **params,
@@ -143,7 +143,12 @@ def listar_registros(
                 "$start_index": start_index,
             },
             **opcoes_requisicao,
-        ).get("elements", [])
+        )
+        pagina = resposta.get("elements")
+        if falhar_ao_esgotar and (
+            not isinstance(pagina, list) or any(not isinstance(item, dict) for item in pagina)
+        ):
+            raise TceIndisponivelError(f"Resposta invalida do TCE-CE: {endpoint}; elements deve ser uma lista de objetos.")
         return pagina if isinstance(pagina, list) else []
 
     registros = listar_por_start_index(buscar_pagina, tamanho_pagina=TAMANHO_PAGINA)
@@ -358,4 +363,29 @@ def buscar_itens_contratacao(
         parametros=parametros,
         totais={"endpoint": ENDPOINT_ITENS},
         executar=executar,
+    )
+
+
+def buscar_documentos_exercicio(
+    endpoint: str, *, codigo_municipio: str, exercicio: int, competencia: str | None = None,
+) -> list[dict[str, Any]]:
+    """Consulta SIM com exercicio fixo, inclusive referencias de anos posteriores."""
+    if endpoint not in {"orgaos", "notas_empenhos", "notas_pagamentos"}:
+        raise ValueError("Endpoint nao suportado para conciliacao de pagamentos.")
+    if isinstance(exercicio, bool) or not isinstance(exercicio, int) or not 1 <= exercicio <= 9999:
+        raise ValueError("Exercicio deve ser um ano de quatro digitos.")
+    if not str(codigo_municipio).strip():
+        raise ValueError("codigo_municipio nao pode ser vazio.")
+    params: dict[str, Any] = {
+        "codigo_municipio": str(codigo_municipio).strip(),
+        "exercicio_orcamento": exercicio * 100,
+    }
+    if competencia is not None:
+        params["data_referencia_doc"] = parametros_competencia_tce(
+            competencia, codigo_municipio,
+        )["data_referencia_doc"]
+    elif endpoint != "orgaos":
+        raise ValueError("Competencia obrigatoria para documentos financeiros.")
+    return listar_registros(
+        endpoint, params, preservar_decimais=True, falhar_ao_esgotar=True,
     )

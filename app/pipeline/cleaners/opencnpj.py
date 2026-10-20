@@ -23,8 +23,10 @@ _MAPA_PORTE_EMPRESARIAL = {
     "EMPRESA DE PEQUENO PORTE (EPP)": "EPP",
     "DEMAIS": "DEMAIS",
     "OUTROS": "DEMAIS",
+    "01": "ME",
+    "03": "EPP",
+    "05": "DEMAIS",
     "1": "ME",
-    "2": "ME",
     "3": "EPP",
     "5": "DEMAIS",
 }

@@ -427,3 +427,8 @@ python -m unittest discover -s tests
 
 Publicações versionadas, importação dos dados reais e contrato das rotas: [histórico mensal](docs/portes-mensais.md). O porte observado na fotografia não comprova vigência na data do empenho.
 
+
+
+### Pagamentos da Prefeitura e Microempresas
+
+Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. Consulte [regras, auditoria e reproducao](docs/pagamentos-tce.md).

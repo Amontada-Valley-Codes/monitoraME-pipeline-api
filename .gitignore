@@ -225,3 +225,9 @@ __marimo__/
 .streamlit/secrets.toml
 # Artefatos locais do piloto PEN-003
 /artifacts/pen-003/
+
+# Dados e checkpoints locais do backfill PNCP
+.local/pncp-backfill/
+
+# Coletas e auditorias locais de pagamentos do TCE
+.local/tce-pagamentos/
