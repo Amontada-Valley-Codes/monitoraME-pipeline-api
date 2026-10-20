@@ -164,6 +164,30 @@ class PncpContratacaoAtual(MainBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class PncpOportunidade(MainBase):
+    __tablename__ = "pncp_oportunidades"
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    raw_record_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT"))
+    payload_hash: Mapped[str] = mapped_column(Text)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    orgao: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    unidade: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    objeto: Mapped[str | None] = mapped_column(Text)
+    modalidade: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    situacao: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    prazo_proposta_final: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    url_oficial: Mapped[str] = mapped_column(Text)
+    normalized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpQuarentena(MainBase):
+    __tablename__ = "pncp_quarentena"
+    raw_record_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT"), primary_key=True)
+    motivo: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class TceDespesaIngestionRun(MainBase):
     __tablename__ = "tce_despesa_ingestion_runs"
     __table_args__ = (
@@ -303,6 +327,7 @@ Index(
 Index("idx_ingestion_jobs_agendamento", IngestionJob.status, IngestionJob.next_run_at, IngestionJob.priority)
 Index("idx_ingestion_jobs_lease", IngestionJob.status, IngestionJob.lease_until)
 Index("idx_pncp_contratacoes_atuais_atualizacao", PncpContratacaoAtual.source_updated_at)
+Index("idx_pncp_oportunidades_prazo", PncpOportunidade.prazo_proposta_final)
 Index(
     "uq_tce_despesa_run_publicado_competencia",
     TceDespesaIngestionRun.codigo_municipio_tce,
@@ -342,6 +367,8 @@ __all__ = [
     "RawPncpRecord",
     "PncpCursor",
     "PncpContratacaoAtual",
+    "PncpOportunidade",
+    "PncpQuarentena",
     "TceAnulacaoEmpenho",
     "TceDespesaIngestionRun",
     "TceEmpenho",

@@ -203,6 +203,10 @@ class AlembicSetupTest(unittest.TestCase):
         self.assertEqual(modulo.down_revision, "0008_pncp_raw_records")
         self.assertIn("pncp_cursors", migration.read_text(encoding="utf-8"))
 
+    def test_migration_adiciona_normalizacao_pncp(self) -> None:
+        migration = ROOT / "alembic" / "main" / "versions" / "0010_pncp_normalizacao.py"
+        self.assertIn("pncp_oportunidades", migration.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -38,6 +38,8 @@ class OrmMetadataTest(unittest.TestCase):
             "ingestion_jobs",
             "pncp_cursors",
             "pncp_contratacoes_atuais",
+            "pncp_oportunidades",
+            "pncp_quarentena",
             "tce_despesa_ingestion_runs",
             "tce_empenhos",
             "tce_anulacoes_empenhos",
