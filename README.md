@@ -279,3 +279,13 @@ Use descoberta explícita:
 ```bash
 python -m unittest discover -s tests
 ```
+
+## Apuração Municipal Em Lote
+
+`app/pipeline/apuracao_municipal.py` agrega colunas de contribuição aditivas por código municipal em uma única operação vetorizada. A saída longa tem uma linha por município e indicador, com índice composto único; quando a dimensão de municípios é fornecida, municípios sem fatos aparecem com valor zero. Indicadores percentuais devem ser derivados de seus numeradores e denominadores já agregados.
+
+O teste de carga `tests/test_apuracao_municipal.py` usa uma massa sintética de 46.000 fatos (250 por município), 47 indicadores e 184 municípios, gerando 8.648 resultados. O limite local do teste é 10 segundos e cobre apenas a agregação em memória, sem ingestão HTTP, banco ou enriquecimento cadastral. Rode-o com:
+
+```bash
+python -m unittest discover -s tests -p test_apuracao_municipal.py -v
+```
