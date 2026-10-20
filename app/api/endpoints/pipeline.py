@@ -155,11 +155,12 @@ def tce_kpi_portes_por_mes(
 
 @router.get(
     "/tce/overview",
-    summary="Consulta o overview de ME e MEI",
+    summary="Consulta o overview de empenhos de ME e MEI",
     description=(
         "Sem município, consolida os lotes publicados de todo o Ceará usando somente "
         "o banco local. Com município, atualiza as competências solicitadas. Calcula "
-        "a participação de ME + MEI e restringe o detalhamento geográfico a ME e MEI."
+        "a participação de ME + MEI e restringe o detalhamento geográfico a ME e MEI. "
+        "A medida e empenho liquido; para valores pagos use /tce/pagamentos/overview."
     ),
     response_description="KPIs, evolução mensal e destino dos recursos de ME e MEI.",
 )
@@ -624,6 +625,31 @@ def tce_analitico_indicadores(
             codigo_municipio=codigo_municipio,
             limite_ranking=limite_ranking,
             limite=limite,
+        )
+    except Exception as error:
+        raise _erro_pipeline(error) from error
+
+
+@router.get(
+    "/tce/pagamentos/overview",
+    summary="Pagamentos da Prefeitura e subtotal de Microempresas",
+    description=(
+        "Coleta empenhos do exercicio e pagamentos ate a referencia final, inclusive "
+        "anos posteriores. Exclui Camara e estornos; filtra sete elementos. "
+        "Retorna fornecedores ME, controle financeiro e pendencias cadastrais. "
+        "Consulta as fontes externas; porte atual nao comprova porte historico."
+    ),
+)
+def tce_pagamentos_overview(
+    codigo_municipio: Annotated[str, Query(pattern=r"^[0-9]{3}$")],
+    exercicio: Annotated[int, Query(ge=1900, le=9999)],
+    referencia_final: Annotated[str, Query(pattern=r"^[0-9]{4}-[0-9]{2}$")],
+) -> dict[str, Any]:
+    from app.pipeline.pagamentos import consultar_pagamentos_prefeitura
+    try:
+        return consultar_pagamentos_prefeitura(
+            codigo_municipio=codigo_municipio, exercicio=exercicio,
+            referencia_final=referencia_final,
         )
     except Exception as error:
         raise _erro_pipeline(error) from error
