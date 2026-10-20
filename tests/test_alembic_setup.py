@@ -197,6 +197,12 @@ class AlembicSetupTest(unittest.TestCase):
         self.assertIn("uq_raw_pncp_record_version", texto)
         self.assertIn("uq_ingestion_jobs_dedupe_ativo", texto)
 
+    def test_migration_adiciona_cursor_e_visao_atual_pncp(self) -> None:
+        migration = ROOT / "alembic" / "main" / "versions" / "0009_pncp_atualizacao_cursor.py"
+        modulo = _carregar_migration(migration)
+        self.assertEqual(modulo.down_revision, "0008_pncp_raw_records")
+        self.assertIn("pncp_cursors", migration.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

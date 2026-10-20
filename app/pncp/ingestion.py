@@ -14,6 +14,7 @@ from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_sess
 
 
 ENDPOINT_PUBLICACAO = "/v1/contratacoes/publicacao"
+ENDPOINT_ATUALIZACAO = "/v1/contratacoes/atualizacao"
 FONTE = "PNCP"
 TIPO = "CONTRATACAO"
 
@@ -35,11 +36,17 @@ class ClientePncp:
         self.session = session or requests.Session()
 
     def buscar_publicacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
+        return self._buscar(ENDPOINT_PUBLICACAO, inicio=inicio, fim=fim, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+
+    def buscar_atualizacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
+        return self._buscar(ENDPOINT_ATUALIZACAO, inicio=inicio, fim=fim, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+
+    def _buscar(self, endpoint: str, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
         if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 500:
             raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 500")
         params = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
         try:
-            resposta = self.session.get(f"{self.base_url}{ENDPOINT_PUBLICACAO}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
+            resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
             resposta.raise_for_status()
             corpo = resposta.json()
         except (requests.RequestException, ValueError) as exc:

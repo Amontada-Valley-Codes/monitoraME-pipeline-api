@@ -146,6 +146,24 @@ class IngestionJob(MainBase):
     )
 
 
+class PncpCursor(MainBase):
+    __tablename__ = "pncp_cursors"
+    flow: Mapped[str] = mapped_column(Text, primary_key=True)
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    last_confirmed_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpContratacaoAtual(MainBase):
+    __tablename__ = "pncp_contratacoes_atuais"
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    payload_hash: Mapped[str] = mapped_column(Text)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class TceDespesaIngestionRun(MainBase):
     __tablename__ = "tce_despesa_ingestion_runs"
     __table_args__ = (
@@ -284,6 +302,7 @@ Index(
 )
 Index("idx_ingestion_jobs_agendamento", IngestionJob.status, IngestionJob.next_run_at, IngestionJob.priority)
 Index("idx_ingestion_jobs_lease", IngestionJob.status, IngestionJob.lease_until)
+Index("idx_pncp_contratacoes_atuais_atualizacao", PncpContratacaoAtual.source_updated_at)
 Index(
     "uq_tce_despesa_run_publicado_competencia",
     TceDespesaIngestionRun.codigo_municipio_tce,
@@ -321,6 +340,8 @@ __all__ = [
     "IngestionJob",
     "IbgeMunicipio",
     "RawPncpRecord",
+    "PncpCursor",
+    "PncpContratacaoAtual",
     "TceAnulacaoEmpenho",
     "TceDespesaIngestionRun",
     "TceEmpenho",
