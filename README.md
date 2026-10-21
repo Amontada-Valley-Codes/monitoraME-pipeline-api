@@ -427,6 +427,16 @@ A migration `0003_remove_pncp` exclui as antigas tabelas do módulo de oportunid
 O contrato RAW, a política inicial de retenção e as garantias de idempotência
 estão em [docs/pncp-raw.md](docs/pncp-raw.md).
 
+Para executar uma coleta de fumaça do PNCP no ambiente Compose isolado, use
+`docker compose -p monitorame-pncp-test`. O nome passado em `-p` é uma opção
+do Compose e não deve ser colocado no `.env`:
+
+```bash
+docker compose -p monitorame-pncp-test up -d --build api
+docker compose -p monitorame-pncp-test exec api \
+  python scripts/smoke_pncp_publicacao.py --dias 7 --modalidade 6 --tamanho-pagina 10
+```
+
 ## Testes
 
 ```bash

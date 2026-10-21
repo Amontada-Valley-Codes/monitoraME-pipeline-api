@@ -18,7 +18,7 @@ class PublicacaoPncpTest(unittest.TestCase):
         resposta.json.return_value = {"data": [], "totalPaginas": 1}
         cliente = ClientePncp(session=MagicMock())
         cliente.session.get.return_value = resposta
-        cliente.buscar_publicacoes(inicio=datetime(2026, 10, 1).date(), fim=datetime(2026, 10, 2).date(), modalidade=6, pagina=1, tamanho_pagina=100)
+        cliente.buscar_publicacoes(inicio=datetime(2026, 10, 1).date(), fim=datetime(2026, 10, 2).date(), modalidade=6, pagina=1, tamanho_pagina=50)
         self.assertEqual(cliente.session.get.call_args.kwargs["params"]["dataInicial"], "20261001")
         self.assertEqual(cliente.session.get.call_args.kwargs["params"]["codigoModalidadeContratacao"], 6)
 

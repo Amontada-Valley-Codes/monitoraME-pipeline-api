@@ -16,6 +16,9 @@ class KeyCursor:
     flow: str
     scope_key: str
 
+
+ChaveCursor = KeyCursor
+
 def proxima_janela(key: KeyCursor, *, now: datetime, size: timedelta, last_confirmed_end: datetime | None, overlap: timedelta = OVERLAP_PADRAO) -> tuple[datetime, datetime]:
     if now.tzinfo is None or size <= timedelta() or overlap < timedelta(): raise ValueError("datas timezone-aware e duracoes validas sao obrigatorias")
     inicio = (last_confirmed_end - overlap) if last_confirmed_end else now - size
@@ -31,3 +34,6 @@ def confirmar_janela_session(session: Session, key: KeyCursor, *, final: datetim
 
 def confirmar_janela(key: KeyCursor, *, final: datetime, run_id: str) -> None:
     with orm.main_session() as session: confirmar_janela_session(session, key, final=final, run_id=run_id)
+
+
+__all__ = ["KeyCursor", "ChaveCursor", "OVERLAP_PADRAO", "proxima_janela", "confirmar_janela", "confirmar_janela_session"]

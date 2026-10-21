@@ -273,7 +273,7 @@ class WorkerPncp:
         except Exception as exc:
             with orm.main_session() as session:
                 status = falhar_job_session(session, job=job, erro=f"{type(exc).__name__}: {exc}")
-            logger.warning("Job PNCP falhou", extra={"job_id": job.id, "status": status})
+            logger.warning("Job PNCP falhou", extra={"job_id": job.id, "status": status, "error": str(exc)[:2048]})
         else:
             with orm.main_session() as session:
                 concluido = concluir_job_session(session, job_id=job.id, lease_token=job.lease_token)

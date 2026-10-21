@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import os
+import time
 from typing import Any
 
 import requests
@@ -34,6 +35,10 @@ class ClientePncp:
     def __init__(self, base_url: str | None = None, *, timeout: tuple[float, float] | None = None, session: requests.Session | None = None) -> None:
         self.base_url = (base_url or os.getenv("PNCP_BASE_URL", "https://pncp.gov.br/api/consulta")).rstrip("/")
         self.timeout = timeout or (float(os.getenv("PNCP_CONNECT_TIMEOUT_SECONDS", "10")), float(os.getenv("PNCP_READ_TIMEOUT_SECONDS", "30")))
+        self.max_retries = int(os.getenv("PNCP_MAX_RETRIES", "3"))
+        self.retry_initial_seconds = float(os.getenv("PNCP_RETRY_INITIAL_SECONDS", "1"))
+        self.request_interval_seconds = float(os.getenv("PNCP_REQUEST_INTERVAL_SECONDS", "2"))
+        self._ultima_requisicao_monotonic: float | None = None
         self.session = session or requests.Session()
 
     def buscar_publicacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
@@ -43,15 +48,38 @@ class ClientePncp:
         return self._buscar(ENDPOINT_ATUALIZACAO, inicio=inicio, fim=fim, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
     def _buscar(self, endpoint: str, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
-        if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 500:
-            raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 500")
+        if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 50:
+            raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 50")
         params = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
-        try:
-            resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
-            resposta.raise_for_status()
-            corpo = resposta.json()
-        except (requests.RequestException, ValueError) as exc:
-            raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}") from exc
+        for tentativa in range(self.max_retries + 1):
+            try:
+                if self._ultima_requisicao_monotonic is not None:
+                    intervalo = time.monotonic() - self._ultima_requisicao_monotonic
+                    if intervalo < self.request_interval_seconds:
+                        time.sleep(self.request_interval_seconds - intervalo)
+                self._ultima_requisicao_monotonic = time.monotonic()
+                resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
+                status = resposta.status_code
+                if status == 429 or status in {408, 500, 502, 503, 504}:
+                    if tentativa < self.max_retries:
+                        retry_after = resposta.headers.get("Retry-After")
+                        try: espera = max(0.0, float(retry_after)) if retry_after else self.retry_initial_seconds * (2 ** tentativa)
+                        except ValueError: espera = self.retry_initial_seconds * (2 ** tentativa)
+                        time.sleep(espera)
+                        continue
+                resposta.raise_for_status()
+                corpo = resposta.json()
+                break
+            except requests.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else "desconhecido"
+                raise PncpColetaError(f"falha na pagina {pagina}: HTTP {status}") from exc
+            except (requests.RequestException, ValueError) as exc:
+                if tentativa < self.max_retries:
+                    time.sleep(self.retry_initial_seconds * (2 ** tentativa))
+                    continue
+                raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}") from exc
+        else:
+            raise PncpColetaError(f"falha na pagina {pagina}: tentativas esgotadas")
         if not isinstance(corpo, dict):
             raise PncpColetaError("resposta PNCP nao e objeto JSON")
         itens = corpo.get("data", corpo.get("items"))
