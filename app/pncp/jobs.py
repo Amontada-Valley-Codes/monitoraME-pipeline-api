@@ -126,6 +126,7 @@ WITH candidate AS (
     WHERE status IN ('PENDING', 'RETRY_WAIT')
       AND next_run_at <= now()
       AND (:somente_backfill = false OR job_type = 'backfill')
+      AND (CAST(:job_type AS text) IS NULL OR job_type = CAST(:job_type AS text))
     ORDER BY priority DESC, next_run_at ASC, created_at ASC
     FOR UPDATE SKIP LOCKED
     LIMIT 1
@@ -146,6 +147,7 @@ def reivindicar_proximo_job_session(
     worker_id: str,
     lease_seconds: int = 120,
     somente_backfill: bool = False,
+    job_type: str | None = None,
 ) -> JobReivindicado | None:
     """Reserva em uma unica transacao curta; nao executa o trabalho."""
     if not worker_id.strip() or lease_seconds < 1:
@@ -157,6 +159,7 @@ def reivindicar_proximo_job_session(
             "lease_token": str(uuid4()),
             "lease_seconds": lease_seconds,
             "somente_backfill": somente_backfill,
+            "job_type": job_type,
         },
     ).mappings().first()
     if registro is None:
@@ -407,11 +410,12 @@ class AgendadorPncp:
 class WorkerPncp:
     """Executa um job por vez; o handler roda fora da transacao de reserva."""
 
-    def __init__(self, worker_id: str, handler: Callable[[JobReivindicado], None], *, lease_seconds: int = 120, backfill_a_cada: int = 10) -> None:
+    def __init__(self, worker_id: str, handler: Callable[[JobReivindicado], None], *, lease_seconds: int = 120, backfill_a_cada: int = 10, job_type: str | None = None) -> None:
         self.worker_id = worker_id
         self.handler = handler
         self.lease_seconds = lease_seconds
         self.backfill_a_cada = max(1, backfill_a_cada)
+        self.job_type = job_type
         self._reservas = 0
 
     def executar_uma_vez(self) -> bool:
@@ -419,7 +423,7 @@ class WorkerPncp:
         somente_backfill = self._reservas % self.backfill_a_cada == 0
         job = reivindicar_proximo_job(
             worker_id=self.worker_id, lease_seconds=self.lease_seconds,
-            somente_backfill=somente_backfill,
+            somente_backfill=somente_backfill, job_type=self.job_type,
         )
         if job is None:
             return False

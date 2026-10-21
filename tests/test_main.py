@@ -85,6 +85,8 @@ class MainTest(unittest.TestCase):
 
         self.assertNotIn("/pipeline/pncp/contratacoes", rotas)
         self.assertNotIn("/pipeline/pncp/ingestao-incremental", rotas)
+        self.assertIn("/pncp/editais", rotas)
+        self.assertIn("/pncp/editais/{external_id:path}", rotas)
         self.assertIn("/pipeline/tce/contratos", rotas)
         self.assertNotIn("/pipeline/tce/kpis/me-por-mes", rotas)
         self.assertIn("/pipeline/tce/kpis/portes-por-mes", rotas)

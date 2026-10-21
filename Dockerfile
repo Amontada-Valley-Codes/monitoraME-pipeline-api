@@ -22,6 +22,8 @@ COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app docker/entrypoint.sh ./docker/entrypoint.sh
 
 RUN chmod +x ./docker/entrypoint.sh
+RUN chmod +x ./scripts/pncp \
+    && ln -s /app/scripts/pncp /usr/local/bin/pncp
 
 USER app 
 
