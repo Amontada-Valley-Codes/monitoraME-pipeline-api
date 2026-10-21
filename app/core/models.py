@@ -218,6 +218,33 @@ class PncpEnriquecimento(MainBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class PncpEvento(MainBase):
+    __tablename__ = "pncp_eventos"
+    __table_args__ = (UniqueConstraint("event_key", name="uq_pncp_eventos_event_key"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_key: Mapped[str] = mapped_column(Text)
+    event_type: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str] = mapped_column(Text)
+    payload_hash: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpMatching(MainBase):
+    __tablename__ = "pncp_matchings"
+    __table_args__ = (UniqueConstraint("source", "external_id", "profile_key", "rule_version", name="uq_pncp_matching_rule"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str] = mapped_column(Text)
+    profile_key: Mapped[str] = mapped_column(Text)
+    rule_version: Mapped[str] = mapped_column(Text)
+    compatible: Mapped[bool] = mapped_column(Boolean)
+    reasons: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    missing_fields: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class PncpQuarentena(MainBase):
     __tablename__ = "pncp_quarentena"
     raw_record_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT"), primary_key=True)
@@ -397,6 +424,8 @@ Index("idx_ingestion_job_events_job_created", IngestionJobEvent.job_id, Ingestio
 Index("idx_pncp_contratacoes_atuais_atualizacao", PncpContratacaoAtual.source_updated_at)
 Index("idx_pncp_oportunidades_prazo", PncpOportunidade.prazo_proposta_final)
 Index("idx_pncp_enriquecimentos_expiracao", PncpEnriquecimento.expires_at)
+Index("idx_pncp_eventos_contratacao", PncpEvento.source, PncpEvento.external_id)
+Index("idx_pncp_matchings_profile", PncpMatching.profile_key, PncpMatching.compatible)
 Index(
     "uq_tce_despesa_run_publicado_competencia",
     TceDespesaIngestionRun.codigo_municipio_tce,
@@ -439,6 +468,8 @@ __all__ = [
     "PncpContratacaoAtual",
     "PncpOportunidade",
     "PncpEnriquecimento",
+    "PncpEvento",
+    "PncpMatching",
     "PncpQuarentena",
     "PncpSyncCursor",
     "PncpSourceControl",

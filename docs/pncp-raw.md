@@ -89,3 +89,12 @@ contratação; uma falha de anexo não apaga nem invalida a oportunidade básica
 O módulo usa somente GET de contratação (`/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}`
 e os sufixos `/itens` e `/arquivos`), nunca PCA. `pncp_enriquecimentos` guarda
 os recursos seletivamente e os reutiliza até o TTL configurado expirar.
+
+## Oportunidades e matching
+
+O contrato local para NestJS/frontend é produzido por `contrato_consumo` a
+partir de `pncp_oportunidades` e, quando disponível, `pncp_enriquecimentos`.
+Ele nunca consulta o PNCP em uma requisição de usuário. Eventos internos em
+`pncp_eventos` têm chave idempotente por versão; matching em `pncp_matchings`
+guarda versão da regra, motivos e ausências e só usa um de-para explícito entre
+CNAE e categoria do objeto. O módulo não envia propostas ao PNCP.

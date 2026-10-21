@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core import orm
 from app.core.models import PncpOportunidade, PncpQuarentena, RawPncpRecord
 from app.pncp.jobs import JobReivindicado
+from app.pncp.opportunities import registrar_eventos_alteracao_session
 
 class ErroNormalizacaoPncp(ValueError):
     """Inconsistência estrutural: preservar RAW e aguardar replay autorizado."""
@@ -31,8 +32,13 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
     dados = normalizar_payload(raw); atual = session.get(PncpOportunidade, {"source": raw.source, "external_id": raw.external_id})
     if atual and atual.payload_hash == raw.payload_hash: return "INALTERADO"
     if atual and atual.source_updated_at and (raw.source_updated_at is None or raw.source_updated_at < atual.source_updated_at): return "ANTIGO"
-    if atual is None: session.add(PncpOportunidade(**dados)); return "NOVO"
+    if atual is None:
+        novo = PncpOportunidade(**dados); session.add(novo)
+        registrar_eventos_alteracao_session(session, anterior=None, atual=novo)
+        return "NOVO"
+    anterior = PncpOportunidade(**{campo: getattr(atual, campo) for campo in dados})
     for campo, valor in dados.items(): setattr(atual, campo, valor)
+    registrar_eventos_alteracao_session(session, anterior=anterior, atual=atual)
     return "ALTERADO"
 
 def normalizar_job(job: JobReivindicado) -> str:
