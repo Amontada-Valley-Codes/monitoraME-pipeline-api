@@ -4,7 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.errors import obter_request_id, resposta_erro
 from app.pipeline import portes_historicos as service
 
-router = APIRouter(prefix="/pipeline/tce/portes", tags=["Porte mensal observado"])
+router = APIRouter(prefix="/pipeline/tce/portes", tags=["Porte empresarial histórico"])
 
 
 def _executar(request, response, fn):
@@ -23,7 +23,12 @@ def _executar(request, response, fn):
                              details=[], request_id=request_id)
 
 
-@router.get("/competencias", summary="Lista publicacoes mensais e cobertura da amostra")
+@router.get(
+    "/competencias",
+    summary="Lista publicações mensais e cobertura da amostra",
+    description="Retorna as competências publicadas, sua cobertura e, opcionalmente, versões anteriores.",
+    response_description="Publicações de porte empresarial disponíveis para consulta.",
+)
 def competencias(request: Request, response: Response,
                  competencia_final: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
                  incluir_versoes_anteriores: bool = False):
@@ -31,7 +36,12 @@ def competencias(request: Request, response: Response,
         competencia_final, todas_versoes=incluir_versoes_anteriores))
 
 
-@router.get("/historico/{cnpj}", summary="Consulta retratos mensais por raiz, com lacunas explicitas")
+@router.get(
+    "/historico/{cnpj}",
+    summary="Consulta histórico mensal de porte por CNPJ",
+    description="Retorna as fotografias cadastrais da raiz informada no intervalo solicitado, incluindo lacunas explícitas.",
+    response_description="Série histórica de porte empresarial do fornecedor.",
+)
 def historico(cnpj: str, request: Request, response: Response,
               competencia_inicial: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
               competencia_final: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")):
@@ -39,6 +49,11 @@ def historico(cnpj: str, request: Request, response: Response,
         cnpj, competencia_inicial, competencia_final))
 
 
-@router.get("/versoes/{versao}/{cnpj}", summary="Reproduz uma observacao em uma versao especifica")
+@router.get(
+    "/versoes/{versao}/{cnpj}",
+    summary="Consulta uma versão histórica de porte por CNPJ",
+    description="Reproduz a observação do fornecedor na versão publicada informada.",
+    response_description="Observação histórica de porte empresarial na versão solicitada.",
+)
 def versao(versao: str, cnpj: str, request: Request, response: Response):
     return _executar(request, response, lambda:service.historico(cnpj, versao=versao))

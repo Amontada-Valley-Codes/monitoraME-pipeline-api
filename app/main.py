@@ -36,6 +36,49 @@ from app.pipeline import analisys
 configurar_logging()
 logger = logging.getLogger(__name__)
 
+OPENAPI_TAGS = [
+    {
+        "name": "Sistema",
+        "description": "Verificações de disponibilidade da API e de seus componentes locais.",
+    },
+    {
+        "name": "Oportunidades PNCP",
+        "description": "Consulta somente leitura às oportunidades normalizadas e persistidas localmente.",
+    },
+    {
+        "name": "Contratos TCE-CE",
+        "description": "Consulta e processamento de contratos publicados pelo TCE-CE.",
+    },
+    {
+        "name": "Indicadores TCE-CE",
+        "description": "KPIs, séries e visões consolidadas de empenhos líquidos.",
+    },
+    {
+        "name": "Comparações TCE-CE",
+        "description": "Comparação de recortes históricos já armazenados no banco local.",
+    },
+    {
+        "name": "Empenhos TCE-CE",
+        "description": "Listagem e detalhe de empenhos publicados, sem consulta a fontes externas.",
+    },
+    {
+        "name": "Fornecedores TCE-CE",
+        "description": "Consultas locais sobre fornecedores e seus empenhos publicados.",
+    },
+    {
+        "name": "Análise territorial TCE-CE",
+        "description": "Distribuição geográfica, retenção local, concentração e rankings de despesas.",
+    },
+    {
+        "name": "Pagamentos TCE-CE",
+        "description": "Apuração de pagamentos municipais e subtotal de microempresas.",
+    },
+    {
+        "name": "Porte empresarial histórico",
+        "description": "Fotografias cadastrais mensais e histórico de porte por fornecedor.",
+    },
+]
+
 __all__ = [
     "analisys",
     "app",
@@ -84,8 +127,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Monitoramento de Contas Publicas",
-    description="API do modulo analitico retrospectivo de despesas empenhadas do TCE-CE.",
+    description=(
+        "API de dados públicos do MonitoraME. As operações estão agrupadas pelo "
+        "recurso retornado e pela finalidade da consulta. Rotas de consulta local "
+        "não acionam fontes externas."
+    ),
     version="1.0.0",
+    openapi_tags=OPENAPI_TAGS,
     lifespan=lifespan,
 )
 

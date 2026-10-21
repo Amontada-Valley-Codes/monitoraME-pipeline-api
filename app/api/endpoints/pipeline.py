@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/pipeline",
-    tags=["Pipeline"],
     responses={
         422: {
             "description": "Parametros invalidos ou dados insuficientes para o processamento.",
@@ -81,6 +80,7 @@ def _erro_pipeline(error: Exception) -> HTTPException:
 
 @router.get(
     "/tce/contratos",
+    tags=["Contratos TCE-CE"],
     summary="Consulta contratos no TCE-CE",
     description="Executa o fluxo de ingestao, limpeza e enriquecimento dos contratos publicados pelo TCE-CE.",
     response_description="Contratos processados, totais e metadados da consulta TCE-CE.",
@@ -116,6 +116,7 @@ def tce_contratos(
 
 @router.get(
     "/tce/kpis/portes-por-mes",
+    tags=["Indicadores TCE-CE"],
     summary="Calcula participação por porte empresarial por mês",
     description=(
         "Atualiza as competências solicitadas e calcula quantidade, valor líquido "
@@ -155,6 +156,7 @@ def tce_kpi_portes_por_mes(
 
 @router.get(
     "/tce/overview",
+    tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de empenhos de ME e MEI",
     description=(
         "Sem município, consolida os lotes publicados de todo o Ceará usando somente "
@@ -190,6 +192,7 @@ def tce_overview(
 
 @router.get(
     "/tce/overview/municipal",
+    tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de um municipio por periodo",
     description=(
         "Busca o overview municipal para o periodo informado. Por padrao, "
@@ -239,6 +242,7 @@ def tce_overview_municipal(
 
 @router.post(
     "/tce/comparisons",
+    tags=["Comparações TCE-CE"],
     summary="Compara dois overviews armazenados do TCE-CE",
     description=(
         "Compara municipios, periodos ou ambos usando exclusivamente competencias "
@@ -327,6 +331,7 @@ def _erro_empenhos(
 
 @router.get(
     "/tce/empenhos",
+    tags=["Empenhos TCE-CE"],
     summary="Lista empenhos publicados armazenados",
     description=(
         "Lista e pagina empenhos dos sete elementos monitorados usando somente "
@@ -377,6 +382,7 @@ def tce_empenhos(
 
 @router.get(
     "/tce/empenhos/{chave_empenho}",
+    tags=["Empenhos TCE-CE"],
     summary="Detalha um empenho publicado pela chave canonica",
     description=(
         "Retorna dados do empenho, valor bruto, anulacoes e valor liquido sem "
@@ -403,6 +409,7 @@ def tce_empenho_detalhe(
 
 @router.get(
     "/tce/fornecedores",
+    tags=["Fornecedores TCE-CE"],
     summary="Lista fornecedores presentes nos empenhos publicados",
     description=(
         "Agrupa fornecedores e valores do recorte usando exclusivamente dados "
@@ -453,6 +460,7 @@ def tce_fornecedores(
 
 @router.get(
     "/tce/fornecedores/{tipo_documento}/{documento}",
+    tags=["Fornecedores TCE-CE"],
     summary="Consulta o resumo analitico de um fornecedor",
     description=(
         "Retorna cadastro armazenado, indicadores, evolucao mensal, elementos "
@@ -497,6 +505,7 @@ def tce_fornecedor_detalhe(
 
 @router.get(
     "/tce/fornecedores/{tipo_documento}/{documento}/empenhos",
+    tags=["Fornecedores TCE-CE"],
     summary="Lista os empenhos publicados de um fornecedor",
     description=(
         "Pagina as notas consideradas para o fornecedor e recorte sem recalcular "
@@ -551,6 +560,7 @@ def tce_fornecedor_empenhos(
 
 @router.get(
     "/tce/analise-territorial",
+    tags=["Análise territorial TCE-CE"],
     summary="Analisa a distribuicao territorial das compras municipais",
     description=(
         "Calcula retencao local, destino dos recursos, portes, elementos, evolucao, "
@@ -593,6 +603,7 @@ def tce_analise_territorial(
 
 @router.get(
     "/tce/analitico/indicadores",
+    tags=["Indicadores TCE-CE"],
     summary="Calcula indicadores analiticos principais do TCE-CE",
     description=(
         "Atualiza as competências solicitadas e calcula os indicadores sobre "
@@ -632,6 +643,7 @@ def tce_analitico_indicadores(
 
 @router.get(
     "/tce/pagamentos/overview",
+    tags=["Pagamentos TCE-CE"],
     summary="Pagamentos da Prefeitura e subtotal de Microempresas",
     description=(
         "Coleta empenhos do exercicio e pagamentos ate a referencia final, inclusive "

@@ -34,7 +34,15 @@ def _executar(request: Request, response: Response, operacao):
         )
 
 
-@router.get("/editais", summary="Busca editais PNCP normalizados localmente")
+@router.get(
+    "/editais",
+    summary="Lista oportunidades PNCP normalizadas",
+    description=(
+        "Pesquisa e pagina oportunidades já normalizadas no banco local. "
+        "Esta consulta não acessa o PNCP nem inicia sincronizações."
+    ),
+    response_description="Página de oportunidades PNCP persistidas.",
+)
 def buscar_editais(
     request: Request,
     response: Response,
@@ -53,6 +61,14 @@ def buscar_editais(
     )
 
 
-@router.get("/editais/{external_id:path}", summary="Consulta um edital PNCP persistido")
+@router.get(
+    "/editais/{external_id:path}",
+    summary="Detalha uma oportunidade PNCP normalizada",
+    description=(
+        "Retorna uma oportunidade pelo identificador externo, a partir da visão "
+        "normalizada local; não consulta o PNCP."
+    ),
+    response_description="Oportunidade PNCP persistida.",
+)
 def buscar_edital(external_id: str, request: Request, response: Response):
     return _executar(request, response, lambda: serving.obter_edital(external_id))
