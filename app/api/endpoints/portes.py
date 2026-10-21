@@ -27,7 +27,10 @@ def _executar(request, response, fn):
     "/competencias",
     summary="Lista publicações mensais e cobertura da amostra",
     description="Retorna as competências publicadas, sua cobertura e, opcionalmente, versões anteriores.",
-    response_description="Publicações de porte empresarial disponíveis para consulta.",
+    response_description=(
+        "Objeto com `items` de publicações: competência, versão, fonte, cobertura, "
+        "procedência e artefatos; inclui política temporal e competência final consultada."
+    ),
 )
 def competencias(request: Request, response: Response,
                  competencia_final: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
@@ -40,7 +43,10 @@ def competencias(request: Request, response: Response,
     "/historico/{cnpj}",
     summary="Consulta histórico mensal de porte por CNPJ",
     description="Retorna as fotografias cadastrais da raiz informada no intervalo solicitado, incluindo lacunas explícitas.",
-    response_description="Série histórica de porte empresarial do fornecedor.",
+    response_description=(
+        "Objeto com CNPJ e raiz consultados, `items` por competência com porte, indicador "
+        "MEI, status e publicação de origem; `competencias_sem_publicacao` explicita lacunas."
+    ),
 )
 def historico(cnpj: str, request: Request, response: Response,
               competencia_inicial: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
@@ -53,7 +59,10 @@ def historico(cnpj: str, request: Request, response: Response,
     "/versoes/{versao}/{cnpj}",
     summary="Consulta uma versão histórica de porte por CNPJ",
     description="Reproduz a observação do fornecedor na versão publicada informada.",
-    response_description="Observação histórica de porte empresarial na versão solicitada.",
+    response_description=(
+        "Objeto com o CNPJ e a raiz consultados e um item contendo porte, indicador MEI, "
+        "status e metadados da publicação correspondente à versão solicitada."
+    ),
 )
 def versao(versao: str, cnpj: str, request: Request, response: Response):
     return _executar(request, response, lambda:service.historico(cnpj, versao=versao))

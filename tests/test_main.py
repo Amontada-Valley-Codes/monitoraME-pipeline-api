@@ -126,6 +126,14 @@ class MainTest(unittest.TestCase):
             schema["paths"]["/pipeline/tce/pagamentos/overview"]["get"]["tags"],
             ["Pagamentos TCE-CE"],
         )
+        self.assertIn(
+            "valores empenhado/anulado/líquido em centavos",
+            schema["paths"]["/pipeline/tce/empenhos"]["get"]["responses"]["200"]["description"],
+        )
+        self.assertIn(
+            "`detalhe`, `itens` e `anexos`",
+            schema["paths"]["/pncp/editais/{external_id}"]["get"]["responses"]["200"]["description"],
+        )
 
     @patch("app.main.database.close_pool")
     @patch("app.main.database.init_db")
