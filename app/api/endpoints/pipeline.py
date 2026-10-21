@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/pipeline",
-    tags=["Pipeline"],
     responses={
         422: {
             "description": "Parametros invalidos ou dados insuficientes para o processamento.",
@@ -81,9 +80,13 @@ def _erro_pipeline(error: Exception) -> HTTPException:
 
 @router.get(
     "/tce/contratos",
+    tags=["Contratos TCE-CE"],
     summary="Consulta contratos no TCE-CE",
     description="Executa o fluxo de ingestao, limpeza e enriquecimento dos contratos publicados pelo TCE-CE.",
-    response_description="Contratos processados, totais e metadados da consulta TCE-CE.",
+    response_description=(
+        "Objeto com `dados` (contratos normalizados), `totais.contratos`, "
+        "`totais_brutos`, `parametros`, `fonte` e `limite_resposta`."
+    ),
 )
 def tce_contratos(
     data_inicial: Annotated[str, _data_inicial_query()],
@@ -116,13 +119,16 @@ def tce_contratos(
 
 @router.get(
     "/tce/kpis/portes-por-mes",
+    tags=["Indicadores TCE-CE"],
     summary="Calcula participação por porte empresarial por mês",
     description=(
         "Atualiza as competências solicitadas e calcula quantidade, valor líquido "
         "empenhado e percentual mensal de MEI, ME, EPP, demais e não identificados."
     ),
     response_description=(
-        "Série mensal por porte, totais e metadados do TCE-CE."
+        "Objeto com `dados`, uma série mensal por porte contendo quantidade, valor "
+        "líquido empenhado e percentual; inclui `totais`, competências processadas, "
+        "parâmetros e `limite_resposta`. Valores monetários usam centavos."
     ),
 )
 def tce_kpi_portes_por_mes(
@@ -155,6 +161,7 @@ def tce_kpi_portes_por_mes(
 
 @router.get(
     "/tce/overview",
+    tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de empenhos de ME e MEI",
     description=(
         "Sem município, consolida os lotes publicados de todo o Ceará usando somente "
@@ -162,7 +169,10 @@ def tce_kpi_portes_por_mes(
         "a participação de ME + MEI e restringe o detalhamento geográfico a ME e MEI. "
         "A medida e empenho liquido; para valores pagos use /tce/pagamentos/overview."
     ),
-    response_description="KPIs, evolução mensal e destino dos recursos de ME e MEI.",
+    response_description=(
+        "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
+        "e destino geográfico dos recursos, além de escopo, parâmetros e cobertura das competências."
+    ),
 )
 def tce_overview(
     data_inicial: Annotated[str, _data_inicial_query()],
@@ -190,12 +200,16 @@ def tce_overview(
 
 @router.get(
     "/tce/overview/municipal",
+    tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de um municipio por periodo",
     description=(
         "Busca o overview municipal para o periodo informado. Por padrao, "
         "considera todos os portes; company_sizes restringe todo o calculo."
     ),
-    response_description="Overview do municipio e periodo informados.",
+    response_description=(
+        "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
+        "e destino geográfico para o município; também retorna o filtro aplicado, escopo e competências."
+    ),
 )
 def tce_overview_municipal(
     data_inicial: Annotated[str, _data_inicial_query()],
@@ -239,12 +253,16 @@ def tce_overview_municipal(
 
 @router.post(
     "/tce/comparisons",
+    tags=["Comparações TCE-CE"],
     summary="Compara dois overviews armazenados do TCE-CE",
     description=(
         "Compara municipios, periodos ou ambos usando exclusivamente competencias "
         "e fornecedores ja armazenados no banco. Nao executa ingestao nem consulta fontes externas."
     ),
-    response_description="Overviews completos dos dois lados e secoes com maior, menor e diferenca.",
+    response_description=(
+        "Objeto com `left` e `right` (rótulo, filtros e overview de cada recorte) e "
+        "`sections`, que compara KPIs, portes, elementos, evolução e destino dos recursos."
+    ),
     response_model=None,
     responses={
         404: {"description": "Municipio nao encontrado no catalogo local."},
@@ -327,10 +345,16 @@ def _erro_empenhos(
 
 @router.get(
     "/tce/empenhos",
+    tags=["Empenhos TCE-CE"],
     summary="Lista empenhos publicados armazenados",
     description=(
         "Lista e pagina empenhos dos sete elementos monitorados usando somente "
         "lotes publicados e fornecedores armazenados no banco local."
+    ),
+    response_description=(
+        "Objeto com `items` de empenhos — fornecedor, município, elemento de despesa, "
+        "valores empenhado/anulado/líquido em centavos e anulações —, mais `pagination`, "
+        "`sorting` e `filters` aplicados."
     ),
     response_model=None,
 )
@@ -377,10 +401,15 @@ def tce_empenhos(
 
 @router.get(
     "/tce/empenhos/{chave_empenho}",
+    tags=["Empenhos TCE-CE"],
     summary="Detalha um empenho publicado pela chave canonica",
     description=(
         "Retorna dados do empenho, valor bruto, anulacoes e valor liquido sem "
         "consultar fontes externas."
+    ),
+    response_description=(
+        "Objeto do empenho com fornecedor, município, valores em centavos, classificação "
+        "orçamentária, referências de contrato/licitação e contagens de empenhos e anulações."
     ),
     response_model=None,
 )
@@ -403,10 +432,15 @@ def tce_empenho_detalhe(
 
 @router.get(
     "/tce/fornecedores",
+    tags=["Fornecedores TCE-CE"],
     summary="Lista fornecedores presentes nos empenhos publicados",
     description=(
         "Agrupa fornecedores e valores do recorte usando exclusivamente dados "
         "publicados e cadastros armazenados no banco local."
+    ),
+    response_description=(
+        "Objeto com `items` de fornecedores agregados — identificação, porte, origem, "
+        "quantidades e valores em centavos —, além de `pagination`, `sorting` e `filters`."
     ),
     response_model=None,
 )
@@ -453,10 +487,15 @@ def tce_fornecedores(
 
 @router.get(
     "/tce/fornecedores/{tipo_documento}/{documento}",
+    tags=["Fornecedores TCE-CE"],
     summary="Consulta o resumo analitico de um fornecedor",
     description=(
         "Retorna cadastro armazenado, indicadores, evolucao mensal, elementos "
         "de despesa e participacao do fornecedor no recorte."
+    ),
+    response_description=(
+        "Objeto com `fornecedor` e cadastro disponível, `recorte` financeiro em centavos, "
+        "`evolucao_mensal`, `por_elemento_despesa`, participação no total e referência paginável aos empenhos."
     ),
     response_model=None,
 )
@@ -497,10 +536,15 @@ def tce_fornecedor_detalhe(
 
 @router.get(
     "/tce/fornecedores/{tipo_documento}/{documento}/empenhos",
+    tags=["Fornecedores TCE-CE"],
     summary="Lista os empenhos publicados de um fornecedor",
     description=(
         "Pagina as notas consideradas para o fornecedor e recorte sem recalcular "
         "os graficos da rota de detalhe."
+    ),
+    response_description=(
+        "Objeto com a identificação do fornecedor, `items` de empenhos e seus valores em "
+        "centavos, além de `pagination`, `sorting` e `filters` aplicados."
     ),
     response_model=None,
 )
@@ -551,10 +595,15 @@ def tce_fornecedor_empenhos(
 
 @router.get(
     "/tce/analise-territorial",
+    tags=["Análise territorial TCE-CE"],
     summary="Analisa a distribuicao territorial das compras municipais",
     description=(
         "Calcula retencao local, destino dos recursos, portes, elementos, evolucao, "
         "concentracao e ranking usando apenas empenhos publicados e cadastros locais."
+    ),
+    response_description=(
+        "Objeto com município, cobertura, resumo financeiro em centavos, indicadores de "
+        "retenção, destino dos recursos, portes, elementos, evolução mensal, concentração, ranking e metodologia."
     ),
     response_model=None,
 )
@@ -593,13 +642,17 @@ def tce_analise_territorial(
 
 @router.get(
     "/tce/analitico/indicadores",
+    tags=["Indicadores TCE-CE"],
     summary="Calcula indicadores analiticos principais do TCE-CE",
     description=(
         "Atualiza as competências solicitadas e calcula os indicadores sobre "
         "empenhos líquidos publicados do TCE-CE. "
         "O municipio comprador e resolvido automaticamente pelo codigo interno do TCE-CE."
     ),
-    response_description="Indicadores analiticos, totais e metadados da consulta TCE-CE.",
+    response_description=(
+        "Objeto com `indicadores`, tabelas dos indicadores analíticos solicitados, `totais` "
+        "por tabela, competências processadas, parâmetros, base de cálculo e `limite_resposta`."
+    ),
 )
 def tce_analitico_indicadores(
     data_inicial: Annotated[str, _data_inicial_query()],
@@ -632,12 +685,17 @@ def tce_analitico_indicadores(
 
 @router.get(
     "/tce/pagamentos/overview",
+    tags=["Pagamentos TCE-CE"],
     summary="Pagamentos da Prefeitura e subtotal de Microempresas",
     description=(
         "Coleta empenhos do exercicio e pagamentos ate a referencia final, inclusive "
         "anos posteriores. Exclui Camara e estornos; filtra sete elementos. "
         "Retorna fornecedores ME, controle financeiro e pendencias cadastrais. "
         "Consulta as fontes externas; porte atual nao comprova porte historico."
+    ),
+    response_description=(
+        "Objeto com total pago e subtotal de microempresas em centavos, fornecedores "
+        "classificados, pendências cadastrais, referências consultadas e trilha de `auditoria` da conciliação."
     ),
 )
 def tce_pagamentos_overview(

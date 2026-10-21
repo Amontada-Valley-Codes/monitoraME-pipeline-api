@@ -106,6 +106,35 @@ class MainTest(unittest.TestCase):
         self.assertIn("/pipeline/tce/analitico/indicadores", rotas)
         self.assertIn("/pipeline/tce/analise-territorial", rotas)
 
+    def test_openapi_agrupa_operacoes_por_recurso_e_finalidade(self) -> None:
+        schema = main.app.openapi()
+        tags = {tag["name"]: tag["description"] for tag in schema["tags"]}
+
+        self.assertNotIn("Pipeline", tags)
+        self.assertIn("Indicadores TCE-CE", tags)
+        self.assertIn("Empenhos TCE-CE", tags)
+        self.assertIn("Oportunidades PNCP", tags)
+        self.assertEqual(
+            schema["paths"]["/pipeline/tce/empenhos"]["get"]["tags"],
+            ["Empenhos TCE-CE"],
+        )
+        self.assertEqual(
+            schema["paths"]["/pipeline/tce/fornecedores"]["get"]["tags"],
+            ["Fornecedores TCE-CE"],
+        )
+        self.assertEqual(
+            schema["paths"]["/pipeline/tce/pagamentos/overview"]["get"]["tags"],
+            ["Pagamentos TCE-CE"],
+        )
+        self.assertIn(
+            "valores empenhado/anulado/líquido em centavos",
+            schema["paths"]["/pipeline/tce/empenhos"]["get"]["responses"]["200"]["description"],
+        )
+        self.assertIn(
+            "`detalhe`, `itens` e `anexos`",
+            schema["paths"]["/pncp/editais/{external_id}"]["get"]["responses"]["200"]["description"],
+        )
+
     @patch("app.main.database.close_pool")
     @patch("app.main.database.init_db")
     @patch("app.pipeline.analisys.fornecedores.obter_fornecedores_com_cache")
