@@ -20,6 +20,16 @@ backoff exponencial e *full jitter*; `400`, `401` e `403` vão diretamente para
 auditoria e replay. O limite padrão é cinco tentativas totais, configurável por
 variáveis `PNCP_*` descritas no `.env.example`.
 
+## Proteção da fonte
+
+`pncp_source_controls` mantém, no PostgreSQL e por fonte, o estado do circuito,
+slots de concorrência, próximo horário permitido e motivo da última degradação.
+Assim todos os workers compartilham o limite. O circuito abre após falhas
+transitórias configuráveis; durante `OPEN`, jobs retornam para `RETRY_WAIT` sem
+consumir tentativa nem chamar o PNCP. Após o cooldown, uma sonda `HALF_OPEN`
+fecha o circuito apenas se for bem-sucedida. Respostas `429` e alta latência
+reduzem a concorrência, que se recupera gradualmente após sucessos.
+
 O contrato rejeita objetos que nao possam ser serializados como JSON (inclusive
 NaN), antes de qualquer escrita. O coletor deve enviar apenas metadados seguros
 do erro para a auditoria/quarentena futura, nunca o payload completo em logs.

@@ -236,6 +236,24 @@ def falhar_job_session(
     return status if resultado.rowcount == 1 else None
 
 
+def adiar_job_sem_tentativa_session(
+    session: Session, *, job: JobReivindicado, motivo: str, aguardar: timedelta, contexto: dict[str, object] | None = None
+) -> bool:
+    """Devolve um job não iniciado à fila sem consumir tentativa de HTTP."""
+    resultado = session.execute(
+        text("""
+        UPDATE ingestion_jobs SET status = 'RETRY_WAIT', attempts = GREATEST(0, attempts - 1),
+            locked_by = NULL, lease_token = NULL, lease_until = NULL, heartbeat_at = NULL,
+            last_error = :motivo, last_error_context = CAST(:contexto AS jsonb),
+            next_run_at = now() + (:aguardar_seconds * interval '1 second'), updated_at = now()
+        WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+        """).bindparams(bindparam("contexto", type_=JSONB)),
+        {"job_id": job.id, "lease_token": job.lease_token, "motivo": motivo[:2048],
+         "contexto": contexto or {}, "aguardar_seconds": max(0, aguardar.total_seconds())},
+    )
+    return resultado.rowcount == 1
+
+
 def recuperar_leases_expirados_session(session: Session) -> int:
     resultado = session.execute(text("""
         UPDATE ingestion_jobs SET status = 'PENDING', locked_by = NULL, lease_token = NULL,
@@ -293,10 +311,17 @@ class WorkerPncp:
             retry_after = getattr(exc, "retry_after", None)
             contexto = exc.contexto() if hasattr(exc, "contexto") else {"categoria": type(exc).__name__, "retryable": retryable}
             with orm.main_session() as session:
-                status = falhar_job_session(
-                    session, job=job, erro=f"{type(exc).__name__}: {exc}",
-                    retryable=retryable, retry_after=retry_after, contexto=contexto,
-                )
+                if getattr(exc, "reagendar_sem_tentativa", False):
+                    adiado = adiar_job_sem_tentativa_session(
+                        session, job=job, motivo=f"{type(exc).__name__}: {exc}",
+                        aguardar=retry_after or timedelta(seconds=1), contexto=contexto,
+                    )
+                    status = RETRY_WAIT if adiado else None
+                else:
+                    status = falhar_job_session(
+                        session, job=job, erro=f"{type(exc).__name__}: {exc}",
+                        retryable=retryable, retry_after=retry_after, contexto=contexto,
+                    )
             logger.warning("Job PNCP falhou", extra={"job_id": job.id, "status": status, "error": str(exc)[:2048], "retryable": retryable})
         else:
             with orm.main_session() as session:
@@ -322,7 +347,7 @@ def executar_recuperador(*, parar: Callable[[], bool], interval_seconds: float =
 __all__ = [
     "ACTIVE_STATUSES", "AgendadorPncp", "BACKFILL", "FAILED", "NovoJob", "PENDING", "RETRY_WAIT",
     "RUNNING", "SUCCEEDED", "WorkerPncp", "agendar_job", "agendar_job_session",
-    "concluir_job_session", "executar_recuperador", "falhar_job_session",
+    "adiar_job_sem_tentativa_session", "concluir_job_session", "executar_recuperador", "falhar_job_session",
     "recuperar_leases_expirados", "recuperar_leases_expirados_session",
     "renovar_lease", "renovar_lease_session", "reivindicar_proximo_job",
     "reivindicar_proximo_job_session",

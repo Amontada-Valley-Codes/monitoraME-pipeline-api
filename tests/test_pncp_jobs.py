@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.pncp import jobs
 from app.pncp.retry import PoliticaRetryPncp
+from app.pncp.protecao import PermissaoFonte, PncpProtegidoError
 
 
 class JobPncpTest(unittest.TestCase):
@@ -142,6 +143,23 @@ class JobPncpTest(unittest.TestCase):
         status = jobs.falhar_job_session(session, job=job, erro="timeout")
 
         self.assertEqual(status, jobs.FAILED)
+
+    def test_protecao_da_fonte_adia_sem_consumir_tentativa(self) -> None:
+        job = jobs.JobReivindicado(1, "incremental", "CONTRATACAO", "PNCP", "s", "d", 2, 5, "token", None, None, None, None)
+        session = MagicMock()
+        session.execute.return_value.rowcount = 1
+        erro = PncpProtegidoError(PermissaoFonte(False, timedelta(seconds=30), "circuito aberto", "OPEN"))
+        worker = jobs.WorkerPncp("worker-a", lambda _: (_ for _ in ()).throw(erro))
+
+        with (
+            patch("app.pncp.jobs.reivindicar_proximo_job", return_value=job),
+            patch("app.pncp.jobs.orm.main_session", return_value=nullcontext(session)),
+        ):
+            worker.executar_uma_vez()
+
+        statement, parametros = session.execute.call_args.args
+        self.assertIn("attempts = GREATEST(0, attempts - 1)", statement.text)
+        self.assertEqual(parametros["aguardar_seconds"], 30)
 
 
 if __name__ == "__main__":

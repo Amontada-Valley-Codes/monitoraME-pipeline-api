@@ -11,6 +11,7 @@ import requests
 
 from app.core import orm
 from app.pncp.jobs import JobReivindicado, NovoJob
+from app.pncp.protecao import PncpProtegidoError, ProtecaoPncp
 from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
@@ -57,12 +58,20 @@ class PaginaContratacoes:
 
 
 class ClientePncp:
-    def __init__(self, base_url: str | None = None, *, timeout: tuple[float, float] | None = None, session: requests.Session | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        *,
+        timeout: tuple[float, float] | None = None,
+        session: requests.Session | None = None,
+        protecao: ProtecaoPncp | None = None,
+    ) -> None:
         self.base_url = (base_url or os.getenv("PNCP_BASE_URL", "https://pncp.gov.br/api/consulta")).rstrip("/")
         self.timeout = timeout or (float(os.getenv("PNCP_CONNECT_TIMEOUT_SECONDS", "10")), float(os.getenv("PNCP_READ_TIMEOUT_SECONDS", "30")))
         self.request_interval_seconds = float(os.getenv("PNCP_REQUEST_INTERVAL_SECONDS", "2"))
         self._ultima_requisicao_monotonic: float | None = None
         self.session = session or requests.Session()
+        self.protecao = protecao or ProtecaoPncp()
 
     def buscar_publicacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
         return self._buscar(ENDPOINT_PUBLICACAO, inicio=inicio, fim=fim, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
@@ -74,22 +83,33 @@ class ClientePncp:
         if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 50:
             raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 50")
         params = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
+        permissao = self.protecao.adquirir()
+        if not permissao.permitida:
+            raise PncpProtegidoError(permissao)
         if self._ultima_requisicao_monotonic is not None:
             intervalo = time.monotonic() - self._ultima_requisicao_monotonic
             if intervalo < self.request_interval_seconds:
                 time.sleep(self.request_interval_seconds - intervalo)
         self._ultima_requisicao_monotonic = time.monotonic()
+        inicio_chamada = time.monotonic()
         try:
             resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
         except requests.Timeout as exc:
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio_chamada)
             raise PncpColetaError(f"falha na pagina {pagina}: timeout", endpoint=endpoint) from exc
         except requests.RequestException as exc:
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio_chamada)
             raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}", endpoint=endpoint) from exc
         status = resposta.status_code
         if status >= 400:
+            retryable = classificar_status_http(status)
+            self.protecao.registrar_resultado(
+                sucesso=False, retryable=retryable, status_code=status,
+                latency_seconds=time.monotonic() - inicio_chamada,
+            )
             raise PncpColetaError(
                 f"falha na pagina {pagina}: HTTP {status}",
-                retryable=classificar_status_http(status),
+                retryable=retryable,
                 status_code=status,
                 retry_after=retry_after_para_timedelta(resposta.headers.get("Retry-After")) if status == 429 else None,
                 endpoint=endpoint,
@@ -97,15 +117,20 @@ class ClientePncp:
         try:
             corpo = resposta.json()
         except ValueError as exc:
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
             raise PncpColetaError(f"falha na pagina {pagina}: JSON invalido", endpoint=endpoint) from exc
         if not isinstance(corpo, dict):
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
             raise PncpColetaError("resposta PNCP nao e objeto JSON")
         itens = corpo.get("data", corpo.get("items"))
         if not isinstance(itens, list) or any(not isinstance(item, dict) for item in itens):
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
             raise PncpColetaError("resposta PNCP sem lista valida de contratacoes")
         total = corpo.get("totalPaginas", corpo.get("totalPages"))
         if total is not None and (not isinstance(total, int) or total < pagina):
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
             raise PncpColetaError("metadado de paginacao PNCP invalido")
+        self.protecao.registrar_resultado(sucesso=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
         return PaginaContratacoes(itens, total)
 
 

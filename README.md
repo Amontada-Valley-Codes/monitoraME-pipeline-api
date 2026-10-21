@@ -75,6 +75,9 @@ Variáveis usadas pela aplicação:
 | `PNCP_RETRY_INITIAL_SECONDS` | Não | Base do backoff exponencial com full jitter; padrão `2`. |
 | `PNCP_RETRY_MAX_SECONDS` | Não | Teto do backoff com full jitter; padrão `60`. |
 | `PNCP_REQUEST_INTERVAL_SECONDS` | Não | Espaçamento mínimo entre chamadas do cliente PNCP; padrão `2`. |
+| `PNCP_RATE_LIMIT_REQUESTS_PER_SECOND` | Não | Limite global compartilhado entre workers; padrão `2`. |
+| `PNCP_CONCURRENCY_INITIAL` / `PNCP_CONCURRENCY_MAX` | Não | Concorrência inicial e teto adaptativo; padrões `2` e `5`. |
+| `PNCP_CIRCUIT_FAILURE_THRESHOLD` / `PNCP_CIRCUIT_COOLDOWN_SECONDS` | Não | Falhas transitórias até abrir o circuito e duração do cooldown; padrões `5` e `60`. |
 | `UF_PADRAO` | Sim | UF compradora usada pela análise. |
 | `CODIGO_MUNICIPIO_TCE_PADRAO` | Sim | Código interno padrão do município no TCE-CE. |
 

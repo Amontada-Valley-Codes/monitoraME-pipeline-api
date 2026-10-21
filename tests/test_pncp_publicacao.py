@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import unittest
@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.pncp.ingestion import ClientePncp, PncpColetaError, agendar_publicacao, coletar_publicacao
+from app.pncp.protecao import PermissaoFonte, PncpProtegidoError
 from app.pncp.jobs import JobReivindicado
 
 
@@ -16,7 +17,7 @@ class PublicacaoPncpTest(unittest.TestCase):
     def test_cliente_usa_parametros_oficiais(self) -> None:
         resposta = MagicMock(status_code=200)
         resposta.json.return_value = {"data": [], "totalPaginas": 1}
-        cliente = ClientePncp(session=MagicMock())
+        cliente = ClientePncp(session=MagicMock(), protecao=MagicMock())
         cliente.session.get.return_value = resposta
         cliente.buscar_publicacoes(inicio=datetime(2026, 10, 1).date(), fim=datetime(2026, 10, 2).date(), modalidade=6, pagina=1, tamanho_pagina=50)
         self.assertEqual(cliente.session.get.call_args.kwargs["params"]["dataInicial"], "20261001")
@@ -24,7 +25,7 @@ class PublicacaoPncpTest(unittest.TestCase):
 
     def test_json_invalido_falha_sem_pagina_vazia(self) -> None:
         resposta = MagicMock(status_code=200); resposta.raise_for_status.return_value = None; resposta.json.side_effect = ValueError("truncado")
-        cliente = ClientePncp(session=MagicMock()); cliente.session.get.return_value = resposta
+        cliente = ClientePncp(session=MagicMock(), protecao=MagicMock()); cliente.session.get.return_value = resposta
         with self.assertRaises(PncpColetaError):
             cliente.buscar_publicacoes(inicio=datetime.now().date(), fim=datetime.now().date(), modalidade=6, pagina=1, tamanho_pagina=10)
 
@@ -41,7 +42,7 @@ class PublicacaoPncpTest(unittest.TestCase):
     def test_429_respeita_retry_after_e_deixa_retry_para_o_job(self) -> None:
         resposta = MagicMock(status_code=429)
         resposta.headers = {"Retry-After": "17"}
-        cliente = ClientePncp(session=MagicMock())
+        cliente = ClientePncp(session=MagicMock(), protecao=MagicMock())
         cliente.session.get.return_value = resposta
 
         with self.assertRaises(PncpColetaError) as contexto:
@@ -58,7 +59,7 @@ class PublicacaoPncpTest(unittest.TestCase):
     def test_400_e_permanente(self) -> None:
         resposta = MagicMock(status_code=400)
         resposta.headers = {}
-        cliente = ClientePncp(session=MagicMock())
+        cliente = ClientePncp(session=MagicMock(), protecao=MagicMock())
         cliente.session.get.return_value = resposta
 
         with self.assertRaises(PncpColetaError) as contexto:
@@ -68,4 +69,17 @@ class PublicacaoPncpTest(unittest.TestCase):
             )
 
         self.assertFalse(contexto.exception.retryable)
+
+    def test_circuito_aberto_nao_faz_http(self) -> None:
+        protecao = MagicMock()
+        protecao.adquirir.return_value = PermissaoFonte(False, timedelta(seconds=30), "circuito aberto", "OPEN")
+        cliente = ClientePncp(session=MagicMock(), protecao=protecao)
+
+        with self.assertRaises(PncpProtegidoError):
+            cliente.buscar_publicacoes(
+                inicio=datetime.now().date(), fim=datetime.now().date(), modalidade=6,
+                pagina=1, tamanho_pagina=10,
+            )
+
+        cliente.session.get.assert_not_called()
 

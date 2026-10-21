@@ -201,6 +201,24 @@ class PncpSyncCursor(MainBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class PncpSourceControl(MainBase):
+    """Estado compartilhado de proteção da fonte entre workers PNCP."""
+
+    __tablename__ = "pncp_source_controls"
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    circuit_state: Mapped[str] = mapped_column(Text, server_default=text("'CLOSED'"))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    open_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    half_open_in_flight: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    concurrency_limit: Mapped[int] = mapped_column(Integer, server_default=text("2"))
+    active_requests: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    next_request_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    interval_milliseconds: Mapped[int] = mapped_column(Integer, server_default=text("500"))
+    successes_since_reduction: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_reason: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class TceDespesaIngestionRun(MainBase):
     __tablename__ = "tce_despesa_ingestion_runs"
     __table_args__ = (
@@ -383,6 +401,7 @@ __all__ = [
     "PncpOportunidade",
     "PncpQuarentena",
     "PncpSyncCursor",
+    "PncpSourceControl",
     "TceAnulacaoEmpenho",
     "TceDespesaIngestionRun",
     "TceEmpenho",
