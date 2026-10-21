@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import unittest
@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.pncp import jobs
+from app.pncp.retry import PoliticaRetryPncp
 
 
 class JobPncpTest(unittest.TestCase):
@@ -105,6 +106,42 @@ class JobPncpTest(unittest.TestCase):
 
         self.assertEqual(resultado, [(5, True)])
         agendar.assert_called_once_with(job)
+
+    def test_falha_transitoria_reagenda_com_jitter_e_contexto(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.rowcount = 1
+        job = jobs.JobReivindicado(1, "incremental", "CONTRATACAO", "PNCP", "s", "d", 2, 5, "token", None, None, None, None)
+
+        politica = PoliticaRetryPncp(initial_delay_seconds=2, max_delay_seconds=60)
+        with patch.object(PoliticaRetryPncp, "atraso_com_jitter", return_value=timedelta(seconds=3.5)):
+            status = jobs.falhar_job_session(
+                session, job=job, erro="HTTP 503", contexto={"status_code": 503}, politica=politica,
+            )
+
+        self.assertEqual(status, jobs.RETRY_WAIT)
+        _, parametros = session.execute.call_args.args
+        self.assertEqual(parametros["retry_seconds"], 3.5)
+        self.assertEqual(parametros["contexto"]["retry_reason"], "backoff com full jitter")
+
+    def test_falha_permanente_nao_e_repetida(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.rowcount = 1
+        job = jobs.JobReivindicado(1, "incremental", "CONTRATACAO", "PNCP", "s", "d", 1, 5, "token", None, None, None, None)
+
+        status = jobs.falhar_job_session(session, job=job, erro="HTTP 400", retryable=False)
+
+        self.assertEqual(status, jobs.FAILED)
+        _, parametros = session.execute.call_args.args
+        self.assertEqual(parametros["retry_seconds"], 0)
+
+    def test_tentativas_esgotadas_ficam_failed(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.rowcount = 1
+        job = jobs.JobReivindicado(1, "incremental", "CONTRATACAO", "PNCP", "s", "d", 5, 5, "token", None, None, None, None)
+
+        status = jobs.falhar_job_session(session, job=job, erro="timeout")
+
+        self.assertEqual(status, jobs.FAILED)
 
 
 if __name__ == "__main__":

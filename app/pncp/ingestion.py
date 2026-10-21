@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import os
 import time
 from typing import Any
@@ -11,6 +11,7 @@ import requests
 
 from app.core import orm
 from app.pncp.jobs import JobReivindicado, NovoJob
+from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
@@ -22,7 +23,31 @@ TIPO = "CONTRATACAO"
 
 
 class PncpColetaError(RuntimeError):
-    pass
+    """Erro de coleta com dados suficientes para o job decidir o retry."""
+
+    def __init__(
+        self,
+        mensagem: str,
+        *,
+        retryable: bool = True,
+        status_code: int | None = None,
+        retry_after: timedelta | None = None,
+        endpoint: str | None = None,
+    ) -> None:
+        super().__init__(mensagem)
+        self.retryable = retryable
+        self.status_code = status_code
+        self.retry_after = retry_after
+        self.endpoint = endpoint
+
+    def contexto(self) -> dict[str, object]:
+        return {
+            "categoria": "pncp_coleta",
+            "endpoint": self.endpoint,
+            "status_code": self.status_code,
+            "retryable": self.retryable,
+            "retry_after_seconds": self.retry_after.total_seconds() if self.retry_after else None,
+        }
 
 
 @dataclass(frozen=True)
@@ -35,8 +60,6 @@ class ClientePncp:
     def __init__(self, base_url: str | None = None, *, timeout: tuple[float, float] | None = None, session: requests.Session | None = None) -> None:
         self.base_url = (base_url or os.getenv("PNCP_BASE_URL", "https://pncp.gov.br/api/consulta")).rstrip("/")
         self.timeout = timeout or (float(os.getenv("PNCP_CONNECT_TIMEOUT_SECONDS", "10")), float(os.getenv("PNCP_READ_TIMEOUT_SECONDS", "30")))
-        self.max_retries = int(os.getenv("PNCP_MAX_RETRIES", "3"))
-        self.retry_initial_seconds = float(os.getenv("PNCP_RETRY_INITIAL_SECONDS", "1"))
         self.request_interval_seconds = float(os.getenv("PNCP_REQUEST_INTERVAL_SECONDS", "2"))
         self._ultima_requisicao_monotonic: float | None = None
         self.session = session or requests.Session()
@@ -51,35 +74,30 @@ class ClientePncp:
         if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 50:
             raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 50")
         params = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
-        for tentativa in range(self.max_retries + 1):
-            try:
-                if self._ultima_requisicao_monotonic is not None:
-                    intervalo = time.monotonic() - self._ultima_requisicao_monotonic
-                    if intervalo < self.request_interval_seconds:
-                        time.sleep(self.request_interval_seconds - intervalo)
-                self._ultima_requisicao_monotonic = time.monotonic()
-                resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
-                status = resposta.status_code
-                if status == 429 or status in {408, 500, 502, 503, 504}:
-                    if tentativa < self.max_retries:
-                        retry_after = resposta.headers.get("Retry-After")
-                        try: espera = max(0.0, float(retry_after)) if retry_after else self.retry_initial_seconds * (2 ** tentativa)
-                        except ValueError: espera = self.retry_initial_seconds * (2 ** tentativa)
-                        time.sleep(espera)
-                        continue
-                resposta.raise_for_status()
-                corpo = resposta.json()
-                break
-            except requests.HTTPError as exc:
-                status = exc.response.status_code if exc.response is not None else "desconhecido"
-                raise PncpColetaError(f"falha na pagina {pagina}: HTTP {status}") from exc
-            except (requests.RequestException, ValueError) as exc:
-                if tentativa < self.max_retries:
-                    time.sleep(self.retry_initial_seconds * (2 ** tentativa))
-                    continue
-                raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}") from exc
-        else:
-            raise PncpColetaError(f"falha na pagina {pagina}: tentativas esgotadas")
+        if self._ultima_requisicao_monotonic is not None:
+            intervalo = time.monotonic() - self._ultima_requisicao_monotonic
+            if intervalo < self.request_interval_seconds:
+                time.sleep(self.request_interval_seconds - intervalo)
+        self._ultima_requisicao_monotonic = time.monotonic()
+        try:
+            resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
+        except requests.Timeout as exc:
+            raise PncpColetaError(f"falha na pagina {pagina}: timeout", endpoint=endpoint) from exc
+        except requests.RequestException as exc:
+            raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}", endpoint=endpoint) from exc
+        status = resposta.status_code
+        if status >= 400:
+            raise PncpColetaError(
+                f"falha na pagina {pagina}: HTTP {status}",
+                retryable=classificar_status_http(status),
+                status_code=status,
+                retry_after=retry_after_para_timedelta(resposta.headers.get("Retry-After")) if status == 429 else None,
+                endpoint=endpoint,
+            )
+        try:
+            corpo = resposta.json()
+        except ValueError as exc:
+            raise PncpColetaError(f"falha na pagina {pagina}: JSON invalido", endpoint=endpoint) from exc
         if not isinstance(corpo, dict):
             raise PncpColetaError("resposta PNCP nao e objeto JSON")
         itens = corpo.get("data", corpo.get("items"))

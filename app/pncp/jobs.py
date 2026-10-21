@@ -9,12 +9,13 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select, text
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import bindparam, select, text
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
 from app.core import orm
 from app.core.models import IngestionJob
+from app.pncp.retry import PoliticaRetryPncp, decidir_retry
 
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class NovoJob:
     dedupe_key: str
     priority: int
     next_run_at: datetime
-    max_attempts: int = 5
+    max_attempts: int | None = None
     window_start: datetime | None = None
     window_end: datetime | None = None
     page: int | None = None
@@ -67,19 +68,20 @@ def _validar_novo_job(job: NovoJob) -> None:
         raise ValueError("job_type, entity_type, source, scope_key e dedupe_key sao obrigatorios")
     if job.next_run_at.tzinfo is None:
         raise ValueError("next_run_at deve incluir timezone")
-    if job.max_attempts < 1:
+    if job.max_attempts is not None and job.max_attempts < 1:
         raise ValueError("max_attempts deve ser maior que zero")
 
 
 def agendar_job_session(session: Session, job: NovoJob) -> tuple[int, bool]:
     """Agenda um job ou devolve o equivalente que ainda esta ativo."""
     _validar_novo_job(job)
+    max_attempts = job.max_attempts or PoliticaRetryPncp.do_ambiente().max_attempts
     stmt = (
         insert(IngestionJob)
         .values(
             job_type=job.job_type, entity_type=job.entity_type, source=job.source,
             scope_key=job.scope_key, dedupe_key=job.dedupe_key, priority=job.priority,
-            status=PENDING, next_run_at=job.next_run_at, max_attempts=job.max_attempts,
+            status=PENDING, next_run_at=job.next_run_at, max_attempts=max_attempts,
             window_start=job.window_start, window_end=job.window_end, page=job.page,
             raw_record_id=job.raw_record_id,
         )
@@ -197,24 +199,40 @@ def concluir_job_session(session: Session, *, job_id: int, lease_token: str) -> 
 
 
 def falhar_job_session(
-    session: Session, *, job: JobReivindicado, erro: str, retry_after: timedelta = timedelta(seconds=30)
+    session: Session,
+    *,
+    job: JobReivindicado,
+    erro: str,
+    retryable: bool = True,
+    retry_after: timedelta | None = None,
+    contexto: dict[str, object] | None = None,
+    politica: PoliticaRetryPncp | None = None,
 ) -> str | None:
     """Libera o lease e programa retry, ou encerra o job ao esgotar tentativas."""
-    status = FAILED if job.attempts >= job.max_attempts else RETRY_WAIT
+    decisao = decidir_retry(
+        attempts=job.attempts,
+        max_attempts=job.max_attempts,
+        retryable=retryable,
+        retry_after=retry_after,
+        politica=politica,
+    )
+    status = RETRY_WAIT if decisao.repetir else FAILED
     parametros = {
         "job_id": job.id, "lease_token": job.lease_token, "status": status,
-        "erro": erro[:2048], "retry_seconds": max(0, int(retry_after.total_seconds())),
+        "erro": erro[:2048],
+        "contexto": {**(contexto or {}), "retry_reason": decisao.motivo},
+        "retry_seconds": decisao.atraso.total_seconds() if decisao.atraso else 0,
     }
-    resultado = session.execute(
-        text("""
+    statement = text("""
         UPDATE ingestion_jobs SET status = :status, locked_by = NULL, lease_token = NULL,
             lease_until = NULL, heartbeat_at = NULL, last_error = :erro,
+            last_error_context = CAST(:contexto AS jsonb),
             next_run_at = CASE WHEN :status = 'RETRY_WAIT'
                 THEN now() + (:retry_seconds * interval '1 second') ELSE next_run_at END,
             updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
-        """), parametros,
-    )
+        """).bindparams(bindparam("contexto", type_=JSONB))
+    resultado = session.execute(statement, parametros)
     return status if resultado.rowcount == 1 else None
 
 
@@ -271,9 +289,15 @@ class WorkerPncp:
         try:
             self.handler(job)  # HTTP/processamento fica deliberadamente fora da transacao.
         except Exception as exc:
+            retryable = getattr(exc, "retryable", True)
+            retry_after = getattr(exc, "retry_after", None)
+            contexto = exc.contexto() if hasattr(exc, "contexto") else {"categoria": type(exc).__name__, "retryable": retryable}
             with orm.main_session() as session:
-                status = falhar_job_session(session, job=job, erro=f"{type(exc).__name__}: {exc}")
-            logger.warning("Job PNCP falhou", extra={"job_id": job.id, "status": status, "error": str(exc)[:2048]})
+                status = falhar_job_session(
+                    session, job=job, erro=f"{type(exc).__name__}: {exc}",
+                    retryable=retryable, retry_after=retry_after, contexto=contexto,
+                )
+            logger.warning("Job PNCP falhou", extra={"job_id": job.id, "status": status, "error": str(exc)[:2048], "retryable": retryable})
         else:
             with orm.main_session() as session:
                 concluido = concluir_job_session(session, job_id=job.id, lease_token=job.lease_token)

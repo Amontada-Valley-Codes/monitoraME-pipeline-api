@@ -10,6 +10,16 @@ RAW e o respectivo `ingestion_jobs` de tipo `normalize` na mesma transacao do
 banco principal. Uma repeticao por retry ou overlap recupera a mesma versao e o
 mesmo job. Uma falha posterior de normalizacao nao remove o RAW.
 
+## Retry de coleta
+
+O cliente PNCP faz uma chamada por execução de job. Timeout, `408`, `429` e
+`5xx` são classificados como transitórios e o worker persiste `RETRY_WAIT` com
+backoff exponencial e *full jitter*; `400`, `401` e `403` vão diretamente para
+`FAILED`. Em `429`, `Retry-After` prevalece sobre o jitter. `attempts`,
+`next_run_at`, `last_error` e `last_error_context` permanecem no job para
+auditoria e replay. O limite padrão é cinco tentativas totais, configurável por
+variáveis `PNCP_*` descritas no `.env.example`.
+
 O contrato rejeita objetos que nao possam ser serializados como JSON (inclusive
 NaN), antes de qualquer escrita. O coletor deve enviar apenas metadados seguros
 do erro para a auditoria/quarentena futura, nunca o payload completo em logs.

@@ -19,7 +19,23 @@ class KeyCursor:
 
 ChaveCursor = KeyCursor
 
-def proxima_janela(key: KeyCursor, *, now: datetime, size: timedelta, last_confirmed_end: datetime | None, overlap: timedelta = OVERLAP_PADRAO) -> tuple[datetime, datetime]:
+def proxima_janela(
+    key: KeyCursor,
+    *,
+    now: datetime | None = None,
+    size: timedelta | None = None,
+    agora: datetime | None = None,
+    tamanho: timedelta | None = None,
+    last_confirmed_end: datetime | None,
+    overlap: timedelta = OVERLAP_PADRAO,
+) -> tuple[datetime, datetime]:
+    """Calcula a janela usando nomes em ingles ou o contrato publico em portugues."""
+    if now is not None and agora is not None or size is not None and tamanho is not None:
+        raise ValueError("informe somente now/agora e size/tamanho")
+    now = now or agora
+    size = size or tamanho
+    if now is None or size is None:
+        raise ValueError("now/agora e size/tamanho sao obrigatorios")
     if now.tzinfo is None or size <= timedelta() or overlap < timedelta(): raise ValueError("datas timezone-aware e duracoes validas sao obrigatorias")
     inicio = (last_confirmed_end - overlap) if last_confirmed_end else now - size
     return inicio, now

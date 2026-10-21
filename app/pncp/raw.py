@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core import orm
 from app.core.models import IngestionJob, RawPncpRecord
+from app.pncp.retry import PoliticaRetryPncp
 
 
 FONTE_PNCP = "PNCP"
@@ -125,6 +126,7 @@ def salvar_raw_e_agendar_normalizacao_session(
             source=registro.source, scope_key=str(raw_id), dedupe_key=dedupe_key,
             raw_record_id=raw_id, priority=PRIORIDADE_NORMALIZACAO,
             status=STATUS_PENDENTE, next_run_at=registro.collected_at,
+            max_attempts=PoliticaRetryPncp.do_ambiente().max_attempts,
         )
         .on_conflict_do_nothing()
         .returning(IngestionJob.id)
