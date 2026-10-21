@@ -40,6 +40,7 @@ class OrmMetadataTest(unittest.TestCase):
             "pncp_cursors",
             "pncp_contratacoes_atuais",
             "pncp_oportunidades",
+            "pncp_enriquecimentos",
             "pncp_quarentena",
             "pncp_sync_cursors",
             "pncp_source_controls",

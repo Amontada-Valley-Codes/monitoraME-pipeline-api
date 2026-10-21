@@ -80,3 +80,12 @@ Uma resposta 5xx, timeout, JSON invalido ou pagina vazia antes de
 `totalPaginas` encerra o job com falha; nunca e tratada como fim da janela. O
 job somente chega a `SUCCEEDED` depois que todas as paginas foram persistidas,
 logo esta etapa ainda nao confirma watermark algum.
+
+## Enriquecimento sob demanda
+
+Jobs `enrich` têm prioridade `40`, abaixo de descoberta e incremental. Detalhe,
+itens e documentos possuem jobs e `dedupe_key` independentes por versão da
+contratação; uma falha de anexo não apaga nem invalida a oportunidade básica.
+O módulo usa somente GET de contratação (`/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}`
+e os sufixos `/itens` e `/arquivos`), nunca PCA. `pncp_enriquecimentos` guarda
+os recursos seletivamente e os reutiliza até o TTL configurado expirar.

@@ -197,6 +197,27 @@ class PncpOportunidade(MainBase):
     normalized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class PncpEnriquecimento(MainBase):
+    """Detalhes opcionais, versionados e independentes da oportunidade básica."""
+
+    __tablename__ = "pncp_enriquecimentos"
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    cnpj_orgao: Mapped[str] = mapped_column(Text)
+    ano_compra: Mapped[int] = mapped_column(Integer)
+    sequencial_compra: Mapped[int] = mapped_column(Integer)
+    source_version_hash: Mapped[str] = mapped_column(Text)
+    detail_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    detail_hash: Mapped[str | None] = mapped_column(Text)
+    items_payload: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    items_hash: Mapped[str | None] = mapped_column(Text)
+    documents_payload: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    documents_hash: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class PncpQuarentena(MainBase):
     __tablename__ = "pncp_quarentena"
     raw_record_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT"), primary_key=True)
@@ -375,6 +396,7 @@ Index("idx_ingestion_jobs_lease", IngestionJob.status, IngestionJob.lease_until)
 Index("idx_ingestion_job_events_job_created", IngestionJobEvent.job_id, IngestionJobEvent.created_at)
 Index("idx_pncp_contratacoes_atuais_atualizacao", PncpContratacaoAtual.source_updated_at)
 Index("idx_pncp_oportunidades_prazo", PncpOportunidade.prazo_proposta_final)
+Index("idx_pncp_enriquecimentos_expiracao", PncpEnriquecimento.expires_at)
 Index(
     "uq_tce_despesa_run_publicado_competencia",
     TceDespesaIngestionRun.codigo_municipio_tce,
@@ -416,6 +438,7 @@ __all__ = [
     "PncpCursor",
     "PncpContratacaoAtual",
     "PncpOportunidade",
+    "PncpEnriquecimento",
     "PncpQuarentena",
     "PncpSyncCursor",
     "PncpSourceControl",
