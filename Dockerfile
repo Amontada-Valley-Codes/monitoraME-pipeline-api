@@ -3,6 +3,7 @@ FROM python:3.14-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
@@ -17,9 +18,12 @@ RUN python -m pip install --upgrade pip \
 COPY --chown=app:app alembic.ini ./
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app app ./app
+COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app docker/entrypoint.sh ./docker/entrypoint.sh
 
 RUN chmod +x ./docker/entrypoint.sh
+RUN chmod +x ./scripts/pncp \
+    && ln -s /app/scripts/pncp /usr/local/bin/pncp
 
 USER app 
 

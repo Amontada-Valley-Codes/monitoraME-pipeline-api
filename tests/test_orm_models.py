@@ -34,12 +34,42 @@ class OrmMetadataTest(unittest.TestCase):
             "tce_municipios",
             "fornecedores_me",
             "fornecedores_cache",
+            "raw_pncp_records",
+            "ingestion_jobs",
+            "ingestion_job_events",
+            "pncp_cursors",
+            "pncp_contratacoes_atuais",
+            "pncp_oportunidades",
+            "pncp_enriquecimentos",
+            "pncp_eventos",
+            "pncp_matchings",
+            "pncp_quarentena",
+            "pncp_sync_cursors",
+            "pncp_source_controls",
             "tce_despesa_ingestion_runs",
             "tce_empenhos",
             "tce_anulacoes_empenhos",
         }
 
         self.assertEqual(set(orm.MainBase.metadata.tables), esperado)
+
+    def test_modelos_pncp_preservam_raw_e_job_derivado(self) -> None:
+        raw = models.RawPncpRecord.__table__
+        job = models.IngestionJob.__table__
+
+        self.assertIsInstance(raw.c.payload.type, JSONB)
+        self.assertTrue(raw.c.collected_at.type.timezone)
+        self.assertEqual(
+            {constraint.name for constraint in raw.constraints if constraint.name},
+            {"uq_raw_pncp_record_version"},
+        )
+        indice_dedupe = next(
+            indice for indice in job.indexes if indice.name == "uq_ingestion_jobs_dedupe_ativo"
+        )
+        self.assertTrue(indice_dedupe.unique)
+        self.assertEqual(
+            next(iter(job.c.raw_record_id.foreign_keys)).ondelete, "RESTRICT"
+        )
 
     def test_modelos_tce_preservam_versoes_e_valores_em_centavos(self) -> None:
         run = models.TceDespesaIngestionRun.__table__

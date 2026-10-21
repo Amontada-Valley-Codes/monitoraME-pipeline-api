@@ -2,7 +2,9 @@
 
 API em FastAPI para o módulo analítico retrospectivo do MonitoraME. O serviço coleta despesas empenhadas do TCE-CE, trata anulações, enriquece fornecedores com dados cadastrais e calcula indicadores de participação por porte empresarial, natureza da despesa e origem geográfica.
 
-O módulo usa TCE-CE, IBGE e OpenCNPJ. Dados de editais, dispensas, PCA e demais oportunidades de contratação não fazem parte desta codebase.
+O módulo usa TCE-CE, IBGE e OpenCNPJ. A base do módulo de oportunidades PNCP
+também começou pelo histórico RAW reprocessável; a coleta e a normalização ainda
+serão entregues em etapas próprias.
 
 ## Funcionalidades
 
@@ -66,6 +68,16 @@ Variáveis usadas pela aplicação:
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
+| `PNCP_BASE_URL` | Não | Base pública de consultas do PNCP; padrão oficial. |
+| `PNCP_CONNECT_TIMEOUT_SECONDS` | Não | Timeout de conexão PNCP; padrão `10`. |
+| `PNCP_READ_TIMEOUT_SECONDS` | Não | Timeout de leitura PNCP; padrão `30`. |
+| `PNCP_MAX_ATTEMPTS` | Não | Tentativas totais de um job PNCP, incluindo a primeira; padrão `5`. |
+| `PNCP_RETRY_INITIAL_SECONDS` | Não | Base do backoff exponencial com full jitter; padrão `2`. |
+| `PNCP_RETRY_MAX_SECONDS` | Não | Teto do backoff com full jitter; padrão `60`. |
+| `PNCP_REQUEST_INTERVAL_SECONDS` | Não | Espaçamento mínimo entre chamadas do cliente PNCP; padrão `2`. |
+| `PNCP_RATE_LIMIT_REQUESTS_PER_SECOND` | Não | Limite global compartilhado entre workers; padrão `2`. |
+| `PNCP_CONCURRENCY_INITIAL` / `PNCP_CONCURRENCY_MAX` | Não | Concorrência inicial e teto adaptativo; padrões `2` e `5`. |
+| `PNCP_CIRCUIT_FAILURE_THRESHOLD` / `PNCP_CIRCUIT_COOLDOWN_SECONDS` | Não | Falhas transitórias até abrir o circuito e duração do cooldown; padrões `5` e `60`. |
 | `UF_PADRAO` | Sim | UF compradora usada pela análise. |
 | `CODIGO_MUNICIPIO_TCE_PADRAO` | Sim | Código interno padrão do município no TCE-CE. |
 
@@ -385,6 +397,8 @@ O banco principal mantém:
 - `tce_despesa_ingestion_runs`, com o estado de cada carga mensal;
 - `tce_empenhos`, com as notas de empenho versionadas por lote;
 - `tce_anulacoes_empenhos`, com as anulações vinculadas aos empenhos.
+- `raw_pncp_records`, com versões originais JSONB do PNCP, e `ingestion_jobs`,
+  cuja criação do job `normalize` é atômica com a gravação RAW.
 
 A resolução do código interno de município do TCE consulta primeiro
 `tce_municipios`, associada a `ibge_municipios`. Quando o código ainda não
@@ -416,6 +430,27 @@ o pipeline principal. Logs `WARNING`, `ERROR` e `CRITICAL` são persistidos em
 volume desnecessário no PostgreSQL.
 
 A migration `0003_remove_pncp` exclui as antigas tabelas do módulo de oportunidades. A aplicação dessa migration remove definitivamente os dados existentes nessas tabelas.
+
+O contrato RAW, a política inicial de retenção e as garantias de idempotência
+estão em [docs/pncp-raw.md](docs/pncp-raw.md).
+
+Para executar uma coleta de fumaça do PNCP no ambiente Compose isolado, use
+`docker compose -p monitorame-pncp-test`. O nome passado em `-p` é uma opção
+do Compose e não deve ser colocado no `.env`:
+
+```bash
+docker compose -p monitorame-pncp-test up -d --build api
+docker compose -p monitorame-pncp-test exec api \
+  python scripts/smoke_pncp_publicacao.py --dias 7 --modalidade 6 --tamanho-pagina 10
+```
+
+Para reexecutar conscientemente jobs PNCP em `FAILED` ou `QUARANTINED`, sem
+alterar jobs bem-sucedidos, use o seletor mínimo necessário:
+
+```bash
+docker compose -p monitorame-pncp-test exec -T api \
+  python scripts/replay_pncp_jobs.py --job-id 123
+```
 
 ## Testes
 
