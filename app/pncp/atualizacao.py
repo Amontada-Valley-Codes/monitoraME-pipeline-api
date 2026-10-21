@@ -12,6 +12,7 @@ from app.core.models import PncpContratacaoAtual, PncpCursor
 from app.pncp.ingestion import ClientePncp, PncpColetaError
 from app.pncp.jobs import JobReivindicado, NovoJob
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
+from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
 FLOW = "atualizacao"
 
@@ -47,8 +48,5 @@ def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_p
         if resposta.total_paginas is not None and pagina >= resposta.total_paginas: break
         if resposta.total_paginas is None and len(resposta.itens) < tamanho_pagina: break
         pagina += 1
-    with orm.main_session() as s:
-        cursor = s.get(PncpCursor, {"flow": FLOW, "scope_key": job.scope_key})
-        if cursor is None: s.add(PncpCursor(flow=FLOW, scope_key=job.scope_key, last_confirmed_end=job.window_end))
-        else: cursor.last_confirmed_end = job.window_end
+    confirmar_janela(ChaveCursor("PNCP", "CONTRATACAO", FLOW, f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
     return totais

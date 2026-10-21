@@ -188,6 +188,18 @@ class PncpQuarentena(MainBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class PncpSyncCursor(MainBase):
+    __tablename__ = "pncp_sync_cursors"
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(Text, primary_key=True)
+    flow: Mapped[str] = mapped_column(Text, primary_key=True)
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    last_confirmed_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'IDLE'"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class TceDespesaIngestionRun(MainBase):
     __tablename__ = "tce_despesa_ingestion_runs"
     __table_args__ = (
@@ -369,6 +381,7 @@ __all__ = [
     "PncpContratacaoAtual",
     "PncpOportunidade",
     "PncpQuarentena",
+    "PncpSyncCursor",
     "TceAnulacaoEmpenho",
     "TceDespesaIngestionRun",
     "TceEmpenho",

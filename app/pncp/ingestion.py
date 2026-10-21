@@ -11,6 +11,7 @@ import requests
 from app.core import orm
 from app.pncp.jobs import JobReivindicado, NovoJob
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
+from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
 
 ENDPOINT_PUBLICACAO = "/v1/contratacoes/publicacao"
@@ -96,10 +97,13 @@ def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pa
             if not resultado.itens and pagina < resultado.total_paginas:
                 raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP")
             if pagina >= resultado.total_paginas:
+                confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
                 return total_registros
         elif len(resultado.itens) < tamanho_pagina:
+            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
             return total_registros
         elif not resultado.itens:
+            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
             return total_registros
         pagina += 1
 
