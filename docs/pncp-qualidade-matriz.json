@@ -1,0 +1,1271 @@
+{
+  "rule_version": "pncp-semantica-1",
+  "data": "2026-10-21",
+  "aprovacao_tecnica": {
+    "status": "APROVADA",
+    "natureza": "Revisao tecnica assistida e homologacao automatizada; nao e atribuida assinatura humana",
+    "criterios": "Contrato OpenAPI vigente, manual PNCP, Receita Federal, 24 testes novos, suite versionada sem falhas e 63 verificacoes em PostgreSQL real",
+    "evidencia": "pncp-qualidade-homologacao.json",
+    "testes": "pncp-qualidade-testes.json"
+  },
+  "rastreabilidade": {
+    "DOC-PNCP-06": "workflow-pncp-monitorame.md#6-persistencia-raw-idempotencia-e-atualizacoes",
+    "DOC-PNCP-09": "workflow-pncp-monitorame.md#9-estados-de-execucao",
+    "DOC-PNCP-10": "workflow-pncp-monitorame.md#10-observabilidade-e-operacao",
+    "DOC-PNCP-14": "workflow-pncp-monitorame.md#14-checklist-de-aceite"
+  },
+  "contrato_openapi": {
+    "url": "https://pncp.gov.br/api/consulta/v3/api-docs",
+    "sha256": "b83136e444906c31069e65f2fcb6b70ae821e0d3fc8868619eccff92b574a3cc"
+  },
+  "regras": [
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.numeroControlePNCP",
+      "tipo": "identidade",
+      "obrigatorio": true,
+      "destino": "external_id",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/numeroControlePNCP",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.orgaoEntidade.cnpj",
+      "tipo": "cnpj",
+      "obrigatorio": false,
+      "destino": "orgao.cnpj",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orgaoEntidade/cnpj",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.unidadeOrgao.codigoIbge",
+      "tipo": "ibge",
+      "obrigatorio": false,
+      "destino": "unidade.codigoIbge",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/unidadeOrgao/codigoIbge",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.objetoCompra",
+      "tipo": "texto",
+      "obrigatorio": false,
+      "destino": "objeto",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/objetoCompra",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.valorTotalEstimado",
+      "tipo": "dinheiro",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.valor_total_estimado",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/valorTotalEstimado",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.valorTotalHomologado",
+      "tipo": "dinheiro",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.valor_total_homologado",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/valorTotalHomologado",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.orcamentoSigiloso",
+      "tipo": "booleano",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.orcamento_sigiloso",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orcamentoSigiloso",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.orcamentoSigilosoCodigo",
+      "tipo": "sigilo",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.orcamento_sigiloso_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orcamentoSigilosoCodigo",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.orcamentoSigilosoDescricao",
+      "tipo": "texto",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.orcamento_sigiloso_descricao",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orcamentoSigilosoDescricao",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.dataAberturaProposta",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_abertura_proposta",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataAberturaProposta",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "obrigatoriedade_condicional": {
+        "tipoInstrumentoConvocatorioCodigo": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.dataPublicacaoPncp",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_publicacao",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataPublicacaoPncp",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.dataAtualizacao",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_atualizacao",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataAtualizacao",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.dataAtualizacaoGlobal",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_atualizacao_global",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataAtualizacaoGlobal",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.tipoInstrumentoConvocatorioCodigo",
+      "tipo": "instrumento",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.instrumento_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/tipoInstrumentoConvocatorioCodigo",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.dataEncerramentoProposta",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "prazo_proposta_final",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataEncerramentoProposta",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "obrigatoriedade_condicional": {
+        "tipoInstrumentoConvocatorioCodigo": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.modalidadeId",
+      "tipo": "modalidade",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.modalidade_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/modalidadeId",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "origem": "payload.situacaoCompraId",
+      "tipo": "situacao",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.situacao_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/situacaoCompraId",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/publicacao.json",
+        "sha256": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+        "raw_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.numeroControlePNCP",
+      "tipo": "identidade",
+      "obrigatorio": true,
+      "destino": "external_id",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/numeroControlePNCP",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.orgaoEntidade.cnpj",
+      "tipo": "cnpj",
+      "obrigatorio": false,
+      "destino": "orgao.cnpj",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orgaoEntidade/cnpj",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.unidadeOrgao.codigoIbge",
+      "tipo": "ibge",
+      "obrigatorio": false,
+      "destino": "unidade.codigoIbge",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/unidadeOrgao/codigoIbge",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.objetoCompra",
+      "tipo": "texto",
+      "obrigatorio": false,
+      "destino": "objeto",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/objetoCompra",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.valorTotalEstimado",
+      "tipo": "dinheiro",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.valor_total_estimado",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/valorTotalEstimado",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.valorTotalHomologado",
+      "tipo": "dinheiro",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.valor_total_homologado",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/valorTotalHomologado",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.orcamentoSigiloso",
+      "tipo": "booleano",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.orcamento_sigiloso",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orcamentoSigiloso",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.orcamentoSigilosoCodigo",
+      "tipo": "sigilo",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.orcamento_sigiloso_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orcamentoSigilosoCodigo",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.orcamentoSigilosoDescricao",
+      "tipo": "texto",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.orcamento_sigiloso_descricao",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/orcamentoSigilosoDescricao",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.dataAberturaProposta",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_abertura_proposta",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataAberturaProposta",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "obrigatoriedade_condicional": {
+        "tipoInstrumentoConvocatorioCodigo": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.dataPublicacaoPncp",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_publicacao",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataPublicacaoPncp",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.dataAtualizacao",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_atualizacao",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataAtualizacao",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.dataAtualizacaoGlobal",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.data_atualizacao_global",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataAtualizacaoGlobal",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.tipoInstrumentoConvocatorioCodigo",
+      "tipo": "instrumento",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.instrumento_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/tipoInstrumentoConvocatorioCodigo",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.dataEncerramentoProposta",
+      "tipo": "data",
+      "obrigatorio": false,
+      "destino": "prazo_proposta_final",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/dataEncerramentoProposta",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "obrigatoriedade_condicional": {
+        "tipoInstrumentoConvocatorioCodigo": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.modalidadeId",
+      "tipo": "modalidade",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.modalidade_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/modalidadeId",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "origem": "payload.situacaoCompraId",
+      "tipo": "situacao",
+      "obrigatorio": false,
+      "destino": "dados_semanticos.situacao_codigo",
+      "estados_origem": [
+        "absent",
+        "null",
+        "empty",
+        "present"
+      ],
+      "estados_qualidade": [
+        "valid",
+        "missing",
+        "warning",
+        "error"
+      ],
+      "raw_json_pointer": "/situacaoCompraId",
+      "evidencia": {
+        "arquivo": "pncp-qualidade-raw/atualizacao.json",
+        "sha256": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+        "raw_ids": [
+          1,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    }
+  ]
+}

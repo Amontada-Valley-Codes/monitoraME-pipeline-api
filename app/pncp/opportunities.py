@@ -1,6 +1,7 @@
 """Contrato local de oportunidades, matching e eventos PNCP para consumidores."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import json
 from typing import Any
@@ -8,18 +9,30 @@ from typing import Any
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.pncp.quality import estado_sincronizacao
 from app.core.models import PncpEnriquecimento, PncpEvento, PncpMatching, PncpOportunidade
+
+
+def _instante_utc(valor: datetime | None) -> datetime | None:
+    if valor is None:
+        return None
+    if valor.tzinfo is None:
+        raise ValueError("Instante normalizado deve incluir fuso")
+    return valor.astimezone(timezone.utc)
 
 
 def contrato_consumo(oportunidade: PncpOportunidade, enriquecimento: PncpEnriquecimento | None = None) -> dict[str, Any]:
     """DTO persistido para NestJS/frontend; nunca chama o PNCP."""
     return {
+        "data_quality_status": oportunidade.data_quality_status or "not_evaluated",
+        "sync_status": estado_sincronizacao(qualidade=oportunidade.data_quality_status),
+        "dados_semanticos": oportunidade.dados_semanticos or {},
         "id": oportunidade.external_id, "source": oportunidade.source,
         "url_oficial": oportunidade.url_oficial, "orgao": oportunidade.orgao,
         "unidade": oportunidade.unidade, "objeto": oportunidade.objeto,
         "modalidade": oportunidade.modalidade, "situacao": oportunidade.situacao,
-        "prazo_proposta_final": oportunidade.prazo_proposta_final,
-        "atualizado_em": oportunidade.source_updated_at or oportunidade.normalized_at,
+        "prazo_proposta_final": _instante_utc(oportunidade.prazo_proposta_final),
+        "atualizado_em": _instante_utc(oportunidade.source_updated_at or oportunidade.normalized_at),
         "itens_disponiveis": bool(enriquecimento and enriquecimento.items_payload),
         "anexos_disponiveis": bool(enriquecimento and enriquecimento.documents_payload),
     }

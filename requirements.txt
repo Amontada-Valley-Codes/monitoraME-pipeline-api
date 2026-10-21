@@ -8,3 +8,4 @@ SQLAlchemy
 alembic
 pydantic
 python-dotenv
+tzdata

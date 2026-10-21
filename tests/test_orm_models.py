@@ -44,6 +44,7 @@ class OrmMetadataTest(unittest.TestCase):
             "pncp_eventos",
             "pncp_matchings",
             "pncp_quarentena",
+            "pncp_avaliacoes_qualidade",
             "pncp_sync_cursors",
             "pncp_source_controls",
             "tce_despesa_ingestion_runs",
