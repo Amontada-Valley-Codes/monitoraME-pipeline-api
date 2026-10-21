@@ -444,6 +444,14 @@ docker compose -p monitorame-pncp-test exec api \
   python scripts/smoke_pncp_publicacao.py --dias 7 --modalidade 6 --tamanho-pagina 10
 ```
 
+Para reexecutar conscientemente jobs PNCP em `FAILED` ou `QUARANTINED`, sem
+alterar jobs bem-sucedidos, use o seletor mínimo necessário:
+
+```bash
+docker compose -p monitorame-pncp-test exec -T api \
+  python scripts/replay_pncp_jobs.py --job-id 123
+```
+
 ## Testes
 
 ```bash

@@ -9,6 +9,10 @@ class SmokePncpScriptTest(unittest.TestCase):
         raiz = Path(__file__).resolve().parents[1]
         self.assertTrue((raiz / "scripts" / "smoke_pncp_publicacao.py").is_file())
 
+    def test_script_de_replay_existe(self) -> None:
+        raiz = Path(__file__).resolve().parents[1]
+        self.assertTrue((raiz / "scripts" / "replay_pncp_jobs.py").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

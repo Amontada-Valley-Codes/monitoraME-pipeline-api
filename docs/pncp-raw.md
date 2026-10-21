@@ -55,6 +55,19 @@ ativos (`PENDING`, `RUNNING`, `RETRY_WAIT`). Workers reservam uma tentativa de
 `backfill` a cada dez reservas por padrao, evitando starvation historico sem
 tirar prioridade das atualizacoes recentes.
 
+## Recuperação e replay
+
+Leases expirados são devolvidos para `PENDING` pelo recuperador; o token antigo
+é removido, portanto um worker que terminou tardiamente não consegue concluir
+o job reassumido. `FAILED` e `QUARANTINED` são terminais recuperáveis: o replay
+explícito por ID, fluxo ou janela recria a execução no próprio job, zera apenas
+o contador operacional de tentativas e incrementa `replay_count`.
+
+`ingestion_job_events` é um histórico append-only de início, falha, quarentena,
+lease expirado, replay e sucesso. O replay ignora jobs `SUCCEEDED` e bloqueia a
+reativação se houver outro `dedupe_key` equivalente ativo. Inconsistências de
+normalização vão a `QUARANTINED`; falhas HTTP transitórias seguem `RETRY_WAIT`.
+
 ## Descoberta por publicação
 
 O coletor usa `GET /v1/contratacoes/publicacao` com `dataInicial` e

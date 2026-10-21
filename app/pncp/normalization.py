@@ -7,7 +7,14 @@ from app.core import orm
 from app.core.models import PncpOportunidade, PncpQuarentena, RawPncpRecord
 from app.pncp.jobs import JobReivindicado
 
-class ErroNormalizacaoPncp(ValueError): pass
+class ErroNormalizacaoPncp(ValueError):
+    """Inconsistência estrutural: preservar RAW e aguardar replay autorizado."""
+
+    retryable = False
+    quarantinar = True
+
+    def contexto(self) -> dict[str, object]:
+        return {"categoria": "normalizacao_estrutural", "retryable": False}
 
 def _data(valor: Any) -> datetime | None:
     if not isinstance(valor, str): return None

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.pncp import jobs
 from app.pncp.retry import PoliticaRetryPncp
 from app.pncp.protecao import PermissaoFonte, PncpProtegidoError
+from app.pncp.normalization import ErroNormalizacaoPncp
 
 
 class JobPncpTest(unittest.TestCase):
@@ -56,13 +57,46 @@ class JobPncpTest(unittest.TestCase):
 
     def test_recuperador_devolve_lease_expirado_para_pendente(self) -> None:
         session = MagicMock()
-        session.execute.return_value.rowcount = 2
+        session.execute.return_value.mappings.return_value.all.return_value = [
+            {"id": 7, "attempts": 2}, {"id": 8, "attempts": 1},
+        ]
 
         quantidade = jobs.recuperar_leases_expirados_session(session)
 
         self.assertEqual(quantidade, 2)
         self.assertIn("lease_until <= now()", session.execute.call_args.args[0].text)
         self.assertIn("status = 'PENDING'", session.execute.call_args.args[0].text)
+
+    def test_replay_so_reativa_falhas_sem_dedupe_ativo(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.mappings.return_value.all.return_value = [{"id": 7}]
+
+        ids = jobs.replay_jobs_session(session, job_id=7)
+
+        self.assertEqual(ids, [7])
+        statement = session.execute.call_args_list[0].args[0]
+        self.assertIn("status IN ('FAILED', 'QUARANTINED')", statement.text)
+        self.assertIn("FOR UPDATE SKIP LOCKED", statement.text)
+        self.assertIn("ativo.dedupe_key = job.dedupe_key", statement.text)
+        self.assertIn("attempts = 0", statement.text)
+
+    def test_replay_por_janela_exige_limites_completos(self) -> None:
+        with self.assertRaises(ValueError):
+            jobs.replay_jobs_session(MagicMock(), window_start=datetime.now(timezone.utc))
+
+    def test_falha_estrutural_vai_para_quarentena(self) -> None:
+        job = jobs.JobReivindicado(1, "normalize", "CONTRATACAO", "PNCP", "1", "n:1", 1, 5, "token", 1, None, None, None)
+        session = MagicMock()
+        session.execute.return_value.rowcount = 1
+        worker = jobs.WorkerPncp("worker-a", lambda _: (_ for _ in ()).throw(ErroNormalizacaoPncp("payload invalido")))
+
+        with (
+            patch("app.pncp.jobs.reivindicar_proximo_job", return_value=job),
+            patch("app.pncp.jobs.orm.main_session", return_value=nullcontext(session)),
+        ):
+            worker.executar_uma_vez()
+
+        self.assertIn("status = 'QUARANTINED'", session.execute.call_args.args[0].text)
 
     def test_worker_executa_handler_fora_da_transacao_de_reserva(self) -> None:
         job = jobs.JobReivindicado(1, "normalize", "CONTRATACAO", "PNCP", "1", "n:1", 1, 5, "token", 1, None, None, None)

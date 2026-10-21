@@ -36,6 +36,7 @@ class OrmMetadataTest(unittest.TestCase):
             "fornecedores_cache",
             "raw_pncp_records",
             "ingestion_jobs",
+            "ingestion_job_events",
             "pncp_cursors",
             "pncp_contratacoes_atuais",
             "pncp_oportunidades",

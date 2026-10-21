@@ -141,10 +141,25 @@ class IngestionJob(MainBase):
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     last_error_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    replay_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    success_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_replayed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
     )
+
+
+class IngestionJobEvent(MainBase):
+    """Auditoria append-only de tentativas, recuperação e replay de jobs."""
+
+    __tablename__ = "ingestion_job_events"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ingestion_jobs.id", ondelete="RESTRICT"))
+    event_type: Mapped[str] = mapped_column(Text)
+    attempt: Mapped[int | None] = mapped_column(Integer)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
 class PncpCursor(MainBase):
@@ -357,6 +372,7 @@ Index(
 )
 Index("idx_ingestion_jobs_agendamento", IngestionJob.status, IngestionJob.next_run_at, IngestionJob.priority)
 Index("idx_ingestion_jobs_lease", IngestionJob.status, IngestionJob.lease_until)
+Index("idx_ingestion_job_events_job_created", IngestionJobEvent.job_id, IngestionJobEvent.created_at)
 Index("idx_pncp_contratacoes_atuais_atualizacao", PncpContratacaoAtual.source_updated_at)
 Index("idx_pncp_oportunidades_prazo", PncpOportunidade.prazo_proposta_final)
 Index(
@@ -394,6 +410,7 @@ __all__ = [
     "FornecedorCache",
     "FornecedorMe",
     "IngestionJob",
+    "IngestionJobEvent",
     "IbgeMunicipio",
     "RawPncpRecord",
     "PncpCursor",

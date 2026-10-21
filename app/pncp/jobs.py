@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
 from app.core import orm
-from app.core.models import IngestionJob
+from app.core.models import IngestionJob, IngestionJobEvent
 from app.pncp.retry import PoliticaRetryPncp, decidir_retry
 
 
@@ -61,6 +61,15 @@ class JobReivindicado:
     window_start: datetime | None
     window_end: datetime | None
     page: int | None
+
+
+def _registrar_evento_session(
+    session: Session, *, job_id: int, event_type: str, attempt: int | None = None,
+    details: dict[str, object] | None = None,
+) -> None:
+    session.add(IngestionJobEvent(
+        job_id=job_id, event_type=event_type, attempt=attempt, details=details or {},
+    ))
 
 
 def _validar_novo_job(job: NovoJob) -> None:
@@ -152,7 +161,7 @@ def reivindicar_proximo_job_session(
     ).mappings().first()
     if registro is None:
         return None
-    return JobReivindicado(
+    job = JobReivindicado(
         id=int(registro["id"]), job_type=registro["job_type"],
         entity_type=registro["entity_type"], source=registro["source"],
         scope_key=registro["scope_key"], dedupe_key=registro["dedupe_key"],
@@ -160,6 +169,8 @@ def reivindicar_proximo_job_session(
         lease_token=registro["lease_token"], raw_record_id=registro["raw_record_id"],
         window_start=registro["window_start"], window_end=registro["window_end"], page=registro["page"],
     )
+    _registrar_evento_session(session, job_id=job.id, event_type="STARTED", attempt=job.attempts)
+    return job
 
 
 def reivindicar_proximo_job(**kwargs: Any) -> JobReivindicado | None:
@@ -191,11 +202,15 @@ def concluir_job_session(session: Session, *, job_id: int, lease_token: str) -> 
     resultado = session.execute(
         text("""
         UPDATE ingestion_jobs SET status = 'SUCCEEDED', locked_by = NULL, lease_token = NULL,
-            lease_until = NULL, heartbeat_at = NULL, last_error = NULL, updated_at = now()
+            lease_until = NULL, heartbeat_at = NULL, last_error = NULL,
+            success_count = success_count + 1, updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
         """), {"job_id": job_id, "lease_token": lease_token},
     )
-    return resultado.rowcount == 1
+    concluido = resultado.rowcount == 1
+    if concluido:
+        _registrar_evento_session(session, job_id=job_id, event_type="SUCCEEDED")
+    return concluido
 
 
 def falhar_job_session(
@@ -233,7 +248,32 @@ def falhar_job_session(
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
         """).bindparams(bindparam("contexto", type_=JSONB))
     resultado = session.execute(statement, parametros)
-    return status if resultado.rowcount == 1 else None
+    if resultado.rowcount == 1:
+        _registrar_evento_session(
+            session, job_id=job.id, event_type=status, attempt=job.attempts,
+            details={**(contexto or {}), "retry_reason": decisao.motivo},
+        )
+        return status
+    return None
+
+
+def quarentenar_job_session(
+    session: Session, *, job: JobReivindicado, erro: str, contexto: dict[str, object] | None = None
+) -> bool:
+    """Encerra uma inconsistência estrutural sem apagar RAW ou diagnóstico."""
+    resultado = session.execute(
+        text("""
+        UPDATE ingestion_jobs SET status = 'QUARANTINED', locked_by = NULL, lease_token = NULL,
+            lease_until = NULL, heartbeat_at = NULL, last_error = :erro,
+            last_error_context = CAST(:contexto AS jsonb), updated_at = now()
+        WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+        """).bindparams(bindparam("contexto", type_=JSONB)),
+        {"job_id": job.id, "lease_token": job.lease_token, "erro": erro[:2048], "contexto": contexto or {}},
+    )
+    if resultado.rowcount == 1:
+        _registrar_evento_session(session, job_id=job.id, event_type=QUARANTINED, attempt=job.attempts, details=contexto)
+        return True
+    return False
 
 
 def adiar_job_sem_tentativa_session(
@@ -251,7 +291,10 @@ def adiar_job_sem_tentativa_session(
         {"job_id": job.id, "lease_token": job.lease_token, "motivo": motivo[:2048],
          "contexto": contexto or {}, "aguardar_seconds": max(0, aguardar.total_seconds())},
     )
-    return resultado.rowcount == 1
+    if resultado.rowcount == 1:
+        _registrar_evento_session(session, job_id=job.id, event_type="DEFERRED", attempt=job.attempts, details=contexto)
+        return True
+    return False
 
 
 def recuperar_leases_expirados_session(session: Session) -> int:
@@ -260,13 +303,89 @@ def recuperar_leases_expirados_session(session: Session) -> int:
             lease_until = NULL, heartbeat_at = NULL,
             last_error = 'lease expirado; job devolvido a fila', next_run_at = now(), updated_at = now()
         WHERE status = 'RUNNING' AND lease_until <= now()
+        RETURNING id, attempts
     """))
-    return int(resultado.rowcount)
+    recuperados = resultado.mappings().all()
+    for registro in recuperados:
+        _registrar_evento_session(
+            session, job_id=int(registro["id"]), event_type="LEASE_EXPIRED",
+            attempt=int(registro["attempts"]), details={"motivo": "worker sem heartbeat"},
+        )
+    return len(recuperados)
 
 
 def recuperar_leases_expirados() -> int:
     with orm.main_session() as session:
         return recuperar_leases_expirados_session(session)
+
+
+def replay_jobs_session(
+    session: Session,
+    *,
+    job_id: int | None = None,
+    flow: str | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
+) -> list[int]:
+    """Reativa falhas conscientemente, sem concorrer com dedupe_key ativo.
+
+    A seleção usa sobreposição de janela e aceita somente ``FAILED`` e
+    ``QUARANTINED``. Jobs bem-sucedidos jamais são alterados por este caminho.
+    """
+    if job_id is None and flow is None and window_start is None and window_end is None:
+        raise ValueError("informe job_id, flow ou janela para replay")
+    if (window_start is None) != (window_end is None):
+        raise ValueError("window_start e window_end devem ser informados juntos")
+    if window_start and (window_start.tzinfo is None or window_end is None or window_end.tzinfo is None or window_end < window_start):
+        raise ValueError("janela de replay deve ter timezone e ordem valida")
+    filtros = ["status IN ('FAILED', 'QUARANTINED')"]
+    parametros: dict[str, object] = {}
+    if job_id is not None:
+        filtros.append("id = :job_id")
+        parametros["job_id"] = job_id
+    if flow is not None:
+        filtros.append("scope_key LIKE :flow")
+        parametros["flow"] = f"{flow}:%"
+    if window_start is not None and window_end is not None:
+        filtros.append("window_end >= :window_start AND window_start <= :window_end")
+        parametros.update({"window_start": window_start, "window_end": window_end})
+    where = " AND ".join(filtros)
+    statement = text(f"""
+        WITH candidatos AS (
+            SELECT id
+            FROM ingestion_jobs
+            WHERE {where}
+            FOR UPDATE SKIP LOCKED
+        )
+        UPDATE ingestion_jobs AS job
+        SET status = 'PENDING', attempts = 0, locked_by = NULL, lease_token = NULL,
+            lease_until = NULL, heartbeat_at = NULL, next_run_at = now(),
+            replay_count = replay_count + 1, last_replayed_at = now(), updated_at = now()
+        FROM candidatos
+        WHERE job.id = candidatos.id
+          AND NOT EXISTS (
+              SELECT 1 FROM ingestion_jobs ativo
+              WHERE ativo.dedupe_key = job.dedupe_key AND ativo.id <> job.id
+                AND ativo.status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')
+          )
+        RETURNING job.id
+    """)
+    registros = session.execute(statement, parametros).mappings().all()
+    ids = [int(registro["id"]) for registro in registros]
+    for replay_id in ids:
+        _registrar_evento_session(
+            session, job_id=replay_id, event_type="REPLAYED", details={
+                "selector_job_id": job_id, "flow": flow,
+                "window_start": window_start.isoformat() if window_start else None,
+                "window_end": window_end.isoformat() if window_end else None,
+            },
+        )
+    return ids
+
+
+def replay_jobs(**kwargs: Any) -> list[int]:
+    with orm.main_session() as session:
+        return replay_jobs_session(session, **kwargs)
 
 
 class AgendadorPncp:
@@ -317,6 +436,11 @@ class WorkerPncp:
                         aguardar=retry_after or timedelta(seconds=1), contexto=contexto,
                     )
                     status = RETRY_WAIT if adiado else None
+                elif getattr(exc, "quarantinar", False):
+                    quarantinado = quarentenar_job_session(
+                        session, job=job, erro=f"{type(exc).__name__}: {exc}", contexto=contexto,
+                    )
+                    status = QUARANTINED if quarantinado else None
                 else:
                     status = falhar_job_session(
                         session, job=job, erro=f"{type(exc).__name__}: {exc}",
@@ -348,6 +472,7 @@ __all__ = [
     "ACTIVE_STATUSES", "AgendadorPncp", "BACKFILL", "FAILED", "NovoJob", "PENDING", "RETRY_WAIT",
     "RUNNING", "SUCCEEDED", "WorkerPncp", "agendar_job", "agendar_job_session",
     "adiar_job_sem_tentativa_session", "concluir_job_session", "executar_recuperador", "falhar_job_session",
+    "quarentenar_job_session", "replay_jobs", "replay_jobs_session",
     "recuperar_leases_expirados", "recuperar_leases_expirados_session",
     "renovar_lease", "renovar_lease_session", "reivindicar_proximo_job",
     "reivindicar_proximo_job_session",
