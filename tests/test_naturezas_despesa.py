@@ -17,7 +17,10 @@ os.environ.setdefault("UF_PADRAO", "CE")
 os.environ.setdefault("CODIGO_MUNICIPIO_TCE_PADRAO", "010")
 
 from app.core.config import CODIGOS_NATUREZAS_DESPESA_CONSIDERADAS
-from app.pipeline.naturezas_despesa import normalizar_codigo_natureza_despesa
+from app.pipeline.naturezas_despesa import (
+    codigo_natureza_despesa_monitorado,
+    normalizar_codigo_natureza_despesa,
+)
 from app.pipeline.ingestion import tce
 
 
@@ -42,6 +45,10 @@ class NaturezasDespesaTest(unittest.TestCase):
         for codigo_completo, codigo_elemento in exemplos.items():
             with self.subTest(codigo_completo=codigo_completo):
                 self.assertEqual(normalizar_codigo_natureza_despesa(codigo_completo), codigo_elemento)
+
+    def test_elemento_usa_exclusivamente_as_posicoes_cinco_e_seis(self) -> None:
+        self.assertEqual(normalizar_codigo_natureza_despesa("35003000"), "30")
+        self.assertFalse(codigo_natureza_despesa_monitorado("35003300"))
 
     def test_nao_extrai_codigo_de_descricao_ou_numero_com_nome(self) -> None:
         self.assertIsNone(normalizar_codigo_natureza_despesa("Material de consumo"))

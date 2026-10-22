@@ -37,6 +37,11 @@ class OrmMetadataTest(unittest.TestCase):
             "tce_despesa_ingestion_runs",
             "tce_empenhos",
             "tce_anulacoes_empenhos",
+            "tce_pagamento_runs",
+            "tce_orgaos_staging",
+            "tce_pagamentos_staging",
+            "tce_pagamentos_conciliados",
+            "tce_pagamento_paginas",
         }
 
         self.assertEqual(set(orm.MainBase.metadata.tables), esperado)
@@ -58,6 +63,7 @@ class OrmMetadataTest(unittest.TestCase):
         )
         self.assertEqual(empenho.c.valor_empenhado_centavos.type.python_type, int)
         self.assertEqual(anulacao.c.valor_anulacao_centavos.type.python_type, int)
+        self.assertEqual(run.c.versao_metodologica.default.arg, "tce-empenhos-v1")
         self.assertEqual(next(iter(empenho.c.run_id.foreign_keys)).ondelete, "CASCADE")
         self.assertEqual(next(iter(anulacao.c.run_id.foreign_keys)).ondelete, "CASCADE")
 
@@ -85,10 +91,16 @@ class OrmMetadataTest(unittest.TestCase):
 
 class OrmEngineFactoryTest(unittest.TestCase):
     def setUp(self) -> None:
+        self.ssl_env = patch.dict(
+            os.environ,
+            {"DATABASE_SSLMODE": "require", "LOG_DATABASE_SSLMODE": "require"},
+        )
+        self.ssl_env.start()
         orm.dispose_engines()
 
     def tearDown(self) -> None:
         orm.dispose_engines()
+        self.ssl_env.stop()
 
     @patch("app.core.orm.create_engine")
     def test_main_engine_usa_database_url_sslmode_e_cache(self, create_engine) -> None:

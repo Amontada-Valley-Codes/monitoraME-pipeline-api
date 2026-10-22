@@ -20,6 +20,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.orm import MainBase
+from app.core.config import (
+    VERSAO_METODOLOGICA_EMPENHOS_TCE,
+    VERSAO_METODOLOGICA_PAGAMENTOS_TCE,
+)
 
 
 class IbgeMunicipio(MainBase):
@@ -96,6 +100,11 @@ class TceDespesaIngestionRun(MainBase):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     codigo_municipio_tce: Mapped[str] = mapped_column(Text)
     competencia: Mapped[str] = mapped_column(Text)
+    versao_metodologica: Mapped[str] = mapped_column(
+        Text,
+        default=VERSAO_METODOLOGICA_EMPENHOS_TCE,
+        server_default=text(f"'{VERSAO_METODOLOGICA_EMPENHOS_TCE}'"),
+    )
     status: Mapped[str] = mapped_column(Text)
     iniciado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finalizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -209,6 +218,129 @@ class TceAnulacaoEmpenho(MainBase):
     lote: Mapped[TceDespesaIngestionRun] = relationship(back_populates="anulacoes")
 
 
+class TcePagamentoRun(MainBase):
+    __tablename__ = "tce_pagamento_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('EM_VALIDACAO','PUBLICADO','SUBSTITUIDO','BLOQUEADO','FALHOU')",
+            name="ck_tce_pagamento_runs_status",
+        ),
+        CheckConstraint(
+            "qualidade_status IN ('APROVADA','PARCIAL','BLOQUEADA')",
+            name="ck_tce_pagamento_runs_qualidade",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    codigo_municipio_tce: Mapped[str] = mapped_column(Text)
+    codigo_municipio_ibge: Mapped[str] = mapped_column(Text)
+    municipio: Mapped[str] = mapped_column(Text)
+    exercicio_orcamento: Mapped[int] = mapped_column(Integer)
+    competencia_corte: Mapped[str] = mapped_column(Text)
+    versao_metodologica: Mapped[str] = mapped_column(
+        Text,
+        default=VERSAO_METODOLOGICA_PAGAMENTOS_TCE,
+        server_default=text(f"'{VERSAO_METODOLOGICA_PAGAMENTOS_TCE}'"),
+    )
+    status: Mapped[str] = mapped_column(Text)
+    qualidade_status: Mapped[str] = mapped_column(Text)
+    resposta: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    problemas: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
+    iniciado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    publicado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    substituido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class TceOrgaoStaging(MainBase):
+    __tablename__ = "tce_orgaos_staging"
+    __table_args__ = (
+        UniqueConstraint("run_id", "codigo_orgao", name="uq_tce_orgaos_run_codigo"),
+        CheckConstraint(
+            "administracao IN ('PREFEITURA','CAMARA')",
+            name="ck_tce_orgaos_administracao",
+        ),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("tce_pagamento_runs.id", ondelete="CASCADE")
+    )
+    codigo_orgao: Mapped[str] = mapped_column(Text)
+    nome_orgao: Mapped[str] = mapped_column(Text)
+    administracao: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class TcePagamentoStaging(MainBase):
+    __tablename__ = "tce_pagamentos_staging"
+    __table_args__ = (
+        UniqueConstraint("run_id", "chave_pagamento", name="uq_tce_pagamentos_staging_run_chave"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("tce_pagamento_runs.id", ondelete="CASCADE")
+    )
+    chave_pagamento: Mapped[str] = mapped_column(Text)
+    chave_empenho: Mapped[str] = mapped_column(Text)
+    competencia_documento: Mapped[str] = mapped_column(Text)
+    data_pagamento: Mapped[date] = mapped_column(Date)
+    valor_pagamento_centavos: Mapped[int] = mapped_column(BigInteger)
+    estado_de_estornado: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class TcePagamentoConciliado(MainBase):
+    __tablename__ = "tce_pagamentos_conciliados"
+    __table_args__ = (
+        UniqueConstraint("run_id", "chave_pagamento", name="uq_tce_pagamentos_conciliados_run_chave"),
+        CheckConstraint(
+            "categoria_fornecedor IN ('ME','EPP','DEMAIS','NAO_IDENTIFICADO','CPF','DOCUMENTO_INVALIDO')",
+            name="ck_tce_pagamentos_categoria",
+        ),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("tce_pagamento_runs.id", ondelete="CASCADE")
+    )
+    chave_pagamento: Mapped[str] = mapped_column(Text)
+    chave_empenho: Mapped[str] = mapped_column(Text)
+    codigo_orgao: Mapped[str] = mapped_column(Text)
+    codigo_elemento_despesa: Mapped[str] = mapped_column(Text)
+    data_pagamento: Mapped[date] = mapped_column(Date)
+    valor_pagamento_centavos: Mapped[int] = mapped_column(BigInteger)
+    documento_fornecedor: Mapped[str | None] = mapped_column(Text)
+    cnpj_fornecedor: Mapped[str | None] = mapped_column(Text)
+    raiz_cnpj_fornecedor: Mapped[str | None] = mapped_column(Text)
+    cpf_fornecedor: Mapped[str | None] = mapped_column(Text)
+    categoria_fornecedor: Mapped[str] = mapped_column(Text)
+    classificacao_cadastral: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
+
+
+class TcePagamentoPagina(MainBase):
+    __tablename__ = "tce_pagamento_paginas"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "endpoint", "competencia", "start_index",
+            name="uq_tce_pagamento_paginas_identidade",
+        ),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("tce_pagamento_runs.id", ondelete="CASCADE")
+    )
+    endpoint: Mapped[str] = mapped_column(Text)
+    competencia: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+    start_index: Mapped[int] = mapped_column(Integer)
+    quantidade: Mapped[int] = mapped_column(Integer)
+    checksum: Mapped[str] = mapped_column(Text)
+
+
 Index("idx_ibge_municipios_uf_nome", IbgeMunicipio.uf, IbgeMunicipio.nome)
 Index("idx_fornecedores_cache_expira_em", FornecedorCache.expira_em)
 Index(
@@ -240,6 +372,17 @@ Index(
 )
 Index("idx_tce_anulacoes_run", TceAnulacaoEmpenho.run_id)
 Index("idx_tce_anulacoes_chave_empenho", TceAnulacaoEmpenho.chave_empenho)
+Index(
+    "uq_tce_pagamento_run_publicado_escopo",
+    TcePagamentoRun.codigo_municipio_tce,
+    TcePagamentoRun.exercicio_orcamento,
+    TcePagamentoRun.competencia_corte,
+    unique=True,
+    postgresql_where=text("status = 'PUBLICADO'"),
+)
+Index("idx_tce_pagamento_runs_escopo", TcePagamentoRun.codigo_municipio_tce, TcePagamentoRun.exercicio_orcamento)
+Index("idx_tce_pagamentos_conciliados_run", TcePagamentoConciliado.run_id)
+Index("idx_tce_pagamentos_conciliados_elemento", TcePagamentoConciliado.codigo_elemento_despesa)
 
 
 __all__ = [
@@ -250,6 +393,11 @@ __all__ = [
     "TceDespesaIngestionRun",
     "TceEmpenho",
     "TceMunicipio",
+    "TceOrgaoStaging",
+    "TcePagamentoConciliado",
+    "TcePagamentoPagina",
+    "TcePagamentoRun",
+    "TcePagamentoStaging",
 ]
 
 # Registra as tabelas de observacoes mensais no metadata Alembic.

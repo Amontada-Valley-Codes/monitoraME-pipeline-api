@@ -87,9 +87,9 @@ def _percentual_valor(numerador: object, denominador: object) -> object:
     return float(numerador) / float(denominador)
 
 
-def _percentual_0_a_100(numerador: int, denominador: int) -> float:
+def _percentual_0_a_100(numerador: int, denominador: int) -> float | None:
     if denominador == 0:
-        return 0.0
+        return None
     return float(Decimal(numerador) * Decimal(100) / Decimal(denominador))
 
 

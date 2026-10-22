@@ -6,11 +6,17 @@ from app.api.errors import REQUEST_ID_HEADER, obter_request_id, resposta_erro
 from app.api.schemas.comparisons import CompanySize, SupplierOrigin, TceComparisonRequest
 from app.api.schemas.empenhos import EmpenhoSortField, SortOrder
 from app.api.schemas.fornecedores import SupplierDocumentType, SupplierSortField
-from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
+from app.api.schemas.pagamentos import TcePagamentosResponse
+from app.core.config import (
+    CODIGO_MUNICIPIO_TCE_PADRAO,
+    UF_PADRAO,
+    VERSAO_METODOLOGICA_EMPENHOS_TCE,
+)
 from app.pipeline import analisys, comparisons, empenhos, fornecedores, territorial
 from app.pipeline.ingestion.fornecedores import FonteCadastralIndisponivelError
 from app.pipeline.ingestion import tce
 from app.pipeline.kpis import DadosInsuficientesKPI
+from app.pipeline.persistence import tce_pagamentos as pagamentos_persistence
 from app.utils import DATA_ISO_FORMATO, normalizar_data_iso
 
 
@@ -29,6 +35,11 @@ router = APIRouter(
 )
 
 DATA_ISO_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+def _resposta_empenhos(resultado: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **resultado,
+        "versao_metodologica": VERSAO_METODOLOGICA_EMPENHOS_TCE,
+    }
 
 
 def _data_inicial_query():
@@ -77,6 +88,43 @@ def _erro_pipeline(error: Exception) -> HTTPException:
         },
     )
     return HTTPException(status_code=500, detail="Falha inesperada ao executar o pipeline.")
+
+
+@router.get(
+    "/tce/pagamentos",
+    response_model=TcePagamentosResponse,
+    summary="Consulta a publicação validada de pagamentos do TCE-CE",
+    description=(
+        "Lê a publicação atômica já conciliada por pagamento, empenho, órgão, "
+        "elemento de despesa e porte do fornecedor. Esta rota não executa coleta."
+    ),
+    response_description="Indicador financeiro por pagamentos e seus metadados de qualidade.",
+)
+def tce_pagamentos(
+    codigo_municipio: Annotated[
+        str,
+        Query(description="Código do município no TCE-CE.", pattern=r"^\d{3}$"),
+    ],
+    exercicio_orcamento: Annotated[
+        int,
+        Query(description="Exercício orçamentário no formato AAAA00.", ge=100000, le=999900, multiple_of=100),
+    ],
+    competencia_corte: Annotated[
+        str,
+        Query(description="Competência documental final em YYYY-MM.", pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    ],
+) -> TcePagamentosResponse:
+    publicacao = pagamentos_persistence.obter_publicacao(
+        codigo_municipio_tce=codigo_municipio,
+        exercicio_orcamento=exercicio_orcamento,
+        competencia_corte=competencia_corte,
+    )
+    if publicacao is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Nenhuma publicação validada encontrada para o escopo informado.",
+        )
+    return publicacao
 
 
 @router.get(
@@ -143,11 +191,13 @@ def tce_kpi_portes_por_mes(
 ) -> dict[str, object]:
     try:
         _validar_periodo_api(data_inicial, data_final)
-        return analisys.consultar_kpi_tce_portes_por_mes(
-            data_inicial=data_inicial,
-            data_final=data_final,
-            codigo_municipio=codigo_municipio,
-            limite=limite,
+        return _resposta_empenhos(
+            analisys.consultar_kpi_tce_portes_por_mes(
+                data_inicial=data_inicial,
+                data_final=data_final,
+                codigo_municipio=codigo_municipio,
+                limite=limite,
+            )
         )
     except Exception as error:
         raise _erro_pipeline(error) from error
@@ -178,10 +228,12 @@ def tce_overview(
 ) -> dict[str, object]:
     try:
         _validar_periodo_api(data_inicial, data_final)
-        return analisys.consultar_overview_tce(
-            data_inicial=data_inicial,
-            data_final=data_final,
-            codigo_municipio=codigo_municipio,
+        return _resposta_empenhos(
+            analisys.consultar_overview_tce(
+                data_inicial=data_inicial,
+                data_final=data_final,
+                codigo_municipio=codigo_municipio,
+            )
         )
     except Exception as error:
         raise _erro_pipeline(error) from error
@@ -222,16 +274,18 @@ def tce_overview_municipal(
             codigo_municipio=codigo_municipio_tce,
             company_sizes=filtros_portes,
         )
-        return {
-            **resultado,
-            "parametros": {
-                **dict(resultado.get("parametros") or {}),
-                "data_inicial": data_inicial,
-                "data_final": data_final,
-                "codigo_municipio": codigo_municipio_tce,
-                "company_sizes": filtros_portes,
-            },
-        }
+        return _resposta_empenhos(
+            {
+                **resultado,
+                "parametros": {
+                    **dict(resultado.get("parametros") or {}),
+                    "data_inicial": data_inicial,
+                    "data_final": data_final,
+                    "codigo_municipio": codigo_municipio_tce,
+                    "company_sizes": filtros_portes,
+                },
+            }
+        )
     except Exception as error:
         raise _erro_pipeline(error) from error
 
@@ -259,7 +313,9 @@ def tce_comparisons(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return comparisons.consultar_comparacao_tce(payload.model_dump(mode="json"))
+        return _resposta_empenhos(
+            comparisons.consultar_comparacao_tce(payload.model_dump(mode="json"))
+        )
     except comparisons.ComparisonRequestError as error:
         logger.info(
             "Comparacao rejeitada pelos filtros ou dados locais",
@@ -352,19 +408,21 @@ def tce_empenhos(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return empenhos.listar_empenhos(
-            start_date=start_date,
-            end_date=end_date,
-            uf=uf,
-            municipality_tce_code=municipality_tce_code,
-            company_sizes=[item.value for item in company_sizes or []],
-            supplier_origins=[item.value for item in supplier_origins or []],
-            expense_element_codes=expense_element_codes or [],
-            search=search,
-            page=page,
-            page_size=page_size,
-            sort_by=sort_by.value,
-            sort_order=sort_order.value,
+        return _resposta_empenhos(
+            empenhos.listar_empenhos(
+                start_date=start_date,
+                end_date=end_date,
+                uf=uf,
+                municipality_tce_code=municipality_tce_code,
+                company_sizes=[item.value for item in company_sizes or []],
+                supplier_origins=[item.value for item in supplier_origins or []],
+                expense_element_codes=expense_element_codes or [],
+                search=search,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by.value,
+                sort_order=sort_order.value,
+            )
         )
     except Exception as error:
         return _erro_empenhos(
@@ -391,7 +449,7 @@ def tce_empenho_detalhe(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return empenhos.obter_empenho(chave_empenho)
+        return _resposta_empenhos(empenhos.obter_empenho(chave_empenho))
     except Exception as error:
         return _erro_empenhos(
             error,
@@ -428,19 +486,21 @@ def tce_fornecedores(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return fornecedores.listar_fornecedores(
-            start_date=start_date,
-            end_date=end_date,
-            uf=uf,
-            municipality_tce_code=municipality_tce_code,
-            company_sizes=[item.value for item in company_sizes or []],
-            supplier_origins=[item.value for item in supplier_origins or []],
-            expense_element_codes=expense_element_codes or [],
-            search=search,
-            page=page,
-            page_size=page_size,
-            sort_by=sort_by.value,
-            sort_order=sort_order.value,
+        return _resposta_empenhos(
+            fornecedores.listar_fornecedores(
+                start_date=start_date,
+                end_date=end_date,
+                uf=uf,
+                municipality_tce_code=municipality_tce_code,
+                company_sizes=[item.value for item in company_sizes or []],
+                supplier_origins=[item.value for item in supplier_origins or []],
+                expense_element_codes=expense_element_codes or [],
+                search=search,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by.value,
+                sort_order=sort_order.value,
+            )
         )
     except Exception as error:
         return _erro_empenhos(
@@ -475,16 +535,18 @@ def tce_fornecedor_detalhe(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return fornecedores.obter_fornecedor(
-            tipo_documento=tipo_documento.value,
-            documento=documento,
-            start_date=start_date,
-            end_date=end_date,
-            uf=uf,
-            municipality_tce_code=municipality_tce_code,
-            company_sizes=[item.value for item in company_sizes or []],
-            supplier_origins=[item.value for item in supplier_origins or []],
-            expense_element_codes=expense_element_codes or [],
+        return _resposta_empenhos(
+            fornecedores.obter_fornecedor(
+                tipo_documento=tipo_documento.value,
+                documento=documento,
+                start_date=start_date,
+                end_date=end_date,
+                uf=uf,
+                municipality_tce_code=municipality_tce_code,
+                company_sizes=[item.value for item in company_sizes or []],
+                supplier_origins=[item.value for item in supplier_origins or []],
+                expense_element_codes=expense_element_codes or [],
+            )
         )
     except Exception as error:
         return _erro_empenhos(
@@ -524,21 +586,23 @@ def tce_fornecedor_empenhos(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return fornecedores.listar_empenhos_fornecedor(
-            tipo_documento=tipo_documento.value,
-            documento=documento,
-            start_date=start_date,
-            end_date=end_date,
-            uf=uf,
-            municipality_tce_code=municipality_tce_code,
-            company_sizes=[item.value for item in company_sizes or []],
-            supplier_origins=[item.value for item in supplier_origins or []],
-            expense_element_codes=expense_element_codes or [],
-            search=search,
-            page=page,
-            page_size=page_size,
-            sort_by=sort_by.value,
-            sort_order=sort_order.value,
+        return _resposta_empenhos(
+            fornecedores.listar_empenhos_fornecedor(
+                tipo_documento=tipo_documento.value,
+                documento=documento,
+                start_date=start_date,
+                end_date=end_date,
+                uf=uf,
+                municipality_tce_code=municipality_tce_code,
+                company_sizes=[item.value for item in company_sizes or []],
+                supplier_origins=[item.value for item in supplier_origins or []],
+                expense_element_codes=expense_element_codes or [],
+                search=search,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by.value,
+                sort_order=sort_order.value,
+            )
         )
     except Exception as error:
         return _erro_empenhos(
@@ -572,15 +636,17 @@ def tce_analise_territorial(
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return territorial.consultar_analise_territorial(
-            start_date=start_date,
-            end_date=end_date,
-            uf=uf,
-            municipality_tce_code=municipality_tce_code,
-            company_sizes=[item.value for item in company_sizes or []],
-            supplier_origins=[item.value for item in supplier_origins or []],
-            expense_element_codes=expense_element_codes or [],
-            ranking_limit=ranking_limit,
+        return _resposta_empenhos(
+            territorial.consultar_analise_territorial(
+                start_date=start_date,
+                end_date=end_date,
+                uf=uf,
+                municipality_tce_code=municipality_tce_code,
+                company_sizes=[item.value for item in company_sizes or []],
+                supplier_origins=[item.value for item in supplier_origins or []],
+                expense_element_codes=expense_element_codes or [],
+                ranking_limit=ranking_limit,
+            )
         )
     except Exception as error:
         return _erro_empenhos(
@@ -618,12 +684,14 @@ def tce_analitico_indicadores(
 ) -> dict[str, object]:
     try:
         _validar_periodo_api(data_inicial, data_final)
-        return analisys.consultar_tce_indicadores_analiticos(
-            data_inicial=data_inicial,
-            data_final=data_final,
-            codigo_municipio=codigo_municipio,
-            limite_ranking=limite_ranking,
-            limite=limite,
+        return _resposta_empenhos(
+            analisys.consultar_tce_indicadores_analiticos(
+                data_inicial=data_inicial,
+                data_final=data_final,
+                codigo_municipio=codigo_municipio,
+                limite_ranking=limite_ranking,
+                limite=limite,
+            )
         )
     except Exception as error:
         raise _erro_pipeline(error) from error

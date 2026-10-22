@@ -23,6 +23,12 @@ from app.pipeline.ingestion import tce
 
 
 class TceIngestionTest(unittest.TestCase):
+    def test_endpoints_do_pipeline_de_pagamentos(self) -> None:
+        self.assertEqual(tce.ENDPOINT_ORGAOS, "orgaos")
+        self.assertEqual(tce.ENDPOINT_UNIDADES_ORCAMENTAIS, "unidades_orcamentais")
+        self.assertEqual(tce.ENDPOINT_NOTAS_PAGAMENTOS, "notas_pagamentos")
+        self.assertEqual(tce.ENDPOINT_ESTORNO_PAGAMENTOS, "estorno_pagamentos")
+
     def test_parametros_competencia_tce_converte_para_formato_dcd(self) -> None:
         self.assertEqual(
             tce.parametros_competencia_tce("2025-01", "010"),
@@ -36,6 +42,44 @@ class TceIngestionTest(unittest.TestCase):
     def test_parametros_competencia_tce_rejeita_mes_invalido(self) -> None:
         with self.assertRaisesRegex(ValueError, "YYYY-MM"):
             tce.parametros_competencia_tce("2025-13", "010")
+
+    def test_parametros_documento_tce_desacopla_orcamento_e_competencia(self) -> None:
+        self.assertEqual(
+            tce.parametros_documento_tce("2026-02", 202500, "004"),
+            {
+                "codigo_municipio": "004",
+                "exercicio_orcamento": 202500,
+                "data_referencia_doc": 202602,
+            },
+        )
+
+    def test_parametros_documento_tce_aceita_orcamento_e_documento_em_2025(self) -> None:
+        self.assertEqual(
+            tce.parametros_documento_tce("2025-12", 202500, "004"),
+            {
+                "codigo_municipio": "004",
+                "exercicio_orcamento": 202500,
+                "data_referencia_doc": 202512,
+            },
+        )
+
+    def test_parametros_documento_tce_aceita_competencia_anterior_ao_orcamento(self) -> None:
+        self.assertEqual(
+            tce.parametros_documento_tce("2024-12", "202500", "004"),
+            {
+                "codigo_municipio": "004",
+                "exercicio_orcamento": 202500,
+                "data_referencia_doc": 202412,
+            },
+        )
+
+    def test_parametros_documento_tce_exige_exercicio_aaaa00(self) -> None:
+        for exercicio in (2025, 10000, "010000", 202501, "2025", "2025-00", True):
+            with self.subTest(exercicio=exercicio), self.assertRaisesRegex(
+                (TypeError, ValueError),
+                "AAAA00",
+            ):
+                tce.parametros_documento_tce("2026-02", exercicio, "004")
 
     @patch("app.pipeline.ingestion.tce.requests.get")
     def test_buscar_dados_tce_preserva_decimal_quando_solicitado(self, get) -> None:
@@ -55,6 +99,31 @@ class TceIngestionTest(unittest.TestCase):
         )
 
         self.assertEqual(resultado["elements"][0]["valor_empenhado"], Decimal("1.005"))
+
+    @patch("app.pipeline.ingestion.tce.requests.get")
+    def test_buscar_dados_tce_rejeita_resposta_sem_elements(self, get) -> None:
+        resposta = MagicMock(status_code=200)
+        resposta.json.return_value = {"dados": []}
+        get.return_value = resposta
+
+        with self.assertRaisesRegex(tce.TceRespostaInvalidaError, "elements ausente"):
+            tce.buscar_dados_tce("notas_empenhos", {}, max_retries=0)
+
+    @patch("app.pipeline.ingestion.tce.requests.get")
+    def test_buscar_dados_tce_rejeita_elements_que_nao_seja_lista(self, get) -> None:
+        resposta = MagicMock(status_code=200)
+        resposta.json.return_value = {"elements": {}}
+        get.return_value = resposta
+
+        with self.assertRaisesRegex(tce.TceRespostaInvalidaError, "deve ser uma lista"):
+            tce.buscar_dados_tce("notas_empenhos", {}, max_retries=0)
+
+    @patch("app.pipeline.ingestion.tce.requests.get")
+    def test_buscar_dados_tce_rejeita_http_204(self, get) -> None:
+        get.return_value = MagicMock(status_code=204)
+
+        with self.assertRaisesRegex(tce.TceRespostaInvalidaError, "HTTP 204"):
+            tce.buscar_dados_tce("notas_empenhos", {}, max_retries=0)
 
     @patch("app.pipeline.ingestion.tce.registrar_falha_ingestao")
     @patch("app.pipeline.ingestion.tce.requests.get")

@@ -19,6 +19,17 @@ def _carregar_migration(path: Path):
 
 
 class AlembicSetupTest(unittest.TestCase):
+    def test_migration_adiciona_publicacoes_de_pagamentos(self) -> None:
+        migration = ROOT / "alembic" / "main" / "versions" / "0009_tce_pagamentos.py"
+        modulo = _carregar_migration(migration)
+        texto = migration.read_text(encoding="utf-8")
+
+        self.assertEqual(modulo.revision, "0009_tce_pagamentos")
+        self.assertEqual(modulo.down_revision, "0008_tce_methodology")
+        self.assertIn('"tce_pagamento_runs"', texto)
+        self.assertIn('"tce_pagamentos_conciliados"', texto)
+        self.assertIn("status = 'PUBLICADO'", texto)
+
     def test_alembic_ini_declara_ambientes_principal_e_logs(self) -> None:
         config = configparser.RawConfigParser()
         config.read(ROOT / "alembic.ini")
@@ -182,6 +193,24 @@ class AlembicSetupTest(unittest.TestCase):
         self.assertIn('"idx_tce_empenhos_fornecedor_data"', texto)
         self.assertIn('"documento_fornecedor"', texto)
         self.assertIn('"data_empenho"', texto)
+        self.assertTrue(callable(modulo.upgrade))
+        self.assertTrue(callable(modulo.downgrade))
+
+    def test_migration_adiciona_versao_metodologica_as_publicacoes_tce(self) -> None:
+        migration = (
+            ROOT
+            / "alembic"
+            / "main"
+            / "versions"
+            / "0008_tce_versao_metodologica.py"
+        )
+        modulo = _carregar_migration(migration)
+        texto = migration.read_text(encoding="utf-8")
+
+        self.assertEqual(modulo.revision, "0008_tce_methodology")
+        self.assertEqual(modulo.down_revision, "0007_portes_mensais")
+        self.assertIn('"versao_metodologica"', texto)
+        self.assertIn("tce-empenhos-v1", texto)
         self.assertTrue(callable(modulo.upgrade))
         self.assertTrue(callable(modulo.downgrade))
 

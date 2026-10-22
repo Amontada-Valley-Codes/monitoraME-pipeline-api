@@ -86,6 +86,7 @@ class MainTest(unittest.TestCase):
         self.assertNotIn("/pipeline/pncp/contratacoes", rotas)
         self.assertNotIn("/pipeline/pncp/ingestao-incremental", rotas)
         self.assertIn("/pipeline/tce/contratos", rotas)
+        self.assertIn("/pipeline/tce/pagamentos", rotas)
         self.assertNotIn("/pipeline/tce/kpis/me-por-mes", rotas)
         self.assertIn("/pipeline/tce/kpis/portes-por-mes", rotas)
         self.assertIn("/pipeline/tce/overview", rotas)
@@ -103,6 +104,33 @@ class MainTest(unittest.TestCase):
         )
         self.assertIn("/pipeline/tce/analitico/indicadores", rotas)
         self.assertIn("/pipeline/tce/analise-territorial", rotas)
+
+    def test_rotas_financeiras_de_empenhos_nao_sao_depreciadas_no_openapi(self) -> None:
+        schema = main.app.openapi()
+        rotas_empenhos = {
+            "/pipeline/tce/kpis/portes-por-mes": "get",
+            "/pipeline/tce/overview": "get",
+            "/pipeline/tce/overview/municipal": "get",
+            "/pipeline/tce/comparisons": "post",
+            "/pipeline/tce/empenhos": "get",
+            "/pipeline/tce/empenhos/{chave_empenho}": "get",
+            "/pipeline/tce/fornecedores": "get",
+            "/pipeline/tce/fornecedores/{tipo_documento}/{documento}": "get",
+            "/pipeline/tce/fornecedores/{tipo_documento}/{documento}/empenhos": "get",
+            "/pipeline/tce/analise-territorial": "get",
+            "/pipeline/tce/analitico/indicadores": "get",
+        }
+
+        for path, metodo in rotas_empenhos.items():
+            with self.subTest(path=path):
+                operacao = schema["paths"][path][metodo]
+                self.assertNotIn("deprecated", operacao)
+                self.assertNotIn("x-legacy-data-basis", operacao)
+                self.assertNotIn("x-methodology-version", operacao)
+                self.assertNotIn("legada", operacao["description"].lower())
+
+        contratos = schema["paths"]["/pipeline/tce/contratos"]["get"]
+        self.assertNotIn("deprecated", contratos)
 
     @patch("app.main.database.close_pool")
     @patch("app.main.database.init_db")
@@ -184,6 +212,7 @@ class MainTest(unittest.TestCase):
             limite=100,
         )
         self.assertEqual(payload["kpi"], "indicadores_analiticos_principais")
+        self.assertEqual(payload["versao_metodologica"], "tce-empenhos-v1")
         self.assertEqual(payload["indicadores"]["resumo_geral"][0]["valor_total"], 1000.0)
 
     def test_endpoints_rejeitam_data_compacta(self) -> None:
@@ -233,6 +262,7 @@ class MainTest(unittest.TestCase):
             codigo_municipio="010",
         )
         self.assertEqual(payload["kpi"], "overview_me_mei")
+        self.assertEqual(payload["versao_metodologica"], "tce-empenhos-v1")
         self.assertEqual(
             payload["kpis"]["total_compras_ME_centavos"],
             100_000,

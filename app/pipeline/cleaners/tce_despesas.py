@@ -50,7 +50,7 @@ def _inteiro(valor: Any, campo: str) -> int:
 
 def _exercicio(valor: Any) -> tuple[int, int]:
     exercicio_orcamento = _inteiro(valor, "exercicio_orcamento")
-    if exercicio_orcamento < 10000 or exercicio_orcamento % 100 != 0:
+    if exercicio_orcamento < 100000 or exercicio_orcamento > 999900 or exercicio_orcamento % 100 != 0:
         raise ContratoDespesaTceInvalido(
             "exercicio_orcamento deve usar o formato AAAA00 do SIM/TCE-CE."
         )
@@ -115,6 +115,19 @@ def _chave_empenho(
             numero_empenho,
         )
     )
+
+
+def chave_pagamento(
+    chave_empenho: Any,
+    numero_sub_empenho: Any,
+    numero_nota_pagamento: Any,
+) -> str:
+    """Compõe a identidade da nota de pagamento com seus três campos obrigatórios."""
+    empenho = _texto(chave_empenho, "chave_empenho")
+    sub_empenho = _texto(numero_sub_empenho, "numero_sub_empenho")
+    nota_pagamento = _texto(numero_nota_pagamento, "numero_nota_pagamento")
+    assert empenho and sub_empenho and nota_pagamento
+    return "|".join((empenho, sub_empenho, nota_pagamento))
 
 
 def _campos_identificacao(registro: dict[str, Any], *, campo_numero: str) -> dict[str, Any]:
@@ -258,6 +271,7 @@ def mapear_notas_anulacoes_empenhos(registros: list[dict[str, Any]]) -> list[dic
 
 __all__ = [
     "ContratoDespesaTceInvalido",
+    "chave_pagamento",
     "mapear_nota_anulacao_empenho",
     "mapear_nota_empenho",
     "mapear_notas_anulacoes_empenhos",

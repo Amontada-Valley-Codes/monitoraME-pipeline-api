@@ -319,8 +319,8 @@ class CalcularOverviewMeMeiTest(unittest.TestCase):
             {
                 "percentual_participacao_me": 0.0,
                 "total_compras_ME_centavos": 0,
-                "percentual_compras_fornecedores_locais": 0.0,
-                "percentual_recursos_fora_municipio": 0.0,
+                "percentual_compras_fornecedores_locais": None,
+                "percentual_recursos_fora_municipio": None,
             },
         )
         self.assertEqual(
@@ -337,7 +337,7 @@ class CalcularOverviewMeMeiTest(unittest.TestCase):
             all(item["valor_centavos"] == 0 for item in resultado["destino_recursos"])
         )
         self.assertTrue(
-            all(item["percentual"] == 0.0 for item in resultado["destino_recursos"])
+            all(item["percentual"] is None for item in resultado["destino_recursos"])
         )
 
     def test_periodo_sem_porte_identificado_retorna_zeros(self) -> None:
@@ -356,7 +356,7 @@ class CalcularOverviewMeMeiTest(unittest.TestCase):
         resultado = kpis.calcular_overview_me_mei(base)
 
         self.assertEqual(resultado["kpis"]["total_compras_ME_centavos"], 0)
-        self.assertEqual(resultado["kpis"]["percentual_participacao_me"], 0.0)
+        self.assertIsNone(resultado["kpis"]["percentual_participacao_me"])
         self.assertEqual(resultado["evolucao_compras_consideradas"], [])
         self.assertEqual(
             resultado["participacao_por_porte_empresarial"][-1],

@@ -214,6 +214,7 @@ class PublicacaoLoteTceTest(unittest.TestCase):
             )
 
         self.assertEqual(resultado.status, tce_despesas.STATUS_PUBLICADO)
+        self.assertEqual(resultado.versao_metodologica, "tce-empenhos-v1")
         self.assertEqual(resultado.run_anterior_id, 5)
         self.assertEqual(anterior.status, tce_despesas.STATUS_SUBSTITUIDO)
         self.assertEqual(anterior.substituido_em, self.agora)

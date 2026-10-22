@@ -12,6 +12,7 @@ from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core import database, orm
+from app.core.config import VERSAO_METODOLOGICA_EMPENHOS_TCE
 from app.core.models import (
     FornecedorCache,
     IbgeMunicipio,
@@ -47,6 +48,7 @@ class ResultadoPublicacaoTce:
     quantidade_empenhos: int
     quantidade_anulacoes: int
     problemas: list[dict[str, Any]]
+    versao_metodologica: str = VERSAO_METODOLOGICA_EMPENHOS_TCE
     run_anterior_id: int | None = None
 
 
@@ -347,6 +349,7 @@ def listar_empenhos_liquidos_publicados(
     data_inicial: date,
     data_final: date,
     uf: str | None = None,
+    somente_naturezas_consideradas: bool = True,
 ) -> list[dict[str, Any]]:
     """Lê empenhos ativos e desconta todas as anulações atualmente publicadas."""
     if data_inicial > data_final:
@@ -429,12 +432,13 @@ def listar_empenhos_liquidos_publicados(
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
-            TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.data_empenho >= data_inicial,
             TceEmpenho.data_empenho <= data_final,
         )
         .order_by(TceEmpenho.data_empenho, TceEmpenho.chave_empenho)
     )
+    if somente_naturezas_consideradas:
+        consulta = consulta.where(TceEmpenho.natureza_considerada.is_(True))
     if codigo_municipio_tce is not None:
         consulta = consulta.where(
             TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce
@@ -841,6 +845,7 @@ def registrar_lote_rejeitado(
         run = TceDespesaIngestionRun(
             codigo_municipio_tce=codigo_municipio_tce,
             competencia=competencia,
+            versao_metodologica=VERSAO_METODOLOGICA_EMPENHOS_TCE,
             status=STATUS_REJEITADO,
             iniciado_em=inicio,
             finalizado_em=agora,
@@ -858,6 +863,7 @@ def registrar_lote_rejeitado(
             quantidade_empenhos=0,
             quantidade_anulacoes=0,
             problemas=[problema],
+            versao_metodologica=run.versao_metodologica,
             run_anterior_id=lote_anterior.id if lote_anterior else None,
         )
 
@@ -896,6 +902,7 @@ def publicar_lote_tce(
         run = TceDespesaIngestionRun(
             codigo_municipio_tce=codigo_municipio_tce,
             competencia=competencia,
+            versao_metodologica=VERSAO_METODOLOGICA_EMPENHOS_TCE,
             status=STATUS_EM_VALIDACAO,
             iniciado_em=inicio,
             quantidade_empenhos=len(lote.empenhos),
@@ -916,6 +923,7 @@ def publicar_lote_tce(
                 quantidade_empenhos=len(lote.empenhos),
                 quantidade_anulacoes=len(lote.anulacoes),
                 problemas=lote.problemas,
+                versao_metodologica=run.versao_metodologica,
                 run_anterior_id=lote_anterior.id if lote_anterior else None,
             )
 
@@ -940,6 +948,7 @@ def publicar_lote_tce(
             quantidade_empenhos=len(lote.empenhos),
             quantidade_anulacoes=len(lote.anulacoes),
             problemas=[],
+            versao_metodologica=run.versao_metodologica,
             run_anterior_id=lote_anterior.id if lote_anterior else None,
         )
 

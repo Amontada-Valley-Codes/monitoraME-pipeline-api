@@ -72,6 +72,62 @@ class ConfigTest(unittest.TestCase):
             config.CODIGOS_NATUREZAS_DESPESA_CONSIDERADAS,
             ("39", "51", "30", "52", "32", "35", "40"),
         )
+        self.assertEqual(config.MEDIDA_FINANCEIRA_PAGAMENTOS_TCE, "valor_nota_pagamento")
+        self.assertEqual(config.ESTADO_NAO_ESTORNADO_PAGAMENTOS_TCE, 0)
+        self.assertEqual(config.PORTE_ME_PUBLICO_CODIGO_TCE, "01")
+        self.assertTrue(config.PORTE_ME_PUBLICO_INCLUI_MEI)
+        self.assertEqual(
+            config.CATEGORIAS_RECONCILIACAO_PAGAMENTOS_TCE,
+            ("ME", "EPP", "DEMAIS", "NAO_IDENTIFICADO", "CPF", "DOCUMENTO_INVALIDO"),
+        )
+        self.assertEqual(config.VERSAO_METODOLOGICA_EMPENHOS_TCE, "tce-empenhos-v1")
+        self.assertEqual(config.VERSAO_METODOLOGICA_PAGAMENTOS_TCE, "tce-pagamentos-v1")
+        self.assertEqual(config.TCE_RETRY_MAX_ATTEMPTS, 5)
+        self.assertEqual(config.TCE_RETRY_INITIAL_DELAY_SECONDS, 2)
+        self.assertEqual(config.TCE_RETRY_MAX_DELAY_SECONDS, 60)
+        self.assertEqual(config.TCE_RETRY_BACKOFF_MULTIPLIER, 2)
+        self.assertEqual(config.TCE_RETRY_JITTER, "full")
+        self.assertTrue(config.TCE_RETRY_RESPECT_RETRY_AFTER)
+        self.assertEqual(
+            config.TCE_RETRYABLE_STATUS_CODES,
+            (408, 429, 500, 502, 503, 504),
+        )
+
+    def test_politica_retry_pode_ser_configurada_por_ambiente(self) -> None:
+        env = {
+            **REQUIRED_ENV,
+            "TCE_RETRY_MAX_ATTEMPTS": "7",
+            "TCE_RETRY_INITIAL_DELAY_SECONDS": "0.5",
+            "TCE_RETRY_MAX_DELAY_SECONDS": "30",
+            "TCE_RETRY_BACKOFF_MULTIPLIER": "3",
+            "TCE_RETRY_JITTER": "full",
+            "TCE_RETRY_RESPECT_RETRY_AFTER": "false",
+            "TCE_RETRYABLE_STATUS_CODES": "408, 429, 503",
+        }
+
+        config = self._reload_config_with_env(env)
+
+        self.assertEqual(config.TCE_RETRY_MAX_ATTEMPTS, 7)
+        self.assertEqual(config.TCE_RETRY_INITIAL_DELAY_SECONDS, 0.5)
+        self.assertEqual(config.TCE_RETRY_MAX_DELAY_SECONDS, 30)
+        self.assertEqual(config.TCE_RETRY_BACKOFF_MULTIPLIER, 3)
+        self.assertEqual(config.TCE_RETRY_JITTER, "full")
+        self.assertFalse(config.TCE_RETRY_RESPECT_RETRY_AFTER)
+        self.assertEqual(config.TCE_RETRYABLE_STATUS_CODES, (408, 429, 503))
+
+    def test_politica_retry_rejeita_configuracao_invalida(self) -> None:
+        invalidos = {
+            "TCE_RETRY_MAX_ATTEMPTS": "0",
+            "TCE_RETRY_INITIAL_DELAY_SECONDS": "-1",
+            "TCE_RETRY_MAX_DELAY_SECONDS": "invalido",
+            "TCE_RETRY_BACKOFF_MULTIPLIER": "0.5",
+            "TCE_RETRY_JITTER": "",
+            "TCE_RETRY_RESPECT_RETRY_AFTER": "talvez",
+            "TCE_RETRYABLE_STATUS_CODES": "99,600",
+        }
+        for chave, valor in invalidos.items():
+            with self.subTest(chave=chave), self.assertRaisesRegex(RuntimeError, chave):
+                self._reload_config_with_env({**REQUIRED_ENV, chave: valor})
 
 
 

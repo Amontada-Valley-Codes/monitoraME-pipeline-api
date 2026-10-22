@@ -1,7 +1,7 @@
 from decimal import Decimal
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -21,12 +21,21 @@ logger = logging.getLogger(__name__)
 class TceIndisponivelError(RuntimeError):
     """A fonte TCE-CE falhou; uma resposta vazia não pode ser presumida."""
 
+
+class TceRespostaInvalidaError(TceIndisponivelError):
+    """A resposta do TCE-CE não satisfaz o contrato mínimo esperado."""
+
+
 ENDPOINT_CONTRATACOES = "processos_administrativos_contratacoes"
 ENDPOINT_CONTRATOS = "contratos"
 ENDPOINT_CONTRATADOS = "contratados"
 ENDPOINT_ITENS = "itens_compoem_bens_servicos"
 ENDPOINT_NOTAS_EMPENHOS = "notas_empenhos"
 ENDPOINT_NOTAS_ANULACOES_EMPENHOS = "notas_anulacoes_empenhos"
+ENDPOINT_ORGAOS = "orgaos"
+ENDPOINT_UNIDADES_ORCAMENTAIS = "unidades_orcamentais"
+ENDPOINT_NOTAS_PAGAMENTOS = "notas_pagamentos"
+ENDPOINT_ESTORNO_PAGAMENTOS = "estorno_pagamentos"
 
 
 def normalizar_data_tce(data: str) -> str:
@@ -41,6 +50,22 @@ def filtrar_naturezas_despesa(registros: list[dict[str, Any]]) -> list[dict[str,
         if codigo_natureza_despesa_monitorado(codigo):
             filtrados.append(registro)
     return filtrados
+
+
+def _validar_resposta_tce(dados: Any, endpoint: str) -> dict[str, Any]:
+    if not isinstance(dados, dict):
+        raise TceRespostaInvalidaError(
+            f"Resposta inválida do TCE-CE em {endpoint}: objeto JSON esperado."
+        )
+    if "elements" not in dados:
+        raise TceRespostaInvalidaError(
+            f"Resposta inválida do TCE-CE em {endpoint}: campo elements ausente."
+        )
+    if not isinstance(dados["elements"], list):
+        raise TceRespostaInvalidaError(
+            f"Resposta inválida do TCE-CE em {endpoint}: elements deve ser uma lista."
+        )
+    return dados
 
 
 def buscar_dados_tce(
@@ -60,11 +85,9 @@ def buscar_dados_tce(
             response = requests.get(url, params=params, timeout=(10, 30))
 
             if response.status_code == 204:
-                logger.info(
-                    "TCE-CE respondeu sem conteúdo",
-                    extra={"source": "TCE-CE", "endpoint": endpoint},
+                raise TceRespostaInvalidaError(
+                    f"Resposta inválida do TCE-CE em {endpoint}: HTTP 204 sem conteúdo."
                 )
-                return {"elements": []}
 
             if response.status_code in {429, 500, 502, 503, 504} and tentativa < max_retries:
                 logger.info(
@@ -84,7 +107,7 @@ def buscar_dados_tce(
 
             response.raise_for_status()
             dados = response.json(parse_float=Decimal) if preservar_decimais else response.json()
-            return dados if isinstance(dados, dict) else {"elements": dados}
+            return _validar_resposta_tce(dados, endpoint)
 
         except (requests.RequestException, ValueError) as error:
             if tentativa == max_retries:
@@ -128,6 +151,7 @@ def listar_registros(
     filtrar_por_codigo_despesa: bool = False,
     preservar_decimais: bool = False,
     falhar_ao_esgotar: bool = False,
+    ao_coletar_pagina: Callable[[str, int, list[Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     def buscar_pagina(start_index: int, tamanho_pagina: int) -> list[Any]:
         opcoes_requisicao: dict[str, bool] = {}
@@ -143,8 +167,10 @@ def listar_registros(
                 "$start_index": start_index,
             },
             **opcoes_requisicao,
-        ).get("elements", [])
-        return pagina if isinstance(pagina, list) else []
+        )["elements"]
+        if ao_coletar_pagina is not None:
+            ao_coletar_pagina(endpoint, start_index, pagina)
+        return pagina
 
     registros = listar_por_start_index(buscar_pagina, tamanho_pagina=TAMANHO_PAGINA)
     if not filtrar_por_codigo_despesa:
@@ -170,8 +196,7 @@ def _params_periodo(data_inicial: str, data_final: str, codigo_municipio: str) -
     }
 
 
-def parametros_competencia_tce(competencia: str, codigo_municipio: str) -> dict[str, str | int]:
-    """Converte ``YYYY-MM`` para os parâmetros exigidos pelas tabelas DCD do SIM."""
+def _normalizar_competencia_documental(competencia: str) -> tuple[int, int]:
     if not isinstance(competencia, str):
         raise TypeError(f"Competencia deve ser str, nao {type(competencia).__name__}.")
 
@@ -184,15 +209,56 @@ def parametros_competencia_tce(competencia: str, codigo_municipio: str) -> dict[
     if ano < 1 or mes < 1 or mes > 12:
         raise ValueError(f"Competencia invalida: {competencia!r}. Use YYYY-MM.")
 
+    return ano, mes
+
+
+def _normalizar_exercicio_orcamento(exercicio_orcamento: int | str) -> int:
+    if isinstance(exercicio_orcamento, bool):
+        raise TypeError("exercicio_orcamento deve usar o formato AAAA00.")
+
+    texto = str(exercicio_orcamento).strip()
+    if len(texto) != 6 or not texto.isdigit() or texto[-2:] != "00":
+        raise ValueError("exercicio_orcamento deve usar o formato AAAA00.")
+
+    exercicio = int(texto)
+    if exercicio < 100000:
+        raise ValueError("exercicio_orcamento deve usar o formato AAAA00.")
+    return exercicio
+
+
+def parametros_documento_tce(
+    competencia_documental: str,
+    exercicio_orcamento: int | str,
+    codigo_municipio: str,
+) -> dict[str, str | int]:
+    """Monta os parâmetros DCD sem acoplar orçamento e competência documental."""
+    ano_documento, mes_documento = _normalizar_competencia_documental(
+        competencia_documental
+    )
+    exercicio = _normalizar_exercicio_orcamento(exercicio_orcamento)
+
     municipio = str(codigo_municipio).strip()
     if not municipio:
         raise ValueError("codigo_municipio nao pode ser vazio.")
 
     return {
         "codigo_municipio": municipio,
-        "exercicio_orcamento": ano * 100,
-        "data_referencia_doc": ano * 100 + mes,
+        "exercicio_orcamento": exercicio,
+        "data_referencia_doc": ano_documento * 100 + mes_documento,
     }
+
+
+def parametros_competencia_tce(
+    competencia: str,
+    codigo_municipio: str,
+) -> dict[str, str | int]:
+    """Mantém o contrato legado em que orçamento e competência usam o mesmo ano."""
+    ano, _ = _normalizar_competencia_documental(competencia)
+    return parametros_documento_tce(
+        competencia,
+        ano * 100,
+        codigo_municipio,
+    )
 
 
 def _buscar_documentos_dcd(
@@ -223,6 +289,38 @@ def _buscar_documentos_dcd(
     )
 
 
+def _buscar_documentos_dcd_com_orcamento(
+    endpoint: str,
+    etapa: str,
+    competencia_documental: str,
+    exercicio_orcamento: int | str,
+    codigo_municipio: str,
+    ao_coletar_pagina: Callable[[str, int, list[Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    parametros_api = parametros_documento_tce(
+        competencia_documental,
+        exercicio_orcamento,
+        codigo_municipio,
+    )
+    return executar_com_log_ingestao(
+        fonte="TCE-CE",
+        etapa=etapa,
+        parametros={
+            "competencia": competencia_documental,
+            **parametros_api,
+        },
+        totais={"endpoint": endpoint},
+        executar=lambda: listar_registros(
+            endpoint,
+            parametros_api,
+            filtrar_por_codigo_despesa=False,
+            preservar_decimais=True,
+            falhar_ao_esgotar=True,
+            **({"ao_coletar_pagina": ao_coletar_pagina} if ao_coletar_pagina else {}),
+        ),
+    )
+
+
 def buscar_notas_empenhos(
     competencia: str,
     codigo_municipio: str = CODIGO_MUNICIPIO_PADRAO,
@@ -246,6 +344,53 @@ def buscar_notas_anulacoes_empenhos(
         "buscar_notas_anulacoes_empenhos",
         competencia,
         codigo_municipio,
+    )
+
+
+def buscar_orgaos(
+    exercicio_orcamento: int | str,
+    codigo_municipio: str = CODIGO_MUNICIPIO_PADRAO,
+    *,
+    ao_coletar_pagina: Callable[[str, int, list[Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    exercicio = _normalizar_exercicio_orcamento(exercicio_orcamento)
+    municipio = str(codigo_municipio).strip()
+    if not municipio:
+        raise ValueError("codigo_municipio nao pode ser vazio.")
+    parametros = {
+        "codigo_municipio": municipio,
+        "exercicio_orcamento": exercicio,
+    }
+    return executar_com_log_ingestao(
+        fonte="TCE-CE",
+        etapa="buscar_orgaos",
+        parametros=parametros,
+        totais={"endpoint": ENDPOINT_ORGAOS},
+        executar=lambda: listar_registros(
+            ENDPOINT_ORGAOS,
+            parametros,
+            preservar_decimais=True,
+            falhar_ao_esgotar=True,
+            **({"ao_coletar_pagina": ao_coletar_pagina} if ao_coletar_pagina else {}),
+        ),
+    )
+
+
+def buscar_notas_pagamentos(
+    competencia_documental: str,
+    exercicio_orcamento: int | str,
+    codigo_municipio: str = CODIGO_MUNICIPIO_PADRAO,
+    *,
+    ao_coletar_pagina: Callable[[str, int, list[Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Coleta pagamentos, inclusive quando o documento é posterior ao orçamento."""
+    return _buscar_documentos_dcd_com_orcamento(
+        ENDPOINT_NOTAS_PAGAMENTOS,
+        "buscar_notas_pagamentos",
+        competencia_documental,
+        exercicio_orcamento,
+        codigo_municipio,
+        ao_coletar_pagina,
     )
 
 

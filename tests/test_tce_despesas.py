@@ -90,6 +90,42 @@ class ContratoTceDespesasTest(unittest.TestCase):
         self.assertEqual(tce_despesas.valor_para_centavos("1,005", "valor"), 101)
         self.assertEqual(tce_despesas.valor_para_centavos(11115, "valor"), 1_111_500)
 
+    def test_valor_para_centavos_preserva_decimal_exato(self) -> None:
+        casos = {
+            Decimal("0.10"): 10,
+            Decimal("0.105"): 11,
+            Decimal("66318441.19"): 6_631_844_119,
+            "29.531.293,65": 2_953_129_365,
+        }
+        for valor, esperado in casos.items():
+            with self.subTest(valor=valor):
+                self.assertEqual(
+                    tce_despesas.valor_para_centavos(valor, "valor_nota_pagamento"),
+                    esperado,
+                )
+
+    def test_chave_pagamento_preserva_texto_e_remove_espacos_externos(self) -> None:
+        self.assertEqual(
+            tce_despesas.chave_pagamento(
+                " 010|202500|17|01|2025-01-31|31010002 ",
+                " 001 ",
+                " 00042 ",
+            ),
+            "010|202500|17|01|2025-01-31|31010002|001|00042",
+        )
+
+    def test_chave_pagamento_exige_todos_os_componentes(self) -> None:
+        for campo, valores in (
+            ("chave_empenho", ("", "001", "00042")),
+            ("numero_sub_empenho", ("chave", None, "00042")),
+            ("numero_nota_pagamento", ("chave", "001", "  ")),
+        ):
+            with self.subTest(campo=campo), self.assertRaisesRegex(
+                tce_despesas.ContratoDespesaTceInvalido,
+                campo,
+            ):
+                tce_despesas.chave_pagamento(*valores)
+
     def test_documento_invalido_permanece_no_payload_sem_virar_cnpj(self) -> None:
         self.empenho["numero_documento_negociante"] = "123"
 

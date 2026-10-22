@@ -64,6 +64,13 @@ Variáveis usadas pela aplicação:
 | `DATABASE_SSLMODE` | Não | Modo SSL do banco principal; use `disable` no PostgreSQL local. |
 | `LOG_DATABASE_SSLMODE` | Não | Modo SSL do banco de logs; use `disable` localmente. |
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
+| `TCE_RETRY_MAX_ATTEMPTS` | Não | Total de tentativas por requisição TCE; padrão `5`. |
+| `TCE_RETRY_INITIAL_DELAY_SECONDS` | Não | Espera inicial do retry; padrão `2`. |
+| `TCE_RETRY_MAX_DELAY_SECONDS` | Não | Limite da espera entre tentativas; padrão `60`. |
+| `TCE_RETRY_BACKOFF_MULTIPLIER` | Não | Multiplicador do backoff; padrão `2`. |
+| `TCE_RETRY_JITTER` | Não | Política de jitter; padrão `full`. |
+| `TCE_RETRY_RESPECT_RETRY_AFTER` | Não | Respeita `Retry-After`; padrão `true`. |
+| `TCE_RETRYABLE_STATUS_CODES` | Não | HTTPs repetíveis; padrão `408,429,500,502,503,504`. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
 | `UF_PADRAO` | Sim | UF compradora usada pela análise. |
@@ -228,8 +235,9 @@ com código de dois dígitos, nome e valor líquido em centavos. O cálculo usa
 somente empenhos de ME e MEI e mantém elementos sem movimento com valor zero.
 
 Valores monetários são inteiros em centavos e percentuais variam de `0` a
-`100`. Um período publicado sem compras de porte identificado retorna `200`,
-KPIs zerados, evolução vazia e os quatro destinos com valor e percentual zero.
+`100`. Quando o denominador de um percentual é zero, o campo retorna `null`.
+Um período publicado sem compras de porte identificado retorna `200`, totais
+zerados, evolução vazia e percentuais indisponíveis.
 
 ### Comparação de overviews
 
