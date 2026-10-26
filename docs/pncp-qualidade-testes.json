@@ -1,0 +1,19 @@
+{
+  "escopo": "Suite versionada completa mais novos testes PNCP; arquivos locais legados nao versionados fora do escopo",
+  "tests_run": 308,
+  "aprovados": 306,
+  "falhas": 0,
+  "erros": 0,
+  "opt_in_fora_escopo": [
+    {
+      "teste": "tests.test_portes_historicos.PortesReaisTest.test_coorte_real_e_lacunas_nao_recebem_porte_futuro",
+      "motivo": "Requer piloto real importado"
+    },
+    {
+      "teste": "tests.test_portes_historicos.PortesReaisTest.test_limite_temporal_exclui_publicacao_posterior",
+      "motivo": "Requer piloto real importado"
+    }
+  ],
+  "aprovado": true,
+  "python_executado": "3.12.10"
+}

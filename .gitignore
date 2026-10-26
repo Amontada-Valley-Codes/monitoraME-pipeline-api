@@ -231,3 +231,6 @@ __marimo__/
 
 # Coletas e auditorias locais de pagamentos do TCE
 .local/tce-pagamentos/
+
+# PostgreSQL portatil exclusivo da homologacao de qualidade PNCP
+.local/pncp-qualidade-postgres/

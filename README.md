@@ -467,3 +467,7 @@ Publicações versionadas, importação dos dados reais e contrato das rotas: [h
 ### Pagamentos da Prefeitura e Microempresas
 
 Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. Consulte [regras, auditoria e reproducao](docs/pagamentos-tce.md).
+
+### Qualidade semantica PNCP
+
+A normalizacao avalia qualidade por campo e RAW, preserva valores monetarios com Decimal, datas de origem e codigos desconhecidos, e isola erros de contrato. A migration `0017_pncp_qualidade` acrescenta evidencias versionadas. Homologacao tecnica aprovada em PostgreSQL isolado com amostras reais dos dois endpoints, 63 verificacoes e relatorios publicados em `docs/`. Consulte a [matriz, metricas e procedimento de homologacao](docs/pncp-qualidade-semantica.md). Para exportar metricas e excecoes locais: `python scripts/relatorio_pncp_qualidade.py --saida relatorio-qualidade.json` (filtros opcionais `--run-id` e `--endpoint`).
