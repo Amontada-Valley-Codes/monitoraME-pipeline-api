@@ -1,0 +1,156 @@
+name: Production readiness
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy_production:
+        description: Deploy this commit to production after validation
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-readiness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    name: Production readiness
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://ci:ci-only-password@127.0.0.1:5432/ci
+      LOG_DATABASE_URL: postgresql+psycopg://ci:ci-only-password@127.0.0.1:5432/ci
+      TCE_CE_BASE_URL: https://api-dados-abertos.tce.ce.gov.br/sim
+      IBGE_LOCALIDADES_BASE_URL: https://servicodados.ibge.gov.br/api/v1/localidades
+      OPENCNPJ_BASE_URL: https://api.opencnpj.org
+      UF_PADRAO: CE
+      CODIGO_MUNICIPIO_TCE_PADRAO: "010"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile Python modules
+        run: python -m compileall -q app scripts tests
+
+      - name: Apply both migration streams
+        env:
+          DATABASE_SSLMODE: disable
+          LOG_DATABASE_SSLMODE: disable
+        run: |
+          alembic upgrade head
+          alembic -n logs upgrade head
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate production Compose configuration
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=ci
+          POSTGRES_PASSWORD=ci-only-password
+          POSTGRES_DB=ci
+          TCE_CE_BASE_URL=https://api-dados-abertos.tce.ce.gov.br/sim
+          IBGE_LOCALIDADES_BASE_URL=https://servicodados.ibge.gov.br/api/v1/localidades
+          OPENCNPJ_BASE_URL=https://api.opencnpj.org
+          UF_PADRAO=CE
+          CODIGO_MUNICIPIO_TCE_PADRAO=010
+          EOF
+          docker compose -f compose.production.yaml config -q
+          rm -f .env
+
+      - name: Build production Docker image
+        run: docker build --pull -t monitorame-pipeline-api:ci .
+
+  deploy:
+    name: Deploy production
+    needs: readiness
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_production && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://api.monitorame.tech
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_HOST_KEY_FINGERPRINT: ${{ vars.VPS_HOST_KEY_FINGERPRINT }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+    steps:
+      - name: Check out validated source
+        uses: actions/checkout@v7
+
+      - name: Configure and verify SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${VPS_HOST:?Set VPS_HOST in the production environment}"
+          : "${VPS_USER:?Set VPS_USER in the production environment}"
+          : "${VPS_HOST_KEY_FINGERPRINT:?Set VPS_HOST_KEY_FINGERPRINT in the production environment}"
+          : "${VPS_SSH_PRIVATE_KEY:?Set VPS_SSH_PRIVATE_KEY in the production environment}"
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/vps_deploy_key"
+          chmod 600 "$RUNNER_TEMP/vps_deploy_key"
+
+          host_key="$(ssh-keyscan -t ed25519 -p 22 "$VPS_HOST" 2>/dev/null | head -n 1)"
+          test -n "$host_key"
+          actual_fingerprint="$(printf '%s\n' "$host_key" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$actual_fingerprint" != "$VPS_HOST_KEY_FINGERPRINT" ]; then
+            echo "VPS host key fingerprint did not match the pinned value" >&2
+            exit 1
+          fi
+          printf '%s\n' "$host_key" > "$HOME/.ssh/known_hosts"
+
+      - name: Upload this validated commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar "$GITHUB_SHA" | \
+            ssh -i "$RUNNER_TEMP/vps_deploy_key" \
+              -o BatchMode=yes \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              "$VPS_USER@$VPS_HOST" \
+              'install -d -m 750 /docker/monitorame-pipeline-api && tar -xf - -C /docker/monitorame-pipeline-api'
+
+      - name: Build, migrate, deploy, and verify health
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/vps_deploy_key" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "cd /docker/monitorame-pipeline-api && test -s .env && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml config -q && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml up -d --build && curl -fsS --retry 10 --retry-delay 5 https://api.monitorame.tech/health"

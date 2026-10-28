@@ -132,6 +132,52 @@ atualizar o código, faça backup do banco, atualize a imagem e execute novament
 o comando `up -d --build`. O volume do PostgreSQL permanece associado ao nome
 estável acima; não use `docker compose down -v` em produção.
 
+### CI/CD e aprovação de produção
+
+O workflow `Production readiness` roda em cada push e pull request. Ele compila
+os módulos Python, aplica as duas trilhas de migrations em um PostgreSQL
+temporário, executa `unittest`, valida `compose.production.yaml` e constrói a
+imagem Docker. O status **Production readiness** só fica verde quando todas
+essas etapas passam.
+
+O deploy não é automático em pushes. Para promover uma versão, execute o
+workflow em **Actions → Production readiness → Run workflow**, no branch padrão
+do repositório, e marque `deploy_production`. O job de deploy depende do status
+verde e usa o ambiente `production`; configure esse ambiente no GitHub com
+branch permitido restrito ao branch padrão e aprovação obrigatória de um
+responsável. O deploy envia apenas os arquivos versionados do commit validado,
+preserva o `.env` da VPS, reconstrói a imagem, aplica migrations e verifica
+`https://api.monitorame.tech/health`.
+
+Configure estas variáveis no ambiente `production` do GitHub:
+
+| Nome | Valor |
+| --- | --- |
+| `VPS_HOST` | IP ou hostname SSH da VPS. |
+| `VPS_USER` | Usuário autorizado a gravar em `/docker/monitorame-pipeline-api` e executar Docker Compose. |
+| `VPS_HOST_KEY_FINGERPRINT` | Impressão digital ED25519 da VPS, verificada pelo administrador. |
+
+Adicione `VPS_SSH_PRIVATE_KEY` como segredo do ambiente. A chave pública
+correspondente precisa estar autorizada na VPS. Use uma chave dedicada ao
+workflow e mantenha a aprovação do ambiente habilitada. A verificação da
+impressão digital interrompe o deploy se a identidade SSH da VPS mudar.
+
+Nesta VPS, os valores verificados são `VPS_HOST=179.199.157.134`,
+`VPS_USER=root` e
+`VPS_HOST_KEY_FINGERPRINT=SHA256:tC/f5ZMnRdIqlEV1r4W2ifMbmO08oZs9Mxst6EH3cC8`.
+Se a VPS ou sua chave de host mudar, atualize as variáveis somente depois de
+verificar a nova impressão digital pelo console Hostinger.
+
+O workflow envia o checkout do GitHub Actions para a VPS; ele não usa a deploy
+key somente leitura VPS → GitHub. Para o CD, gere outro par de chaves dedicado
+GitHub Actions → VPS, cadastre a pública na VPS e guarde a privada em
+`VPS_SSH_PRIVATE_KEY`. Nunca versione nem envie a chave privada pelo chat.
+
+Para impedir merge de alterações que falham no CI, crie uma ruleset para o
+branch padrão em **Settings → Rules → Rulesets** e marque `Production readiness`
+como status check obrigatório. O workflow não adiciona essa proteção às
+configurações do GitHub automaticamente.
+
 ## Execução local
 
 ```bash
