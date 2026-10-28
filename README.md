@@ -172,6 +172,72 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
 
+### Ingestão manual de empenhos e anulações
+
+O comando `tce-ingestir` coleta as notas de empenho e suas anulações para uma
+competência e um município, normaliza os registros e publica o lote validado no
+banco principal. Execute-o pelo serviço `api` do Compose:
+
+```bash
+docker compose run --rm api tce-ingestir --competencia 2025-01 --codigo-municipio 010
+```
+
+Para coletar o ano inteiro em todos os 184 municípios do Ceará, use `--ano`
+com quatro dígitos:
+
+```bash
+docker compose run --rm api tce-ingestir --ano 2025 --todos-municipios
+```
+
+A opção de todos os municípios valida o catálogo do TCE contra o IBGE antes de
+iniciar e executa no máximo duas coletas em paralelo. O comando imprime o
+resultado de cada município e um resumo final; retorna `0` se todos forem
+publicados em todas as competências, `2` se houver falhas ou rejeições e `1` se
+o catálogo não passar na validação. As competências são processadas em ordem,
+uma por vez; para o ano corrente, a coleta vai de janeiro até o mês atual.
+
+Para coletar o ano de apenas um município, informe o código ou deixe o padrão
+configurado (`010` no `.env.example`):
+
+```bash
+docker compose run --rm api tce-ingestir --ano 2025 --codigo-municipio 010
+```
+
+`--ano` usa `YYYY`; para uma única competência ainda é possível usar
+`--competencia YYYY-MM`. O comando imprime resumos JSON com status, identificador
+do lote e quantidades coletadas. Código de saída `0` indica publicação completa;
+`1` indica falha de catálogo, coleta ou persistência; `2` indica falha ou rejeição
+de um ou mais lotes.
+
+### Enriquecimento cadastral de empenhos publicados
+
+Para enriquecer os fornecedores de empenhos já publicados em 2025 sem repetir
+a coleta no TCE, execute:
+
+```bash
+docker compose run --rm api tce-enriquecer --ano 2025
+```
+
+Por padrão, percorre todos os municípios da UF configurada em `UF_PADRAO`; use
+`--codigo-municipio 010` para limitar a um município. O comando busca CNPJs
+distintos dos lotes publicados, usa o cache cadastral existente e consulta o
+OpenCNPJ somente em cache miss ou expiração. O intervalo padrão entre consultas
+é 0,3 segundo e pode ser alterado com `--intervalo-segundos`. O resumo informa
+quantos fornecedores tiveram porte identificado. `2` indica CNPJs sem porte
+cadastral disponível; `1` indica falha operacional.
+
+Para executar a ingestão seguida do enriquecimento, use:
+
+```bash
+docker compose run --rm api tce-ingestir-enriquecer --ano 2025
+```
+
+Esse comando processa todos os municípios por padrão e aceita
+`--codigo-municipio 010` para limitar a um município. Se a ingestão terminar
+com falhas parciais, o enriquecimento ainda será executado sobre os lotes
+publicados, e o código final indicará a falha parcial. Reconstrua a imagem com
+`docker compose build api` antes de usar os novos comandos.
+
 ### Overview municipal por porte
 
 Por padrão, `GET /pipeline/tce/overview/municipal` considera e discrimina MEI,
