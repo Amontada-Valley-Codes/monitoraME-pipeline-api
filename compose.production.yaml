@@ -1,0 +1,70 @@
+name: monitorame-pipeline-api
+
+x-app-service: &app-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ${APP_IMAGE:-monitorame-pipeline-api:production}
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:?configure POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?configure POSTGRES_DB in .env}
+    LOG_DATABASE_URL: postgresql://${POSTGRES_USER:?configure POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?configure POSTGRES_DB in .env}
+    DATABASE_SSLMODE: disable
+    LOG_DATABASE_SSLMODE: disable
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?configure POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?configure POSTGRES_DB in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  migrate:
+    <<: *app-service
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app-service
+    init: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.monitorame-pipeline-api.rule: "Host(`api.monitorame.tech`)"
+      traefik.http.routers.monitorame-pipeline-api.entrypoints: websecure
+      traefik.http.routers.monitorame-pipeline-api.tls: "true"
+      traefik.http.routers.monitorame-pipeline-api.tls.certresolver: letsencrypt
+      traefik.http.services.monitorame-pipeline-api.loadbalancer.server.port: "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    name: monitorame_pipeline_api_postgres_data

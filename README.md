@@ -107,6 +107,77 @@ serviço `api`. A documentação OpenAPI fica em `http://127.0.0.1:8000/docs`.
 
 O PostgreSQL usa o volume nomeado `postgres_data`. Os dados persistem ao reiniciar ou recriar o container. Preserve os backups; `docker compose down -v` remove os volumes.
 
+### Deploy na VPS com Traefik
+
+Use `compose.production.yaml` para publicar a API em `https://api.monitorame.tech`
+atrás do Traefik já instalado na VPS. O PostgreSQL permanece apenas na rede
+interna do Compose e seus dados ficam no volume nomeado
+`monitorame_pipeline_api_postgres_data`.
+
+Crie um `.env` privado a partir de `.env.example`, gere uma senha forte para
+`POSTGRES_PASSWORD` (por exemplo, `openssl rand -hex 32`) e configure também
+`POSTGRES_USER` e `POSTGRES_DB`. Não reutilize os valores de desenvolvimento do
+arquivo de exemplo nem versione o `.env`. O DNS do domínio deve apontar para a
+VPS e as portas 80 e 443 devem estar liberadas para o Traefik.
+
+Na pasta do repositório, aplique as migrations e inicie os serviços:
+
+```bash
+docker compose -f compose.production.yaml up -d --build
+docker compose -f compose.production.yaml ps
+```
+
+O serviço `api` só inicia após o serviço `migrate` concluir com sucesso. Para
+atualizar o código, faça backup do banco, atualize a imagem e execute novamente
+o comando `up -d --build`. O volume do PostgreSQL permanece associado ao nome
+estável acima; não use `docker compose down -v` em produção.
+
+### CI/CD e aprovação de produção
+
+O workflow `Production readiness` roda em cada push e pull request. Ele compila
+os módulos Python, aplica as duas trilhas de migrations em um PostgreSQL
+temporário, executa `unittest`, valida `compose.production.yaml` e constrói a
+imagem Docker. O status **Production readiness** só fica verde quando todas
+essas etapas passam.
+
+O deploy não é automático em pushes. Para promover uma versão, execute o
+workflow em **Actions → Production readiness → Run workflow**, no branch padrão
+do repositório, e marque `deploy_production`. O job de deploy depende do status
+verde e usa o ambiente `production`; configure esse ambiente no GitHub com
+branch permitido restrito ao branch padrão e aprovação obrigatória de um
+responsável. O deploy envia apenas os arquivos versionados do commit validado,
+preserva o `.env` da VPS, reconstrói a imagem, aplica migrations e verifica
+`https://api.monitorame.tech/health`.
+
+Configure estas variáveis no ambiente `production` do GitHub:
+
+| Nome | Valor |
+| --- | --- |
+| `VPS_HOST` | IP ou hostname SSH da VPS. |
+| `VPS_USER` | Usuário autorizado a gravar em `/docker/monitorame-pipeline-api` e executar Docker Compose. |
+| `VPS_HOST_KEY_FINGERPRINT` | Impressão digital ED25519 da VPS, verificada pelo administrador. |
+
+Adicione `VPS_SSH_PRIVATE_KEY` como segredo do ambiente. A chave pública
+correspondente precisa estar autorizada na VPS. Use uma chave dedicada ao
+workflow e mantenha a aprovação do ambiente habilitada. A verificação da
+impressão digital interrompe o deploy se a identidade SSH da VPS mudar.
+
+Nesta VPS, os valores verificados são `VPS_HOST=179.199.157.134`,
+`VPS_USER=root` e
+`VPS_HOST_KEY_FINGERPRINT=SHA256:tC/f5ZMnRdIqlEV1r4W2ifMbmO08oZs9Mxst6EH3cC8`.
+Se a VPS ou sua chave de host mudar, atualize as variáveis somente depois de
+verificar a nova impressão digital pelo console Hostinger.
+
+O workflow envia o checkout do GitHub Actions para a VPS; ele não usa a deploy
+key somente leitura VPS → GitHub. Para o CD, gere outro par de chaves dedicado
+GitHub Actions → VPS, cadastre a pública na VPS e guarde a privada em
+`VPS_SSH_PRIVATE_KEY`. Nunca versione nem envie a chave privada pelo chat.
+
+Para impedir merge de alterações que falham no CI, crie uma ruleset para o
+branch padrão em **Settings → Rules → Rulesets** e marque `Production readiness`
+como status check obrigatório. O workflow não adiciona essa proteção às
+configurações do GitHub automaticamente.
+
 ## Execução local
 
 ```bash
@@ -171,6 +242,72 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 - `GET /pipeline/tce/analise-territorial`: calcula retenção local, destino dos recursos, concentração e rankings usando somente dados publicados no banco local.
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
+
+### Ingestão manual de empenhos e anulações
+
+O comando `tce-ingestir` coleta as notas de empenho e suas anulações para uma
+competência e um município, normaliza os registros e publica o lote validado no
+banco principal. Execute-o pelo serviço `api` do Compose:
+
+```bash
+docker compose run --rm api tce-ingestir --competencia 2025-01 --codigo-municipio 010
+```
+
+Para coletar o ano inteiro em todos os 184 municípios do Ceará, use `--ano`
+com quatro dígitos:
+
+```bash
+docker compose run --rm api tce-ingestir --ano 2025 --todos-municipios
+```
+
+A opção de todos os municípios valida o catálogo do TCE contra o IBGE antes de
+iniciar e executa no máximo duas coletas em paralelo. O comando imprime o
+resultado de cada município e um resumo final; retorna `0` se todos forem
+publicados em todas as competências, `2` se houver falhas ou rejeições e `1` se
+o catálogo não passar na validação. As competências são processadas em ordem,
+uma por vez; para o ano corrente, a coleta vai de janeiro até o mês atual.
+
+Para coletar o ano de apenas um município, informe o código ou deixe o padrão
+configurado (`010` no `.env.example`):
+
+```bash
+docker compose run --rm api tce-ingestir --ano 2025 --codigo-municipio 010
+```
+
+`--ano` usa `YYYY`; para uma única competência ainda é possível usar
+`--competencia YYYY-MM`. O comando imprime resumos JSON com status, identificador
+do lote e quantidades coletadas. Código de saída `0` indica publicação completa;
+`1` indica falha de catálogo, coleta ou persistência; `2` indica falha ou rejeição
+de um ou mais lotes.
+
+### Enriquecimento cadastral de empenhos publicados
+
+Para enriquecer os fornecedores de empenhos já publicados em 2025 sem repetir
+a coleta no TCE, execute:
+
+```bash
+docker compose run --rm api tce-enriquecer --ano 2025
+```
+
+Por padrão, percorre todos os municípios da UF configurada em `UF_PADRAO`; use
+`--codigo-municipio 010` para limitar a um município. O comando busca CNPJs
+distintos dos lotes publicados, usa o cache cadastral existente e consulta o
+OpenCNPJ somente em cache miss ou expiração. O intervalo padrão entre consultas
+é 0,3 segundo e pode ser alterado com `--intervalo-segundos`. O resumo informa
+quantos fornecedores tiveram porte identificado. `2` indica CNPJs sem porte
+cadastral disponível; `1` indica falha operacional.
+
+Para executar a ingestão seguida do enriquecimento, use:
+
+```bash
+docker compose run --rm api tce-ingestir-enriquecer --ano 2025
+```
+
+Esse comando processa todos os municípios por padrão e aceita
+`--codigo-municipio 010` para limitar a um município. Se a ingestão terminar
+com falhas parciais, o enriquecimento ainda será executado sobre os lotes
+publicados, e o código final indicará a falha parcial. Reconstrua a imagem com
+`docker compose build api` antes de usar os novos comandos.
 
 ### Overview municipal por porte
 

@@ -21,9 +21,16 @@ COPY --chown=app:app app ./app
 COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app docker/entrypoint.sh ./docker/entrypoint.sh
 
-RUN chmod +x ./docker/entrypoint.sh
+RUN sed -i 's/\r$//' ./docker/entrypoint.sh \
+    && chmod +x ./docker/entrypoint.sh
 RUN chmod +x ./scripts/pncp \
-    && ln -s /app/scripts/pncp /usr/local/bin/pncp
+    && ln -s /app/scripts/pncp /usr/local/bin/pncp \
+    && chmod +x ./scripts/ingestir_tce_despesas.py \
+    && ln -s /app/scripts/ingestir_tce_despesas.py /usr/local/bin/tce-ingestir \
+    && chmod +x ./scripts/enriquecer_tce_fornecedores.py \
+    && ln -s /app/scripts/enriquecer_tce_fornecedores.py /usr/local/bin/tce-enriquecer \
+    && chmod +x ./scripts/ingestir_enriquecer_tce.py \
+    && ln -s /app/scripts/ingestir_enriquecer_tce.py /usr/local/bin/tce-ingestir-enriquecer
 
 USER app 
 

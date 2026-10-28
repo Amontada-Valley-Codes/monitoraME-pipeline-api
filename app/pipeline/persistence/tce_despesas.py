@@ -459,6 +459,51 @@ def listar_empenhos_liquidos_publicados(
     ]
 
 
+def listar_cnpjs_fornecedores_publicados(
+    *,
+    data_inicial: date,
+    data_final: date,
+    codigo_municipio_tce: str | None = None,
+    uf: str | None = None,
+) -> list[str]:
+    """Lista CNPJs distintos dos empenhos publicados no período informado."""
+    if data_inicial > data_final:
+        raise ValueError("data_inicial deve ser menor ou igual a data_final.")
+
+    database.init_db()
+    consulta = (
+        select(TceEmpenho.cnpj_fornecedor)
+        .distinct()
+        .join(TceDespesaIngestionRun, TceEmpenho.run_id == TceDespesaIngestionRun.id)
+        .join(
+            TceMunicipio,
+            TceMunicipio.codigo_municipio_tce == TceDespesaIngestionRun.codigo_municipio_tce,
+        )
+        .join(
+            IbgeMunicipio,
+            IbgeMunicipio.codigo_municipio == TceMunicipio.codigo_municipio_ibge,
+        )
+        .where(
+            TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            TceEmpenho.natureza_considerada.is_(True),
+            TceEmpenho.data_empenho >= data_inicial,
+            TceEmpenho.data_empenho <= data_final,
+            TceEmpenho.cnpj_fornecedor.is_not(None),
+        )
+    )
+    if codigo_municipio_tce is not None:
+        consulta = consulta.where(
+            TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce
+        )
+    if uf is not None:
+        consulta = consulta.where(IbgeMunicipio.uf == uf.upper())
+    consulta = consulta.order_by(TceEmpenho.cnpj_fornecedor)
+
+    with orm.main_session() as session:
+        cnpjs = session.scalars(consulta).all()
+    return [str(cnpj) for cnpj in cnpjs if cnpj]
+
+
 def listar_publicacoes_competencias_estado(
     *,
     competencias: Iterable[str],
@@ -948,6 +993,7 @@ __all__ = [
     "LoteTceValidado",
     "ResultadoPublicacaoTce",
     "listar_anulacoes_publicadas_por_empenho",
+    "listar_cnpjs_fornecedores_publicados",
     "listar_empenhos_liquidos_publicados",
     "listar_empenhos_publicados_paginados",
     "listar_publicacoes_competencias",
