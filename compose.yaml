@@ -62,5 +62,23 @@ services:
       retries: 5
       start_period: 10s
 
+  pncp-worker-coleta:
+    <<: *app-service
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "coleta"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  pncp-worker-normalizacao:
+    <<: *app-service
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "normalizacao"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   postgres_data:

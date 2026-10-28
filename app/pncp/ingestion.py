@@ -134,9 +134,11 @@ class ClientePncp:
         return PaginaContratacoes(itens, total)
 
 
-def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], tamanho_pagina: int = 100, prioridade: int = 70) -> list[NovoJob]:
+def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], tamanho_pagina: int = 50, prioridade: int = 70) -> list[NovoJob]:
     if inicio.tzinfo is None or fim.tzinfo is None or fim < inicio:
         raise ValueError("janela com timezone e ordem valida e obrigatoria")
+    if not 1 <= tamanho_pagina <= 50:
+        raise ValueError("tamanho_pagina deve estar entre 1 e 50")
     jobs: list[NovoJob] = []
     for modalidade in modalidades:
         scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
@@ -144,7 +146,29 @@ def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int
     return jobs
 
 
-def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 100) -> int:
+def agendar_backfill_anual(*, ano: int, modalidades: list[int], agora: datetime | None = None, tamanho_janela_dias: int = 7, tamanho_pagina: int = 50) -> list[NovoJob]:
+    """Agenda o ano por janelas curtas para limitar páginas por execução."""
+    if ano < 2000 or tamanho_janela_dias < 1 or not modalidades or tamanho_pagina < 1 or tamanho_pagina > 50:
+        raise ValueError("ano, janela e tamanho de página inválidos")
+    atual = agora or datetime.now(timezone.utc)
+    if atual.tzinfo is None:
+        raise ValueError("agora deve incluir timezone")
+    inicio_ano = datetime(ano, 1, 1, tzinfo=atual.tzinfo)
+    fim_ano = min(datetime(ano + 1, 1, 1, tzinfo=atual.tzinfo), atual)
+    if fim_ano <= inicio_ano:
+        return []
+    jobs: list[NovoJob] = []
+    inicio = inicio_ano
+    while inicio < fim_ano:
+        fim = min(inicio + timedelta(days=tamanho_janela_dias) - timedelta(seconds=1), fim_ano)
+        for modalidade in modalidades:
+            scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
+            jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
+        inicio = fim + timedelta(seconds=1)
+    return jobs
+
+
+def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:
     """Persiste todas as paginas; qualquer erro aborta o job sem confirmar janela."""
     if job.source != FONTE or job.entity_type != TIPO or job.window_start is None or job.window_end is None:
         raise ValueError("job nao representa uma janela de publicacao PNCP")

@@ -72,7 +72,7 @@ normalização vão a `QUARANTINED`; falhas HTTP transitórias seguem `RETRY_WAI
 
 O coletor usa `GET /v1/contratacoes/publicacao` com `dataInicial` e
 `dataFinal` em `AAAAMMDD`, `codigoModalidadeContratacao`, `pagina` e
-`tamanhoPagina` (limitado a 500). Uma janela e criada por modalidade. Cada
+`tamanhoPagina` (limitado pelo cliente local a 50). Uma janela e criada por modalidade. Cada
 registro valido vai para RAW com `run_id=job:<id>:pagina:<n>`; portanto, uma
 falha na pagina seguinte preserva o trabalho anterior e o replay e idempotente.
 
@@ -80,6 +80,15 @@ Uma resposta 5xx, timeout, JSON invalido ou pagina vazia antes de
 `totalPaginas` encerra o job com falha; nunca e tratada como fim da janela. O
 job somente chega a `SUCCEEDED` depois que todas as paginas foram persistidas,
 logo esta etapa ainda nao confirma watermark algum.
+
+O comando `coletar-publicacao --ano AAAA` agenda um backfill persistente desde
+1º de janeiro até o momento da execução, em janelas semanais por modalidade.
+Cada janela pode ser acompanhada em `GET /pncp/cobertura/{ano}`; a rota informa
+contagens por estado e o status individual de cada janela/modalidade, além da
+fila de normalização associada às páginas coletadas. Os serviços Compose
+`pncp-worker-coleta` e `pncp-worker-normalizacao` processam jobs e retries
+continuamente. A API de consumo filtra por `ano_publicacao` (`dataPublicacaoPncp`)
+ou `ano_compra` (`anoCompra`) em parâmetros separados.
 
 ## Enriquecimento sob demanda
 

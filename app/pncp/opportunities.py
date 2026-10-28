@@ -18,6 +18,8 @@ def contrato_consumo(oportunidade: PncpOportunidade, enriquecimento: PncpEnrique
         "url_oficial": oportunidade.url_oficial, "orgao": oportunidade.orgao,
         "unidade": oportunidade.unidade, "objeto": oportunidade.objeto,
         "modalidade": oportunidade.modalidade, "situacao": oportunidade.situacao,
+        "data_publicacao": oportunidade.data_publicacao,
+        "ano_compra": oportunidade.ano_compra,
         "prazo_proposta_final": oportunidade.prazo_proposta_final,
         "atualizado_em": oportunidade.source_updated_at or oportunidade.normalized_at,
         "itens_disponiveis": bool(enriquecimento and enriquecimento.items_payload),

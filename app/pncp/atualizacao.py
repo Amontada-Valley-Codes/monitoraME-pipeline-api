@@ -32,7 +32,7 @@ def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_
     session.execute(insert(PncpContratacaoAtual).values(source="PNCP", external_id=external_id, payload_hash=payload_hash, source_updated_at=source_updated_at, payload=item).on_conflict_do_update(index_elements=["source", "external_id"], set_={"payload_hash": payload_hash, "source_updated_at": source_updated_at, "payload": item, "updated_at": text("now()")}))
     return "NOVO" if anterior is None else "ALTERADO"
 
-def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 100) -> dict[str, int]:
+def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> dict[str, int]:
     if job.window_start is None or job.window_end is None: raise ValueError("janela obrigatoria")
     modalidade = int(job.scope_key.rsplit(":", 1)[1]); pagina = job.page or 1; totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
     while True:

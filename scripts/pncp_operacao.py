@@ -20,38 +20,52 @@ from sqlalchemy import text
 
 from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
-from app.pncp.ingestion import ClientePncp, agendar_publicacao, coletar_publicacao
+from app.pncp.ingestion import ClientePncp, agendar_backfill_anual, agendar_publicacao, coletar_publicacao
 from app.pncp.jobs import WorkerPncp, agendar_job, replay_jobs
 from app.pncp.normalization import normalizar_job
 
 
-def _worker_coleta(tamanho_pagina: int) -> WorkerPncp:
+def _worker_coleta(tamanho_pagina: int, job_type: str = "incremental") -> WorkerPncp:
     cliente = ClientePncp()
 
     def executar(job: Any) -> None:
-        if job.scope_key.startswith("publicacao:"):
+        if job.scope_key.startswith(("publicacao:", "backfill:")):
             coletar_publicacao(job, cliente, tamanho_pagina=tamanho_pagina)
         elif job.scope_key.startswith("atualizacao:"):
             coletar_atualizacao(job, cliente, tamanho_pagina=tamanho_pagina)
         else:
             raise ValueError(f"fluxo incremental desconhecido: {job.scope_key}")
 
-    return WorkerPncp("pncp-operacao-coleta", executar, job_type="incremental")
+    return WorkerPncp("pncp-operacao-coleta", executar, job_type=job_type)
 
 
 def coletar(args: argparse.Namespace) -> int:
+    if args.ano is not None and args.fluxo != "publicacao":
+        raise ValueError("Backfill anual disponível apenas para publicações.")
     fim = datetime.now(timezone.utc)
     inicio = fim - timedelta(days=args.dias)
     modalidades = args.modalidade or [6]
     if args.fluxo == "publicacao":
-        jobs = agendar_publicacao(inicio=inicio, fim=fim, modalidades=modalidades, tamanho_pagina=args.tamanho_pagina, prioridade=100)
+        if args.ano is not None:
+            if args.fluxo != "publicacao":
+                raise ValueError("backfill anual está disponível apenas para publicacao")
+            jobs = agendar_backfill_anual(ano=args.ano, modalidades=modalidades, tamanho_janela_dias=args.janela_dias, tamanho_pagina=args.tamanho_pagina)
+        else:
+            jobs = agendar_publicacao(inicio=inicio, fim=fim, modalidades=modalidades, tamanho_pagina=args.tamanho_pagina, prioridade=100)
     else:
         jobs = agendar_atualizacao(inicio=inicio, fim=fim, modalidades=modalidades)
     ids = [agendar_job(job)[0] for job in jobs]
-    worker = _worker_coleta(args.tamanho_pagina)
+    worker = _worker_coleta(args.tamanho_pagina, "backfill" if args.ano is not None else "incremental")
     executados = sum(worker.executar_uma_vez() for _ in jobs)
-    print({"fluxo": args.fluxo, "jobs": ids, "executados": executados, "modalidades": modalidades})
-    return 0 if executados == len(jobs) else 2
+    with orm.main_session() as session:
+        estados = session.execute(
+            text("SELECT status, count(*) AS total FROM ingestion_jobs WHERE id = ANY(:ids) GROUP BY status"),
+            {"ids": ids},
+        ).mappings().all() if ids else []
+    contagens = {linha["status"]: int(linha["total"]) for linha in estados}
+    concluidos = contagens.get("SUCCEEDED", 0)
+    print({"fluxo": args.fluxo, "jobs": ids, "tentativas": executados, "estados": contagens, "modalidades": modalidades})
+    return 0 if not ids or concluidos == len(ids) else 2
 
 
 def normalizar(args: argparse.Namespace) -> int:
@@ -86,7 +100,9 @@ def main() -> int:
     for comando in (coleta, atualizacao):
         comando.add_argument("--dias", type=int, default=1)
         comando.add_argument("--modalidade", type=int, action="append", default=[])
-        comando.add_argument("--tamanho-pagina", type=int, default=100)
+        comando.add_argument("--tamanho-pagina", type=int, default=50)
+        comando.add_argument("--ano", type=int, help="Agenda backfill de publicações do ano informado")
+        comando.add_argument("--janela-dias", type=int, default=7)
     normalizador = comandos.add_parser("normalizar")
     normalizador.add_argument("--limite", type=int, default=100)
     normalizador.set_defaults(func=normalizar)
