@@ -107,6 +107,31 @@ serviço `api`. A documentação OpenAPI fica em `http://127.0.0.1:8000/docs`.
 
 O PostgreSQL usa o volume nomeado `postgres_data`. Os dados persistem ao reiniciar ou recriar o container. Preserve os backups; `docker compose down -v` remove os volumes.
 
+### Deploy na VPS com Traefik
+
+Use `compose.production.yaml` para publicar a API em `https://api.monitorame.tech`
+atrás do Traefik já instalado na VPS. O PostgreSQL permanece apenas na rede
+interna do Compose e seus dados ficam no volume nomeado
+`monitorame_pipeline_api_postgres_data`.
+
+Crie um `.env` privado a partir de `.env.example`, gere uma senha forte para
+`POSTGRES_PASSWORD` (por exemplo, `openssl rand -hex 32`) e configure também
+`POSTGRES_USER` e `POSTGRES_DB`. Não reutilize os valores de desenvolvimento do
+arquivo de exemplo nem versione o `.env`. O DNS do domínio deve apontar para a
+VPS e as portas 80 e 443 devem estar liberadas para o Traefik.
+
+Na pasta do repositório, aplique as migrations e inicie os serviços:
+
+```bash
+docker compose -f compose.production.yaml up -d --build
+docker compose -f compose.production.yaml ps
+```
+
+O serviço `api` só inicia após o serviço `migrate` concluir com sucesso. Para
+atualizar o código, faça backup do banco, atualize a imagem e execute novamente
+o comando `up -d --build`. O volume do PostgreSQL permanece associado ao nome
+estável acima; não use `docker compose down -v` em produção.
+
 ## Execução local
 
 ```bash
