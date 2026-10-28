@@ -153,4 +153,25 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            "cd /docker/monitorame-pipeline-api && test -s .env && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml config -q && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml up -d --build && curl -fsS --retry 10 --retry-delay 5 https://api.monitorame.tech/health"
+            "cd /docker/monitorame-pipeline-api && test -s .env && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml config -q && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml up -d --build && bash -s" <<'REMOTE'
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          for attempt in {1..12}; do
+            status="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --connect-timeout 5 --max-time 15 https://api.monitorame.tech/health || true)"
+            if [ "$status" = "200" ]; then
+              cat "$response_file"
+              exit 0
+            fi
+
+            echo "Health endpoint returned HTTP ${status:-no response} (attempt ${attempt}/12)." >&2
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
+          done
+
+          echo "Health check did not return HTTP 200 after 12 attempts." >&2
+          cat "$response_file" >&2
+          exit 1
+          REMOTE
