@@ -676,6 +676,10 @@ def _consultar_overview_tce_estado(
 
     base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
     overview = kpis.calcular_overview_me_mei(base, incluir_mei=False)
+    ranking_municipios_me = kpis.calcular_ranking_municipios_overview_estadual(
+        base,
+        total_me_centavos=int(overview["kpis"]["total_compras_ME_centavos"]),
+    )
     competencias_publicadas = sorted(
         {str(item["competencia"]) for item in publicacoes}
     )
@@ -748,5 +752,6 @@ def _consultar_overview_tce_estado(
             "regra_geografica": "ME",
         },
         "unidade_monetaria": "CENTAVOS",
+        "ranking_municipios_me": ranking_municipios_me,
         **overview,
     }

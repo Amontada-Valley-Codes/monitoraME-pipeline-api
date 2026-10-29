@@ -166,6 +166,7 @@ def tce_kpi_portes_por_mes(
     description=(
         "Sem municipio, consolida os lotes publicados de todo o Ceara usando o banco local. "
         "O recorte estadual considera somente ME; MEI integra demais portes. "
+        "Inclui ranking dos municipios pelo valor final de despesas de ME. "
         "Os valores retornados sao finais. Para valores pagos use /tce/pagamentos/overview."
     ),
     response_description=(
