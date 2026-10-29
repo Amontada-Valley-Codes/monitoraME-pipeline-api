@@ -7,8 +7,9 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from app.api.errors import resposta_erro_validacao, usa_erro_padronizado
+from fastapi.responses import JSONResponse, Response
+from app.api.errors import obter_request_id, resposta_erro_validacao, usa_erro_padronizado
+from app.api import response_cache
 from app.core import database, log_database
 from app.core.logging import (
     configurar_logging,
@@ -152,8 +153,42 @@ async def validation_exception_handler(
 @app.middleware("http")
 async def registrar_requisicao_http(request: Request, call_next):
     inicio = perf_counter()
+    corpo_cache = b""
+    cache_ativo = response_cache.rota_tem_cache(request)
+    resposta_do_cache = False
     try:
-        response = await call_next(request)
+        if cache_ativo:
+            corpo_cache = await request.body()
+            corpo_enviado = False
+
+            async def receber_corpo_reproduzido():
+                nonlocal corpo_enviado
+                if not corpo_enviado:
+                    corpo_enviado = True
+                    return {
+                        "type": "http.request",
+                        "body": corpo_cache,
+                        "more_body": False,
+                    }
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            request._receive = receber_corpo_reproduzido
+            cacheado = await response_cache.buscar_resposta(request, corpo_cache)
+            if cacheado is not None:
+                resposta_do_cache = True
+                response = JSONResponse(
+                    content=cacheado["body"],
+                    status_code=cacheado["status"],
+                    headers={
+                        "Content-Type": cacheado["content_type"],
+                        "X-Cache": "HIT",
+                        "X-Request-ID": obter_request_id(request),
+                    },
+                )
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
     except Exception as error:
         logger.exception(
             "Requisição HTTP falhou antes de gerar resposta",
@@ -166,6 +201,28 @@ async def registrar_requisicao_http(request: Request, call_next):
         )
         raise
     else:
+        if cache_ativo and not resposta_do_cache:
+            response.headers["X-Cache"] = "MISS"
+            content_type = response.headers.get("content-type", "")
+            if 200 <= response.status_code < 300 and "json" in content_type.lower():
+                corpo_resposta = b"".join(
+                    [parte async for parte in response.body_iterator]
+                )
+                headers = dict(response.headers)
+                headers.pop("content-length", None)
+                headers["X-Cache"] = "MISS"
+                response = Response(
+                    content=corpo_resposta,
+                    status_code=response.status_code,
+                    headers=headers,
+                )
+                await response_cache.salvar_resposta(
+                    request,
+                    corpo_cache,
+                    status=response.status_code,
+                    content_type=content_type,
+                    resposta=corpo_resposta,
+                )
         if request.url.path == "/health" and response.status_code < 400:
             nivel = logging.DEBUG
         else:
