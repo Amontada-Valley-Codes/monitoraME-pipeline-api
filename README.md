@@ -65,6 +65,7 @@ Variáveis usadas pela aplicação:
 | `LOG_LEVEL` | Não | Nível dos logs operacionais (`DEBUG`, `INFO`, `WARNING`, `ERROR`); padrão `INFO`. |
 | `DATABASE_SSLMODE` | Não | Modo SSL do banco principal; use `disable` no PostgreSQL local. |
 | `LOG_DATABASE_SSLMODE` | Não | Modo SSL do banco de logs; use `disable` localmente. |
+| `API_RESPONSE_CACHE_TTL_SECONDS` | Não | Tempo em segundos de validade do cache JSON das consultas; padrão `3600`. |
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
@@ -93,6 +94,13 @@ Os dois ambientes Alembic continuam isolados pelas tabelas de versão
 As credenciais e a porta podem ser alteradas pelas variáveis `POSTGRES_*` do
 `.env`. Se forem alteradas, ajuste também `DATABASE_URL` e
 `LOG_DATABASE_URL`.
+
+As respostas JSON de sucesso das rotas `/pipeline/*` e `/pncp/*` são
+armazenadas na tabela `api_response_cache`, no banco principal. A chave considera
+método, caminho, query string e corpo da requisição; as consultas retornam
+`X-Cache: HIT` quando atendidas pelo cache e `X-Cache: MISS` quando calculadas.
+Erros e rotas de saúde não são armazenados. O TTL padrão é de uma hora e pode
+ser alterado por `API_RESPONSE_CACHE_TTL_SECONDS`.
 
 Inicie a aplicação completa e confira seu estado:
 
