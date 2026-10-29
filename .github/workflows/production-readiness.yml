@@ -99,7 +99,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment:
       name: production
-      url: https://api.monitorame.tech
+      url: https://pipeline.monitorame.tech
     env:
       VPS_HOST: ${{ vars.VPS_HOST }}
       VPS_USER: ${{ vars.VPS_USER }}

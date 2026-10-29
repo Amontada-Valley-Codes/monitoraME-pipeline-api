@@ -109,7 +109,7 @@ O PostgreSQL usa o volume nomeado `postgres_data`. Os dados persistem ao reinici
 
 ### Deploy na VPS e acesso ao pipeline
 
-O pipeline fica acessível por `https://api.monitorame.tech`, roteado pelo
+O pipeline fica acessível por `https://pipeline.monitorame.tech`, roteado pelo
 Traefik para a porta interna `8000`. O PostgreSQL não publica porta no host e os
 dados ficam no volume nomeado `monitorame_pipeline_api_postgres_data`.
 
@@ -121,8 +121,9 @@ caminhos.
 Crie um `.env` privado a partir de `.env.example`, gere uma senha forte para
 `POSTGRES_PASSWORD` (por exemplo, `openssl rand -hex 32`) e configure também
 `POSTGRES_USER` e `POSTGRES_DB`. Não reutilize os valores de desenvolvimento do
-arquivo de exemplo nem versione o `.env`. O DNS de `api.monitorame.tech` deve
-apontar para a VPS, com as portas 80 e 443 disponíveis para o Traefik.
+arquivo de exemplo nem versione o `.env`. O registro DNS `pipeline` de
+`monitorame.tech` deve apontar para a VPS, com as portas 80 e 443 disponíveis
+para o Traefik. `api.monitorame.tech` fica reservado ao backend.
 
 Na pasta do repositório, aplique as migrations e inicie os serviços:
 

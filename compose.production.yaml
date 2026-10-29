@@ -48,7 +48,7 @@ services:
     restart: unless-stopped
     labels:
       traefik.enable: "true"
-      traefik.http.routers.monitorame-pipeline-api.rule: "Host(`api.monitorame.tech`)"
+      traefik.http.routers.monitorame-pipeline-api.rule: "Host(`pipeline.monitorame.tech`)"
       traefik.http.routers.monitorame-pipeline-api.entrypoints: websecure
       traefik.http.routers.monitorame-pipeline-api.tls: "true"
       traefik.http.routers.monitorame-pipeline-api.tls.certresolver: letsencrypt

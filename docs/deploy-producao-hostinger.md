@@ -1,7 +1,7 @@
 # Tutorial: deploy do pipeline MonitoraME na VPS Hostinger
 
 Este tutorial prepara o pipeline analítico para ficar acessível em
-`https://api.monitorame.tech`, atrás do Traefik. O serviço também participa de
+`https://pipeline.monitorame.tech`, atrás do Traefik. O serviço também participa de
 uma rede Docker interna para chamadas do backend.
 
 ## O que você precisa
@@ -60,7 +60,7 @@ público.
 ## 5. Conecte o backend quando ele estiver hospedado
 
 O serviço `api` do pipeline possui uma rota HTTPS pública em
-`api.monitorame.tech` e também participa da rede Docker
+`pipeline.monitorame.tech` e também participa da rede Docker
 `monitorame_backend_internal`, com alias DNS `pipeline-api`. No Compose do
 backend, declare essa rede como externa e conecte somente o serviço backend a
 ela:
@@ -79,8 +79,10 @@ networks:
 ```
 
 O backend pode então chamar `http://pipeline-api:8000`; nessa chamada, envie o
-cabeçalho `Origin: https://api.monitorame.tech`. A porta `8000` não é publicada
-no host; o Traefik é o único caminho público até o container.
+cabeçalho `Origin: https://api.monitorame.tech`. O DNS do subdomínio `pipeline`
+deve apontar para o IP da VPS. `api.monitorame.tech` permanece reservado ao
+backend. A porta `8000` não é publicada no host; o Traefik é o único caminho
+público até o container.
 
 Configure as origens CORS permitidas como
 `https://api.monitorame.tech` e `https://monitorame.amontadavalley.com.br`.
