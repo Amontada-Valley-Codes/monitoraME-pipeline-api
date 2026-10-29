@@ -218,12 +218,10 @@ def listar_fornecedores_publicados_paginados(
     )
     ordenacoes = {
         "supplier": nome,
-        "gross_value": valor_empenhado,
-        "cancelled_value": valor_anulado,
-        "net_value": valor_liquido,
-        "commitments_count": quantidade_empenhos,
-        "first_commitment": primeiro_empenho,
-        "last_commitment": ultimo_empenho,
+        "final_value": valor_liquido,
+        "expenses_count": quantidade_empenhos,
+        "first_expense": primeiro_empenho,
+        "last_expense": ultimo_empenho,
     }
     coluna = ordenacoes[ordenar_por]
     direcao = coluna.asc() if ordem == "asc" else coluna.desc()

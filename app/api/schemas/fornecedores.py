@@ -10,12 +10,10 @@ class SupplierDocumentType(StrEnum):
 
 class SupplierSortField(StrEnum):
     SUPPLIER = "supplier"
-    GROSS_VALUE = "gross_value"
-    CANCELLED_VALUE = "cancelled_value"
-    NET_VALUE = "net_value"
-    COMMITMENTS_COUNT = "commitments_count"
-    FIRST_COMMITMENT = "first_commitment"
-    LAST_COMMITMENT = "last_commitment"
+    FINAL_VALUE = "final_value"
+    EXPENSES_COUNT = "expenses_count"
+    FIRST_EXPENSE = "first_expense"
+    LAST_EXPENSE = "last_expense"
 
 
 __all__ = ["SupplierDocumentType", "SupplierSortField"]

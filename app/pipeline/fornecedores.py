@@ -77,15 +77,12 @@ def _item_fornecedor(registro: dict[str, Any]) -> dict[str, Any]:
         "cadastro_status": registro["cadastro_status"],
         "origens_no_recorte": registro["origens_no_recorte"],
         "valores": {
-            "valor_empenhado_centavos": registro["valor_empenhado_centavos"],
-            "valor_anulado_centavos": registro["valor_anulado_centavos"],
-            "valor_considerado_centavos": registro["valor_liquido_centavos"],
+            "valor_final_centavos": registro["valor_liquido_centavos"],
         },
-        "quantidade_empenhos": registro["quantidade_empenhos"],
-        "quantidade_anulacoes": registro["quantidade_anulacoes"],
+        "quantidade_despesas": registro["quantidade_empenhos"],
         "quantidade_municipios": registro["quantidade_municipios"],
-        "primeiro_empenho": registro["primeiro_empenho"],
-        "ultimo_empenho": registro["ultimo_empenho"],
+        "primeira_despesa": registro["primeiro_empenho"],
+        "ultima_despesa": registro["ultimo_empenho"],
     }
 
 
@@ -255,8 +252,6 @@ def obter_fornecedor(
             [{"field": "documento", "reason": "not_found", "value": documento}],
             status_code=404,
         )
-    bruto = int(registro["valor_empenhado_centavos"])
-    anulado = int(registro["valor_anulado_centavos"])
     liquido = int(registro["valor_liquido_centavos"])
     quantidade = int(registro["quantidade_empenhos"])
     total_recorte = int(registro["valor_total_recorte_centavos"])
@@ -271,13 +266,11 @@ def obter_fornecedor(
         por_elemento.append({
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
-            "valor_empenhado_centavos": int(item.get("valor_empenhado_centavos", 0)),
-            "valor_anulado_centavos": int(item.get("valor_anulado_centavos", 0)),
-            "valor_considerado_centavos": valor,
-            "quantidade_empenhos": int(item.get("quantidade_empenhos", 0)),
+            "valor_final_centavos": valor,
+            "quantidade_despesas": int(item.get("quantidade_empenhos", 0)),
             "percentual": (valor * 100 / liquido) if liquido else 0.0,
         })
-    path = f"/pipeline/tce/fornecedores/{tipo_documento}/{documento_normalizado}/empenhos"
+    path = f"/pipeline/tce/fornecedores/{tipo_documento}/{documento_normalizado}/despesas"
     return {
         "source": "TCE-CE",
         "data_source": "LOCAL_DATABASE",
@@ -304,27 +297,20 @@ def obter_fornecedor(
             "start_date": start_date,
             "end_date": end_date,
             "municipality_tce_code": municipality_tce_code,
-            "valor_empenhado_centavos": bruto,
-            "valor_anulado_centavos": anulado,
-            "valor_considerado_centavos": liquido,
-            "quantidade_empenhos": quantidade,
-            "quantidade_anulacoes": registro["quantidade_anulacoes"],
+            "valor_final_centavos": liquido,
+            "quantidade_despesas": quantidade,
             "quantidade_contratos": registro["quantidade_contratos"],
             "quantidade_licitacoes": registro["quantidade_licitacoes"],
             "quantidade_municipios": registro["quantidade_municipios"],
-            "valor_medio_por_empenho_centavos": liquido // quantidade if quantidade else 0,
-            "percentual_anulado": (anulado * 100 / bruto) if bruto else 0.0,
-            "primeiro_empenho": registro["primeiro_empenho"],
-            "ultimo_empenho": registro["ultimo_empenho"],
+            "primeira_despesa": registro["primeiro_empenho"],
+            "ultima_despesa": registro["ultimo_empenho"],
             "meses_com_movimento": registro["meses_com_movimento"],
         },
         "evolucao_mensal": [
             {
                 "competencia": item["competencia"],
-                "valor_empenhado_centavos": item["valor_empenhado_centavos"],
-                "valor_anulado_centavos": item["valor_anulado_centavos"],
-                "valor_considerado_centavos": item["valor_liquido_centavos"],
-                "quantidade_empenhos": item["quantidade_empenhos"],
+                "valor_final_centavos": item["valor_liquido_centavos"],
+                "quantidade_despesas": item["quantidade_empenhos"],
             }
             for item in registro["evolucao_mensal"]
         ],
@@ -334,7 +320,7 @@ def obter_fornecedor(
             "valor_fornecedor_centavos": liquido,
             "percentual": (liquido * 100 / total_recorte) if total_recorte else 0.0,
         },
-        "empenhos": {"total_items": quantidade, "path": path},
+        "despesas": {"total_items": quantidade, "path": path},
     }
 
 

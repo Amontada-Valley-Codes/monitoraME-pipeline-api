@@ -122,8 +122,8 @@ def tce_contratos(
     tags=["Indicadores TCE-CE"],
     summary="Calcula participação por porte empresarial por mês",
     description=(
-        "Atualiza as competências solicitadas e calcula quantidade, valor líquido "
-        "empenhado e percentual mensal de MEI, ME, EPP, demais e não identificados."
+        "Atualiza as competências solicitadas e calcula quantidade, valor final "
+        "das despesas e percentual mensal por porte empresarial."
     ),
     response_description=(
         "Objeto com `dados`, uma série mensal por porte contendo quantidade, valor "
@@ -162,12 +162,11 @@ def tce_kpi_portes_por_mes(
 @router.get(
     "/tce/overview",
     tags=["Indicadores TCE-CE"],
-    summary="Consulta o overview de empenhos de ME e MEI",
+    summary="Consulta o overview estadual de Microempresas (ME)",
     description=(
-        "Sem município, consolida os lotes publicados de todo o Ceará usando somente "
-        "o banco local. Com município, atualiza as competências solicitadas. Calcula "
-        "a participação de ME + MEI e restringe o detalhamento geográfico a ME e MEI. "
-        "A medida e empenho liquido; para valores pagos use /tce/pagamentos/overview."
+        "Sem municipio, consolida os lotes publicados de todo o Ceara usando o banco local. "
+        "O recorte estadual considera somente ME; MEI integra demais portes. "
+        "Os valores retornados sao finais. Para valores pagos use /tce/pagamentos/overview."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
@@ -344,18 +343,14 @@ def _erro_empenhos(
 
 
 @router.get(
-    "/tce/empenhos",
-    tags=["Empenhos TCE-CE"],
-    summary="Lista empenhos publicados armazenados",
+    "/tce/despesas",
+    tags=["Despesas TCE-CE"],
+    summary="Lista despesas publicadas armazenadas",
     description=(
-        "Lista e pagina empenhos dos sete elementos monitorados usando somente "
+        "Lista e pagina despesas dos sete elementos monitorados usando somente "
         "lotes publicados e fornecedores armazenados no banco local."
     ),
-    response_description=(
-        "Objeto com `items` de empenhos — fornecedor, município, elemento de despesa, "
-        "valores empenhado/anulado/líquido em centavos e anulações —, mais `pagination`, "
-        "`sorting` e `filters` aplicados."
-    ),
+    response_description=("Objeto com items de despesas, fornecedor, elemento e somente valor final em centavos, mais paginacao, ordenacao e filtros."),
     response_model=None,
 )
 def tce_empenhos(
@@ -371,7 +366,7 @@ def tce_empenhos(
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
-    sort_by: EmpenhoSortField = EmpenhoSortField.NET_VALUE,
+    sort_by: EmpenhoSortField = EmpenhoSortField.FINAL_VALUE,
     sort_order: SortOrder = SortOrder.DESC,
 ) -> dict[str, Any] | JSONResponse:
     request_id = obter_request_id(request)
@@ -400,28 +395,24 @@ def tce_empenhos(
 
 
 @router.get(
-    "/tce/empenhos/{chave_empenho}",
-    tags=["Empenhos TCE-CE"],
-    summary="Detalha um empenho publicado pela chave canonica",
+    "/tce/despesas/{chave_despesa}",
+    tags=["Despesas TCE-CE"],
+    summary="Detalha uma despesa publicada pela chave canonica",
     description=(
-        "Retorna dados do empenho, valor bruto, anulacoes e valor liquido sem "
-        "consultar fontes externas."
+        "Retorna os dados da despesa e seu valor final em centavos, sem consultar fontes externas."
     ),
-    response_description=(
-        "Objeto do empenho com fornecedor, município, valores em centavos, classificação "
-        "orçamentária, referências de contrato/licitação e contagens de empenhos e anulações."
-    ),
+    response_description=("Objeto da despesa com fornecedor, municipio, valor final em centavos, classificacao orcamentaria e referencias de contrato e licitacao."),
     response_model=None,
 )
 def tce_empenho_detalhe(
-    chave_empenho: str,
+    chave_despesa: str,
     request: Request,
     response: Response,
 ) -> dict[str, Any] | JSONResponse:
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return empenhos.obter_empenho(chave_empenho)
+        return empenhos.obter_empenho(chave_despesa)
     except Exception as error:
         return _erro_empenhos(
             error,
@@ -433,7 +424,7 @@ def tce_empenho_detalhe(
 @router.get(
     "/tce/fornecedores",
     tags=["Fornecedores TCE-CE"],
-    summary="Lista fornecedores presentes nos empenhos publicados",
+    summary="Lista fornecedores presentes nas despesas publicadas",
     description=(
         "Agrupa fornecedores e valores do recorte usando exclusivamente dados "
         "publicados e cadastros armazenados no banco local."
@@ -457,7 +448,7 @@ def tce_fornecedores(
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
-    sort_by: SupplierSortField = SupplierSortField.NET_VALUE,
+    sort_by: SupplierSortField = SupplierSortField.FINAL_VALUE,
     sort_order: SortOrder = SortOrder.DESC,
 ) -> dict[str, Any] | JSONResponse:
     request_id = obter_request_id(request)
@@ -535,9 +526,9 @@ def tce_fornecedor_detalhe(
 
 
 @router.get(
-    "/tce/fornecedores/{tipo_documento}/{documento}/empenhos",
+    "/tce/fornecedores/{tipo_documento}/{documento}/despesas",
     tags=["Fornecedores TCE-CE"],
-    summary="Lista os empenhos publicados de um fornecedor",
+    summary="Lista as despesas publicadas de um fornecedor",
     description=(
         "Pagina as notas consideradas para o fornecedor e recorte sem recalcular "
         "os graficos da rota de detalhe."
@@ -563,7 +554,7 @@ def tce_fornecedor_empenhos(
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
-    sort_by: EmpenhoSortField = EmpenhoSortField.NET_VALUE,
+    sort_by: EmpenhoSortField = EmpenhoSortField.FINAL_VALUE,
     sort_order: SortOrder = SortOrder.DESC,
 ) -> dict[str, Any] | JSONResponse:
     request_id = obter_request_id(request)
@@ -599,7 +590,7 @@ def tce_fornecedor_empenhos(
     summary="Analisa a distribuicao territorial das compras municipais",
     description=(
         "Calcula retencao local, destino dos recursos, portes, elementos, evolucao, "
-        "concentracao e ranking usando apenas empenhos publicados e cadastros locais."
+        "concentracao e ranking usando apenas despesas publicadas e cadastros locais."
     ),
     response_description=(
         "Objeto com município, cobertura, resumo financeiro em centavos, indicadores de "
