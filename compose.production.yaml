@@ -45,13 +45,11 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
-    labels:
-      traefik.enable: "true"
-      traefik.http.routers.monitorame-pipeline-api.rule: "Host(`api.monitorame.tech`)"
-      traefik.http.routers.monitorame-pipeline-api.entrypoints: websecure
-      traefik.http.routers.monitorame-pipeline-api.tls: "true"
-      traefik.http.routers.monitorame-pipeline-api.tls.certresolver: letsencrypt
-      traefik.http.services.monitorame-pipeline-api.loadbalancer.server.port: "8000"
+    networks:
+      default: {}
+      backend_internal:
+        aliases:
+          - pipeline-api
     healthcheck:
       test:
         [
@@ -68,3 +66,7 @@ services:
 volumes:
   postgres_data:
     name: monitorame_pipeline_api_postgres_data
+
+networks:
+  backend_internal:
+    name: monitorame_backend_internal
