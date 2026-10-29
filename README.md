@@ -286,6 +286,19 @@ OpenCNPJ somente em cache miss ou expiração. O intervalo padrão entre consult
 quantos fornecedores tiveram porte identificado. `2` indica CNPJs sem porte
 cadastral disponível; `1` indica falha operacional.
 
+Para enriquecer os fornecedores de todos os empenhos publicados, sem limitar
+por ano, use:
+
+```bash
+docker compose run --rm api tce-enriquecer --todos-disponiveis
+```
+
+O comando considera lotes atualmente `PUBLICADO`, todos os anos e municípios
+de `UF_PADRAO`; opcionalmente, `--codigo-municipio 010` restringe a um
+município. Ele consulta cada CNPJ distinto uma vez, reutiliza o cache cadastral
+e informa o progresso por lote. A operação pode levar mais tempo conforme a
+quantidade de fornecedores ainda sem cache válido.
+
 Para executar a ingestão seguida do enriquecimento, use:
 
 ```bash

@@ -461,13 +461,15 @@ def listar_empenhos_liquidos_publicados(
 
 def listar_cnpjs_fornecedores_publicados(
     *,
-    data_inicial: date,
-    data_final: date,
+    data_inicial: date | None = None,
+    data_final: date | None = None,
     codigo_municipio_tce: str | None = None,
     uf: str | None = None,
 ) -> list[str]:
-    """Lista CNPJs distintos dos empenhos publicados no período informado."""
-    if data_inicial > data_final:
+    """Lista CNPJs distintos dos empenhos publicados, opcionalmente por período."""
+    if (data_inicial is None) != (data_final is None):
+        raise ValueError("data_inicial e data_final devem ser informadas juntas.")
+    if data_inicial is not None and data_final is not None and data_inicial > data_final:
         raise ValueError("data_inicial deve ser menor ou igual a data_final.")
 
     database.init_db()
@@ -486,11 +488,14 @@ def listar_cnpjs_fornecedores_publicados(
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
             TceEmpenho.natureza_considerada.is_(True),
-            TceEmpenho.data_empenho >= data_inicial,
-            TceEmpenho.data_empenho <= data_final,
             TceEmpenho.cnpj_fornecedor.is_not(None),
         )
     )
+    if data_inicial is not None and data_final is not None:
+        consulta = consulta.where(
+            TceEmpenho.data_empenho >= data_inicial,
+            TceEmpenho.data_empenho <= data_final,
+        )
     if codigo_municipio_tce is not None:
         consulta = consulta.where(
             TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce
