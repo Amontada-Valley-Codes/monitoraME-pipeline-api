@@ -90,12 +90,12 @@ class EmpenhosTest(unittest.TestCase):
             search="EMP-2025-27000294",
             page=2,
             page_size=50,
-            sort_by="net_value",
+            sort_by="final_value",
             sort_order="desc",
         )
 
         self.assertEqual(resultado["items"][0]["display_id"], "EMP-2025-27000294")
-        self.assertEqual(resultado["items"][0]["valores"]["valor_liquido_centavos"], 2_788_141_002)
+        self.assertEqual(resultado["items"][0]["valores"]["valor_final_centavos"], 2_788_141_002)
         self.assertEqual(resultado["pagination"]["total_pages"], 2)
         self.assertFalse(resultado["pagination"]["has_next"])
         _, kwargs = listar.call_args
@@ -116,29 +116,24 @@ class EmpenhosTest(unittest.TestCase):
                 search=None,
                 page=1,
                 page_size=50,
-                sort_by="net_value",
+                sort_by="final_value",
                 sort_order="desc",
             )
         self.assertEqual(contexto.exception.code, "INVALID_DATE_RANGE")
 
-    @patch("app.pipeline.empenhos.persistence.listar_anulacoes_publicadas_por_empenho")
     @patch("app.pipeline.empenhos.persistence.obter_empenho_publicado_por_chave")
-    def test_detalhe_retorna_valores_e_anulacoes(self, obter, listar_anulacoes) -> None:
+    def test_detalhe_retorna_valor_final_sem_detalhes_de_anulacoes(self, obter) -> None:
         obter.return_value = _registro()
-        listar_anulacoes.return_value = [{
-            "chave_anulacao": "anulacao-1",
-            "numero_anulacao": "49",
-            "data_anulacao": "2025-08-12",
-            "modalidade_anulacao": "P",
-            "descricao_anulacao": "Anulacao parcial",
-            "valor_anulacao_centavos": 2_211_858_998,
-        }]
 
         resultado = empenhos.obter_empenho(str(_registro()["chave_empenho"]))
 
         self.assertEqual(resultado["classificacao_orcamentaria"]["exercicio"], 2025)
         self.assertEqual(resultado["publicacao"]["status"], "PUBLICADO")
-        self.assertEqual(len(resultado["anulacoes"]), 1)
+        self.assertEqual(resultado["valores"], {"valor_final_centavos": 2_788_141_002})
+        self.assertNotIn("anulacoes", resultado)
+        self.assertNotIn("valor_empenhado_centavos", resultado["valores"])
+        self.assertNotIn("valor_anulado_centavos", resultado["valores"])
+        self.assertNotIn("valor_liquido_centavos", resultado["valores"])
 
     def test_nao_encontrado_retorna_404_logico(self) -> None:
         with patch(
@@ -154,7 +149,7 @@ class EmpenhosTest(unittest.TestCase):
         request = Request({
             "type": "http",
             "method": "GET",
-            "path": "/pipeline/tce/empenhos",
+            "path": "/pipeline/tce/despesas",
             "headers": [(b"x-request-id", b"req_empenhos")],
         })
         error = RequestValidationError([{
