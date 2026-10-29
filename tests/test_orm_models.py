@@ -30,6 +30,7 @@ class OrmMetadataTest(unittest.TestCase):
         esperado = {
             "porte_publicacoes",
             "porte_observacoes",
+            "api_response_cache",
             "ibge_municipios",
             "tce_municipios",
             "fornecedores_me",
