@@ -457,10 +457,10 @@ def montar_base_analitica_tce(
             "ttl_historico_segundos": int(TTL_COMPETENCIA_HISTORICA.total_seconds()),
             "usar_publicacao_anterior_em_falha": True,
         },
-        "totais_brutos": {"empenhos": len(empenhos)},
+        "totais": {"despesas": len(empenhos)},
         "base_analitica": {
-            "nome": "tce_empenhos_liquidos",
-            "base_calculo": analitico.BASE_CALCULO_EMPENHOS_TCE,
+            "nome": "despesas_tce",
+            "base_calculo": "DESPESA_FINAL",
             "municipio_comprador": municipio_comprador,
             "colunas": list(analitico.COLUNAS_BASE_ANALITICA_TCE),
         },
@@ -675,7 +675,7 @@ def _consultar_overview_tce_estado(
         )
 
     base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
-    overview = kpis.calcular_overview_me_mei(base)
+    overview = kpis.calcular_overview_me_mei(base, incluir_mei=False)
     competencias_publicadas = sorted(
         {str(item["competencia"]) for item in publicacoes}
     )
@@ -738,14 +738,14 @@ def _consultar_overview_tce_estado(
             "uf_comprador": UF_PADRAO,
             "colunas": list(analitico.COLUNAS_BASE_ANALITICA_TCE),
         },
-        "kpi": "overview_me_mei",
+        "kpi": "overview_me",
         "escopo": {
-            "portes_considerados": list(kpis.PORTES_OVERVIEW),
+            "portes_considerados": ["ME"],
             "portes_no_denominador_participacao": list(
                 kpis.PORTES_COMPRAS_CONSIDERADAS_OVERVIEW
             ),
-            "regra_participacao_me": "(ME + MEI) / (ME + MEI + EPP + DEMAIS)",
-            "regra_geografica": "ME + MEI",
+            "regra_participacao_me": "ME / (ME + MEI + EPP + DEMAIS)",
+            "regra_geografica": "ME",
         },
         "unidade_monetaria": "CENTAVOS",
         **overview,

@@ -755,6 +755,7 @@ def listar_empenhos_publicados_paginados(
         "gross_value": TceEmpenho.valor_empenhado_centavos,
         "cancelled_value": valor_anulado,
         "net_value": valor_liquido,
+        "final_value": valor_liquido,
     }
     coluna_ordem = ordenacoes[ordenar_por]
     direcao = coluna_ordem.asc() if ordem == "asc" else coluna_ordem.desc()

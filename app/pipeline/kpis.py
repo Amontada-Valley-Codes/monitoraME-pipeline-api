@@ -626,7 +626,11 @@ def calcular_participacao_por_porte_por_mes(
     )
 
 
-def calcular_overview_me_mei(base_analitica: pd.DataFrame) -> dict[str, object]:
+def calcular_overview_me_mei(
+    base_analitica: pd.DataFrame,
+    *,
+    incluir_mei: bool = True,
+) -> dict[str, object]:
     """Calcula o overview restrito a ME e MEI sobre empenhos líquidos.
 
     ``compras_consideradas`` representa todos os portes identificados. A
@@ -658,7 +662,17 @@ def calcular_overview_me_mei(base_analitica: pd.DataFrame) -> dict[str, object]:
             PORTES_COMPRAS_CONSIDERADAS_OVERVIEW
         )
     ].copy()
-    base = compras.loc[compras["_porte_overview"].isin(PORTES_OVERVIEW)].copy()
+    portes_microempresas = ("ME", "MEI") if incluir_mei else ("ME",)
+    participacao_por_porte_configurada = (
+        PORTES_PARTICIPACAO_OVERVIEW
+        if incluir_mei
+        else (
+            ("ME", ("ME",)),
+            ("OUTROS_PORTES", ("MEI", "EPP", "DEMAIS")),
+            ("NAO_IDENTIFICADO", ("NAO_IDENTIFICADO",)),
+        )
+    )
+    base = compras.loc[compras["_porte_overview"].isin(portes_microempresas)].copy()
 
     compras_consideradas = _somar_centavos(compras["_valor_centavos"])
     microempresas = _somar_centavos(base["_valor_centavos"])
@@ -667,7 +681,7 @@ def calcular_overview_me_mei(base_analitica: pd.DataFrame) -> dict[str, object]:
         {
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
-            "valor_liquido_centavos": _somar_centavos(
+            "valor_final_centavos": _somar_centavos(
                 base.loc[
                     base["natureza_despesa_codigo"].eq(codigo),
                     "_valor_centavos",
@@ -679,7 +693,7 @@ def calcular_overview_me_mei(base_analitica: pd.DataFrame) -> dict[str, object]:
 
     total_todos_portes = _somar_centavos(todos["_valor_centavos"])
     participacao_por_porte = []
-    for categoria, portes in PORTES_PARTICIPACAO_OVERVIEW:
+    for categoria, portes in participacao_por_porte_configurada:
         valor_categoria = _somar_centavos(
             todos.loc[todos["_porte_overview"].isin(portes), "_valor_centavos"]
         )
@@ -723,7 +737,7 @@ def calcular_overview_me_mei(base_analitica: pd.DataFrame) -> dict[str, object]:
     for periodo in periodos:
         mensal = compras.loc[compras["ano_mes"].astype("string").eq(periodo)]
         mensal_microempresas = mensal.loc[
-            mensal["porte_fornecedor"].isin(PORTES_OVERVIEW)
+            mensal["porte_fornecedor"].isin(portes_microempresas)
         ]
         evolucao.append(
             {
@@ -832,7 +846,7 @@ def calcular_overview_portes(
         {
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
-            "valor_liquido_centavos": _somar_centavos(
+            "valor_final_centavos": _somar_centavos(
                 base.loc[
                     base["natureza_despesa_codigo"].eq(codigo),
                     "_valor_centavos",

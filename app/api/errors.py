@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 
 COMPARISONS_PATH = "/pipeline/tce/comparisons"
-EMPENHOS_PATH = "/pipeline/tce/empenhos"
+DESPESAS_PATH = "/pipeline/tce/despesas"
 FORNECEDORES_PATH = "/pipeline/tce/fornecedores"
 TERRITORIAL_PATH = "/pipeline/tce/analise-territorial"
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -50,8 +50,8 @@ def usa_erro_padronizado(path: str) -> bool:
     return (
         path.startswith("/pipeline/tce/portes/")
         or path == COMPARISONS_PATH
-        or path == EMPENHOS_PATH
-        or path.startswith(f"{EMPENHOS_PATH}/")
+        or path == DESPESAS_PATH
+        or path.startswith(f"{DESPESAS_PATH}/")
         or path == FORNECEDORES_PATH
         or path.startswith(f"{FORNECEDORES_PATH}/")
         or path == TERRITORIAL_PATH
@@ -81,7 +81,7 @@ def resposta_erro_validacao(
     code = "INVALID_REQUEST"
     message = "A requisicao possui campos invalidos."
     if request.url.path.startswith(
-        (EMPENHOS_PATH, FORNECEDORES_PATH, TERRITORIAL_PATH)
+        (DESPESAS_PATH, FORNECEDORES_PATH, TERRITORIAL_PATH)
     ) and details:
         campo = details[0]["field"]
         code, message = {
@@ -113,7 +113,7 @@ resposta_erro_validacao_comparison = resposta_erro_validacao
 
 __all__ = [
     "COMPARISONS_PATH",
-    "EMPENHOS_PATH",
+    "DESPESAS_PATH",
     "FORNECEDORES_PATH",
     "REQUEST_ID_HEADER",
     "TERRITORIAL_PATH",

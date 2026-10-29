@@ -113,10 +113,7 @@ O pipeline fica acessível por `https://pipeline.monitorame.tech`, roteado pelo
 Traefik para a porta interna `8000`. O PostgreSQL não publica porta no host e os
 dados ficam no volume nomeado `monitorame_pipeline_api_postgres_data`.
 
-A API permite apenas as origens `https://api.monitorame.tech` e
-`https://monitorame.amontadavalley.com.br`. Configure a variável
-`CORS_ALLOWED_ORIGINS` com essas origens exatas, separadas por vírgula e sem
-caminhos.
+Por enquanto, a API aceita requisicoes com qualquer origem ou sem cabecalho `Origin`. O CORS libera todas as origens; nao envie credenciais pelo navegador.
 
 Crie um `.env` privado a partir de `.env.example`, gere uma senha forte para
 `POSTGRES_PASSWORD` (por exemplo, `openssl rand -hex 32`) e configure também
@@ -137,17 +134,14 @@ atualizar o código, faça backup do banco, atualize a imagem e execute novament
 o comando `up -d --build`. O volume do PostgreSQL permanece associado ao nome
 estável acima; não use `docker compose down -v` em produção.
 
-O serviço também permanece na rede Docker `monitorame_backend_internal`, com o
+O servico tambem permanece na rede Docker `monitorame_backend_internal`, com o
 alias `pipeline-api`, para chamadas internas do backend em
-`http://pipeline-api:8000`. Ao usar essa chamada servidor-servidor, o backend
-deve enviar `Origin: https://api.monitorame.tech`, pois a API rejeita origens
-ausentes nas rotas de dados.
+`http://pipeline-api:8000`.
 
-O middleware rejeita requisições sem `Origin` ou com origem diferente da lista;
-`/health` aceita chamadas sem `Origin` para o healthcheck. Isso limita o uso
-normal por navegadores, mas `Origin` pode ser falsificado por clientes como
-`curl` e não identifica nem autentica dispositivos. Para uma barreira forte,
-mantenha o pipeline privado e autentique chamadas do backend.
+Por enquanto, o CORS aceita qualquer origem, e a API tambem aceita chamadas sem
+cabecalho `Origin`. O cabecalho `Origin` nao autentica clientes; mantenha o
+pipeline privado e autentique chamadas do backend caso precise restringir o
+acesso por cliente.
 
 ### CI/CD e aprovação de produção
 
@@ -236,15 +230,15 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 
 - `GET /pipeline/tce/contratos`: consulta e enriquece contratos do TCE-CE.
 - `GET /pipeline/tce/kpis/portes-por-mes`: calcula a participação mensal por porte.
-- `GET /pipeline/tce/overview`: calcula o overview exclusivo de ME e MEI.
+- `GET /pipeline/tce/overview`: calcula o overview estadual de ME; MEI integra demais portes.
 - `GET /pipeline/tce/overview/municipal`: calcula o overview de um município por período, código TCE e portes opcionais.
 - `POST /pipeline/tce/comparisons`: compara dois overviews usando somente dados armazenados.
-- `GET /pipeline/tce/empenhos`: lista e pagina empenhos publicados armazenados.
-- `GET /pipeline/tce/empenhos/{chave_empenho}`: detalha um empenho e suas anulações.
+- `GET /pipeline/tce/despesas`: lista e pagina despesas publicadas armazenadas.
+- `GET /pipeline/tce/despesas/{chave_despesa}`: detalha uma despesa e retorna somente seu valor final.
 - `GET /pipeline/tce/fornecedores`: lista fornecedores e valores no recorte.
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}`: retorna cadastro, indicadores e gráficos do fornecedor.
-- `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/empenhos`: pagina as notas consideradas do fornecedor.
-- `GET /pipeline/tce/analitico/indicadores`: atualiza as competências e calcula os indicadores analíticos principais sobre empenhos líquidos.
+- `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas`: pagina as despesas consideradas do fornecedor.
+- `GET /pipeline/tce/analitico/indicadores`: atualiza as competencias e calcula indicadores das despesas finais.
 - `GET /pipeline/tce/analise-territorial`: calcula retenção local, destino dos recursos, concentração e rankings usando somente dados publicados no banco local.
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
@@ -367,37 +361,13 @@ vencida não pode ser atualizada, sua última versão continua no cálculo e a
 competência aparece em `competencias_desatualizadas`. Competências sem qualquer
 publicação continuam aparecendo em `competencias_ausentes`.
 
-### Overview de ME e MEI
+### Overview estadual de ME
 
-`GET /pipeline/tce/overview` recebe `data_inicial`, `data_final` e aceita
-`codigo_municipio` opcional. Sem o código, consolida todo o Ceará usando apenas
-os lotes e cadastros já publicados no banco local. Com o código, mantém o fluxo
-municipal, atualizando as competências e o cadastro dos fornecedores antes do
-cálculo. A resposta restringe o detalhamento geográfico a empenhos líquidos de
-ME e MEI. Essa restrição não altera os demais indicadores da API.
+`GET /pipeline/tce/overview` recebe `data_inicial` e `data_final`; sem `codigo_municipio`, consolida os lotes publicados do Ceara. O KPI e o detalhamento geografico consideram somente ME. MEI fica excluido do recorte de ME e agregado em `OUTROS_PORTES` junto com EPP e DEMAIS na participacao por porte. A participacao de ME usa ME sobre ME + MEI + EPP + DEMAIS; portes nao identificados ficam fora do denominador.
 
-O total de compras consideradas corresponde aos portes identificados `ME +
-MEI + EPP + DEMAIS`. A participação é `(ME + MEI) / compras consideradas`;
-portes não identificados ficam fora da razão. A evolução mensal compara esses
-dois valores. Os indicadores geográficos e o destino dos recursos usam
-exclusivamente ME e MEI. Origem não identificada permanece no denominador
-geográfico, sem ser tratada como recurso local ou externo.
+O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de ME. Os demais valores monetarios do overview tambem sao finais em centavos. A resposta nao expoe valores brutos, anulacoes, valores liquidos nem medias.
 
-O KPI `total_compras_ME_centavos` representa a soma líquida de ME e MEI no
-período completo.
-
-`participacao_por_porte_empresarial` apresenta valor e percentual de `ME`,
-`MEI`, `OUTROS_PORTES` (`EPP + DEMAIS`) e `NAO_IDENTIFICADO`. Nesse indicador,
-o denominador inclui as quatro categorias para que seus percentuais totalizem
-`100` quando houver valor no período.
-
-`elementos_despesa` apresenta os sete elementos monitorados no período total,
-com código de dois dígitos, nome e valor líquido em centavos. O cálculo usa
-somente empenhos de ME e MEI e mantém elementos sem movimento com valor zero.
-
-Valores monetários são inteiros em centavos e percentuais variam de `0` a
-`100`. Um período publicado sem compras de porte identificado retorna `200`,
-KPIs zerados, evolução vazia e os quatro destinos com valor e percentual zero.
+O parametro opcional `codigo_municipio` mantem o fluxo municipal existente. `GET /pipeline/tce/overview/municipal` tambem mantem seu contrato por portes.
 
 ### Comparação de overviews
 
@@ -475,74 +445,31 @@ cabeçalho é enviado pelo proxy:
 }
 ```
 
-### Consulta de empenhos armazenados
+### Consulta de despesas armazenadas
 
-`GET /pipeline/tce/empenhos` é uma rota somente leitura: não executa ingestão
-nem acessa TCE-CE, IBGE ou OpenCNPJ. Ela considera apenas empenhos dos sete
-elementos monitorados pertencentes a lotes com status `PUBLICADO`.
-
-Os parâmetros obrigatórios são `start_date` e `end_date`. A consulta aceita
-também `uf`, `municipality_tce_code`, listas repetidas de `company_sizes`,
-`supplier_origins` e `expense_element_codes`, além de `search`, `page`,
-`page_size`, `sort_by` e `sort_order`. Filtros de dimensões diferentes usam
-`AND`; valores repetidos na mesma dimensão usam `OR`. Sem filtro de elemento,
-os sete elementos monitorados são incluídos.
+`GET /pipeline/tce/despesas` e somente leitura: consulta despesas dos sete elementos monitorados pertencentes a lotes `PUBLICADO`, sem executar ingestao nem consultar fontes externas. Use `start_date`, `end_date` e, opcionalmente, `uf`, `municipality_tce_code`, `company_sizes`, `supplier_origins`, `expense_element_codes`, `search`, `page`, `page_size`, `sort_by` e `sort_order`.
 
 Exemplo:
 
 ```http
-GET /pipeline/tce/empenhos?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057&company_sizes=ME&company_sizes=MEI&expense_element_codes=39&page=1&page_size=50&sort_by=net_value&sort_order=desc
+GET /pipeline/tce/despesas?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057&company_sizes=ME&expense_element_codes=39&page=1&page_size=50&sort_by=final_value&sort_order=desc
 ```
 
-Cada item retorna a `chave_empenho` canônica, um `display_id` no formato
-`EMP-AAAA-NUMERO`, data, município comprador, fornecedor, porte, origem,
-elemento de despesa e valores bruto, anulado e líquido em centavos. A busca
-aceita chave, número, `display_id`, documento ou nome do fornecedor.
+Cada item usa `chave_despesa`, `numero_despesa`, `data_despesa` e `display_id` no formato `DESP-AAAA-NUMERO`. Em `valores`, retorna somente `valor_final_centavos`. `GET /pipeline/tce/despesas/{chave_despesa}` detalha a mesma despesa, sem valores brutos, anulacoes, valores liquidos, lista de anulacoes ou medias.
 
-`GET /pipeline/tce/empenhos/{chave_empenho}` recebe a chave com caracteres
-reservados codificados na URL (por exemplo, `|` como `%7C`). O detalhe inclui
-classificação orçamentária, dados cadastrais armazenados do fornecedor,
-referências de contrato e licitação, lista das anulações, valores consolidados
-e metadados do lote publicado. O payload bruto das fontes não é exposto.
+As rotas propagam `X-Request-ID` e usam o envelope padronizado de erro.
 
-As duas rotas usam o mesmo envelope padronizado de erro e propagam
-`X-Request-ID`. Autenticação e assinatura permanecem sob responsabilidade do
-proxy que publica a API.
+### Consulta de fornecedores e despesas armazenadas
 
-### Consulta de fornecedores armazenados
+As rotas de fornecedores sao somente leitura e consideram despesas de lotes `PUBLICADO`. Elas recebem o recorte por periodo, municipio TCE, porte empresarial, origem e elemento de despesa.
 
-As três rotas de fornecedores são somente leitura e consideram exclusivamente
-empenhos dos lotes `PUBLICADO`. Elas recebem o mesmo recorte por período,
-município TCE, porte empresarial, origem e elemento de despesa usado pela
-consulta de empenhos.
+`GET /pipeline/tce/fornecedores` agrupa fornecedores por tipo e documento. Os valores retornados sao finais em centavos. `sort_by=final_value` ordena pelo valor final.
 
-`GET /pipeline/tce/fornecedores` agrupa as notas por tipo e documento do
-fornecedor. A resposta apresenta nome, porte, disponibilidade cadastral,
-origens no recorte, valores bruto, anulado e considerado, quantidade de notas,
-municípios e datas da primeira e última nota. Fornecedores sem cadastro no
-OpenCNPJ continuam na listagem com `cadastro_status=NAO_DISPONIVEL`.
+`GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}` retorna cadastro, totais finais, evolucao mensal, distribuicao pelos sete elementos e participacao no valor total filtrado. Nao retorna valores brutos, anulacoes, valores liquidos ou medias.
 
-```http
-GET /pipeline/tce/fornecedores?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057&page=1&page_size=50&sort_by=net_value&sort_order=desc
-```
+`GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas` retorna a lista paginada das despesas do fornecedor com o mesmo contrato de `/pipeline/tce/despesas`.
 
-`GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}` aceita
-`CNPJ` ou `CPF` no tipo e retorna o cadastro armazenado, totais do recorte,
-evolução mensal, distribuição pelos sete elementos e participação no valor
-total filtrado. O cadastro é a observação mais recente disponível e não uma
-fotografia histórica do exercício.
-
-```http
-GET /pipeline/tce/fornecedores/CNPJ/05537536000164?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057
-```
-
-`GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/empenhos`
-retorna as notas em uma consulta separada e paginada, preservando o mesmo
-formato dos itens de `/pipeline/tce/empenhos`. Assim, navegar ou ordenar a
-tabela não recalcula os gráficos do detalhe.
-
-Nenhuma dessas rotas atualiza o cache cadastral ou consulta TCE-CE, IBGE ou
-OpenCNPJ. O payload bruto do cadastro não é exposto.
+Nenhuma dessas rotas atualiza o cache cadastral ou consulta TCE-CE, IBGE ou OpenCNPJ. O payload bruto do cadastro nao e exposto.
 
 ## Persistência
 
