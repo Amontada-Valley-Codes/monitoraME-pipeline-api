@@ -93,14 +93,14 @@ class MainTest(unittest.TestCase):
         self.assertIn("/pipeline/tce/overview", rotas)
         self.assertIn("/pipeline/tce/overview/municipal", rotas)
         self.assertIn("/pipeline/tce/comparisons", rotas)
-        self.assertIn("/pipeline/tce/empenhos", rotas)
-        self.assertIn("/pipeline/tce/empenhos/{chave_empenho}", rotas)
+        self.assertIn("/pipeline/tce/despesas", rotas)
+        self.assertIn("/pipeline/tce/despesas/{chave_despesa}", rotas)
         self.assertIn("/pipeline/tce/fornecedores", rotas)
         self.assertIn(
             "/pipeline/tce/fornecedores/{tipo_documento}/{documento}", rotas
         )
         self.assertIn(
-            "/pipeline/tce/fornecedores/{tipo_documento}/{documento}/empenhos",
+            "/pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas",
             rotas,
         )
         self.assertIn("/pipeline/tce/analitico/indicadores", rotas)
@@ -112,11 +112,11 @@ class MainTest(unittest.TestCase):
 
         self.assertNotIn("Pipeline", tags)
         self.assertIn("Indicadores TCE-CE", tags)
-        self.assertIn("Empenhos TCE-CE", tags)
+        self.assertIn("Despesas TCE-CE", tags)
         self.assertIn("Oportunidades PNCP", tags)
         self.assertEqual(
-            schema["paths"]["/pipeline/tce/empenhos"]["get"]["tags"],
-            ["Empenhos TCE-CE"],
+            schema["paths"]["/pipeline/tce/despesas"]["get"]["tags"],
+            ["Despesas TCE-CE"],
         )
         self.assertEqual(
             schema["paths"]["/pipeline/tce/fornecedores"]["get"]["tags"],
@@ -127,8 +127,8 @@ class MainTest(unittest.TestCase):
             ["Pagamentos TCE-CE"],
         )
         self.assertIn(
-            "valores empenhado/anulado/líquido em centavos",
-            schema["paths"]["/pipeline/tce/empenhos"]["get"]["responses"]["200"]["description"],
+            "somente valor final em centavos",
+            schema["paths"]["/pipeline/tce/despesas"]["get"]["responses"]["200"]["description"],
         )
         self.assertIn(
             "`detalhe`, `itens` e `anexos`",

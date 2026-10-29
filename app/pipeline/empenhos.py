@@ -66,14 +66,14 @@ def _municipio(codigo_tce: str | None, uf: str) -> dict[str, str] | None:
 
 def _display_id(registro: dict[str, Any]) -> str:
     exercicio = int(registro["exercicio_orcamento"]) // 100
-    return f"DESP-{exercicio}-{registro['numero_empenho']}"
+    return f"EMP-{exercicio}-{registro['numero_empenho']}"
 
 
 def _normalizar_busca(valor: str | None) -> str | None:
     if valor is None:
         return None
     busca = valor.strip()
-    identificador = re.fullmatch(r"DESP-\d{4}-(.+)", busca, flags=re.IGNORECASE)
+    identificador = re.fullmatch(r"EMP-\d{4}-(.+)", busca, flags=re.IGNORECASE)
     return identificador.group(1) if identificador else busca
 
 

@@ -175,9 +175,9 @@ class BaseAnaliticaEmpenhosTest(unittest.TestCase):
         self.assertEqual(metadados["competencias_atualizadas"], ["2025-01", "2025-02"])
         self.assertEqual(metadados["competencias_reutilizadas"], [])
         self.assertEqual(metadados["competencias_desatualizadas"], [])
-        self.assertEqual(metadados["base_analitica"]["nome"], "tce_empenhos_liquidos")
-        self.assertEqual(metadados["base_analitica"]["base_calculo"], "empenhos_tce")
-        self.assertEqual(metadados["totais_brutos"], {"empenhos": 2})
+        self.assertEqual(metadados["base_analitica"]["nome"], "despesas_tce")
+        self.assertEqual(metadados["base_analitica"]["base_calculo"], "DESPESA_FINAL")
+        self.assertEqual(metadados["totais"], {"despesas": 2})
 
         janeiro = base.loc[base["numero_empenho"] == "31010002"].iloc[0]
         self.assertEqual(janeiro["base_calculo"], "empenhos_tce")
