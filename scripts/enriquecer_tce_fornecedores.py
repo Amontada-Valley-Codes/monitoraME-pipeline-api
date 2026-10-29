@@ -24,7 +24,13 @@ def _ano_valido(valor: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ano", required=True, type=_ano_valido, help="Ano dos empenhos publicados (YYYY).")
+    escopo = parser.add_mutually_exclusive_group(required=True)
+    escopo.add_argument("--ano", type=_ano_valido, help="Ano dos empenhos publicados (YYYY).")
+    escopo.add_argument(
+        "--todos-disponiveis",
+        action="store_true",
+        help="Usa empenhos de todos os anos atualmente publicados no banco.",
+    )
     parser.add_argument(
         "--codigo-municipio",
         help="Limita a um município TCE; omitido, usa todos os municípios da UF configurada.",
@@ -47,11 +53,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.intervalo_segundos < 0:
         parser.error("--intervalo-segundos deve ser maior ou igual a zero.")
 
-    ano = int(args.ano)
+    ano = int(args.ano) if args.ano is not None else None
+    data_inicial = date(ano, 1, 1) if ano is not None else None
+    data_final = date(ano, 12, 31) if ano is not None else None
     try:
         cnpjs = listar_cnpjs_fornecedores_publicados(
-            data_inicial=date(ano, 1, 1),
-            data_final=date(ano, 12, 31),
+            data_inicial=data_inicial,
+            data_final=data_final,
             codigo_municipio_tce=args.codigo_municipio,
             uf=UF_PADRAO if args.codigo_municipio is None else None,
         )
@@ -92,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "status": "FALHA",
                     "ano": args.ano,
+                    "todos_disponiveis": args.todos_disponiveis,
                     "codigo_municipio_tce": args.codigo_municipio,
                     "erro": f"{type(error).__name__}: {error}",
                 },
@@ -108,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "status": status,
                 "ano": args.ano,
+                "todos_disponiveis": args.todos_disponiveis,
                 "uf": UF_PADRAO if args.codigo_municipio is None else None,
                 "codigo_municipio_tce": args.codigo_municipio,
                 "cnpjs_distintos_processados": processados,

@@ -3,6 +3,7 @@
 Exemplos no container:
   python scripts/pncp_operacao.py status
   python scripts/pncp_operacao.py coletar-publicacao --modalidade 6 --modalidade 8
+  python scripts/pncp_operacao.py coletar-propostas-abertas
   python scripts/pncp_operacao.py normalizar --limite 100
   python scripts/pncp_operacao.py replay --job-id 123
 """
@@ -20,7 +21,13 @@ from sqlalchemy import text
 
 from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
-from app.pncp.ingestion import ClientePncp, agendar_publicacao, coletar_publicacao
+from app.pncp.ingestion import (
+    ClientePncp,
+    agendar_propostas_abertas,
+    agendar_publicacao,
+    coletar_propostas_abertas,
+    coletar_publicacao,
+)
 from app.pncp.jobs import WorkerPncp, agendar_job, replay_jobs
 from app.pncp.normalization import normalizar_job
 
@@ -29,7 +36,9 @@ def _worker_coleta(tamanho_pagina: int) -> WorkerPncp:
     cliente = ClientePncp()
 
     def executar(job: Any) -> None:
-        if job.scope_key.startswith("publicacao:"):
+        if job.scope_key.startswith("propostas-abertas:"):
+            coletar_propostas_abertas(job, cliente, tamanho_pagina=tamanho_pagina)
+        elif job.scope_key.startswith("publicacao:"):
             coletar_publicacao(job, cliente, tamanho_pagina=tamanho_pagina)
         elif job.scope_key.startswith("atualizacao:"):
             coletar_atualizacao(job, cliente, tamanho_pagina=tamanho_pagina)
@@ -51,6 +60,19 @@ def coletar(args: argparse.Namespace) -> int:
     worker = _worker_coleta(args.tamanho_pagina)
     executados = sum(worker.executar_uma_vez() for _ in jobs)
     print({"fluxo": args.fluxo, "jobs": ids, "executados": executados, "modalidades": modalidades})
+    return 0 if executados == len(jobs) else 2
+
+
+def coletar_propostas_em_aberto(args: argparse.Namespace) -> int:
+    jobs = agendar_propostas_abertas(
+        data_final=datetime.now(timezone.utc),
+        modalidades=args.modalidade,
+        tamanho_pagina=args.tamanho_pagina,
+    )
+    ids = [agendar_job(job)[0] for job in jobs]
+    worker = _worker_coleta(args.tamanho_pagina)
+    executados = sum(worker.executar_uma_vez() for _ in jobs)
+    print({"fluxo": "propostas-abertas", "jobs": ids, "executados": executados, "modalidades": args.modalidade or "todas"})
     return 0 if executados == len(jobs) else 2
 
 
@@ -86,7 +108,11 @@ def main() -> int:
     for comando in (coleta, atualizacao):
         comando.add_argument("--dias", type=int, default=1)
         comando.add_argument("--modalidade", type=int, action="append", default=[])
-        comando.add_argument("--tamanho-pagina", type=int, default=100)
+        comando.add_argument("--tamanho-pagina", type=int, default=50)
+    propostas = comandos.add_parser("coletar-propostas-abertas")
+    propostas.add_argument("--modalidade", type=int, action="append", default=[])
+    propostas.add_argument("--tamanho-pagina", type=int, default=50)
+    propostas.set_defaults(func=coletar_propostas_em_aberto)
     normalizador = comandos.add_parser("normalizar")
     normalizador.add_argument("--limite", type=int, default=100)
     normalizador.set_defaults(func=normalizar)
