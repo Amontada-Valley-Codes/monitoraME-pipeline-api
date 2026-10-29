@@ -12,6 +12,7 @@ x-app-service: &app-service
     LOG_DATABASE_URL: postgresql://${POSTGRES_USER:?configure POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?configure POSTGRES_DB in .env}
     DATABASE_SSLMODE: disable
     LOG_DATABASE_SSLMODE: disable
+    CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://api.monitorame.tech,https://monitorame.amontadavalley.com.br}
 
 services:
   postgres:
@@ -45,6 +46,13 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.monitorame-pipeline-api.rule: "Host(`api.monitorame.tech`)"
+      traefik.http.routers.monitorame-pipeline-api.entrypoints: websecure
+      traefik.http.routers.monitorame-pipeline-api.tls: "true"
+      traefik.http.routers.monitorame-pipeline-api.tls.certresolver: letsencrypt
+      traefik.http.services.monitorame-pipeline-api.loadbalancer.server.port: "8000"
     networks:
       default: {}
       backend_internal:

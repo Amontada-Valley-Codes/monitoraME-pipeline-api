@@ -107,21 +107,22 @@ serviço `api`. A documentação OpenAPI fica em `http://127.0.0.1:8000/docs`.
 
 O PostgreSQL usa o volume nomeado `postgres_data`. Os dados persistem ao reiniciar ou recriar o container. Preserve os backups; `docker compose down -v` remove os volumes.
 
-### Deploy na VPS e acesso interno ao pipeline
+### Deploy na VPS e acesso ao pipeline
 
-O pipeline não possui rota pública no Traefik nem porta publicada no host. O
-serviço `api` fica na rede Docker privada `monitorame_backend_internal`, com o
-alias `pipeline-api`, e pode ser chamado pelo backend futuro em
-`http://pipeline-api:8000`. O domínio `api.monitorame.tech` fica reservado ao
-backend público; enquanto ele não estiver implantado, esse domínio não serve o
-pipeline. O PostgreSQL também permanece restrito às redes Docker.
+O pipeline fica acessível por `https://api.monitorame.tech`, roteado pelo
+Traefik para a porta interna `8000`. O PostgreSQL não publica porta no host e os
+dados ficam no volume nomeado `monitorame_pipeline_api_postgres_data`.
+
+A API permite apenas as origens `https://api.monitorame.tech` e
+`https://monitorame.amontadavalley.com.br`. Configure a variável
+`CORS_ALLOWED_ORIGINS` com essas origens exatas, separadas por vírgula e sem
+caminhos.
 
 Crie um `.env` privado a partir de `.env.example`, gere uma senha forte para
 `POSTGRES_PASSWORD` (por exemplo, `openssl rand -hex 32`) e configure também
 `POSTGRES_USER` e `POSTGRES_DB`. Não reutilize os valores de desenvolvimento do
-arquivo de exemplo nem versione o `.env`. O DNS do domínio deve apontar para a
-VPS e configure o Traefik para expor somente serviços públicos, como o backend
-quando for implantado. Não crie uma rota Traefik para o container do pipeline.
+arquivo de exemplo nem versione o `.env`. O DNS de `api.monitorame.tech` deve
+apontar para a VPS, com as portas 80 e 443 disponíveis para o Traefik.
 
 Na pasta do repositório, aplique as migrations e inicie os serviços:
 
@@ -135,12 +136,17 @@ atualizar o código, faça backup do banco, atualize a imagem e execute novament
 o comando `up -d --build`. O volume do PostgreSQL permanece associado ao nome
 estável acima; não use `docker compose down -v` em produção.
 
-Quando o backend for implantado, conecte somente esse serviço à rede externa
-`monitorame_backend_internal` no seu Compose. O backend então acessa o pipeline
-pelo endereço `http://pipeline-api:8000`; não publique a porta `8000` na VPS.
-Configure a lista de origens CORS permitidas no backend, que é a API chamada pelo
-navegador. CORS não substitui controle de rede ou autenticação para clientes que
-não sejam navegadores.
+O serviço também permanece na rede Docker `monitorame_backend_internal`, com o
+alias `pipeline-api`, para chamadas internas do backend em
+`http://pipeline-api:8000`. Ao usar essa chamada servidor-servidor, o backend
+deve enviar `Origin: https://api.monitorame.tech`, pois a API rejeita origens
+ausentes nas rotas de dados.
+
+O middleware rejeita requisições sem `Origin` ou com origem diferente da lista;
+`/health` aceita chamadas sem `Origin` para o healthcheck. Isso limita o uso
+normal por navegadores, mas `Origin` pode ser falsificado por clientes como
+`curl` e não identifica nem autentica dispositivos. Para uma barreira forte,
+mantenha o pipeline privado e autentique chamadas do backend.
 
 ### CI/CD e aprovação de produção
 
@@ -157,7 +163,7 @@ verde e usa o ambiente `production`; configure esse ambiente no GitHub com
 branch permitido restrito ao branch padrão e aprovação obrigatória de um
 responsável. O deploy envia apenas os arquivos versionados do commit validado,
 preserva o `.env` da VPS, reconstrói a imagem, aplica migrations e verifica o
-healthcheck dentro do container, sem expor o pipeline à internet.
+healthcheck dentro do container.
 
 Configure estas variáveis no ambiente `production` do GitHub:
 

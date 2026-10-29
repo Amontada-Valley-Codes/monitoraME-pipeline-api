@@ -1,9 +1,8 @@
 # Tutorial: deploy do pipeline MonitoraME na VPS Hostinger
 
-Este tutorial prepara o pipeline analítico para funcionar como serviço interno.
-O domínio `api.monitorame.tech` fica reservado ao backend público, que será
-hospedado separadamente. O pipeline não recebe tráfego do navegador nem possui
-rota pública no Traefik.
+Este tutorial prepara o pipeline analítico para ficar acessível em
+`https://api.monitorame.tech`, atrás do Traefik. O serviço também participa de
+uma rede Docker interna para chamadas do backend.
 
 ## O que você precisa
 
@@ -15,9 +14,11 @@ rota pública no Traefik.
 ## 1. Prepare o ambiente de produção na VPS
 
 O projeto usa um arquivo `.env` privado na VPS para configurar o PostgreSQL e a
-aplicação. Defina nele `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB`, além
-das variáveis de execução necessárias ao pipeline. Mantenha esse arquivo fora
-do GitHub; o workflow envia somente arquivos versionados e preserva o `.env`.
+aplicação. Defina nele `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` e
+`CORS_ALLOWED_ORIGINS=https://api.monitorame.tech,https://monitorame.amontadavalley.com.br`,
+além das variáveis de execução necessárias ao pipeline. Mantenha esse arquivo
+fora do GitHub; o workflow envia somente arquivos versionados e preserva o
+`.env`.
 
 O PostgreSQL não publica porta no host. Os dados ficam no volume persistente
 `monitorame_pipeline_api_postgres_data`.
@@ -58,9 +59,11 @@ público.
 
 ## 5. Conecte o backend quando ele estiver hospedado
 
-O serviço `api` do pipeline participa da rede Docker `monitorame_backend_internal`
-e possui o alias DNS `pipeline-api`. No Compose do backend, declare essa rede
-como externa e conecte somente o serviço backend a ela:
+O serviço `api` do pipeline possui uma rota HTTPS pública em
+`api.monitorame.tech` e também participa da rede Docker
+`monitorame_backend_internal`, com alias DNS `pipeline-api`. No Compose do
+backend, declare essa rede como externa e conecte somente o serviço backend a
+ela:
 
 ```yaml
 services:
@@ -75,14 +78,19 @@ networks:
     name: monitorame_backend_internal
 ```
 
-O backend pode então chamar `http://pipeline-api:8000`. Não publique a porta
-`8000` no host e não configure uma rota Traefik para o pipeline. Configure o
-Traefik para encaminhar `api.monitorame.tech` ao backend público.
+O backend pode então chamar `http://pipeline-api:8000`; nessa chamada, envie o
+cabeçalho `Origin: https://api.monitorame.tech`. A porta `8000` não é publicada
+no host; o Traefik é o único caminho público até o container.
 
-Configure no backend a lista de origens CORS autorizadas para as chamadas do
-navegador. CORS restringe navegadores, mas não impede clientes como `curl` de
-chamar uma API pública; o pipeline fica protegido por não ter rota ou porta
-pública e por aceitar conexões somente de serviços conectados à rede Docker.
+Configure as origens CORS permitidas como
+`https://api.monitorame.tech` e `https://monitorame.amontadavalley.com.br`.
+Requisições de dados sem `Origin` ou com outra origem recebem `403`. `/health`
+aceita chamadas sem origem para permitir o healthcheck do container.
+
+Essa verificação limita o uso normal por navegadores, mas não autentica
+dispositivos: clientes como `curl` podem forjar o cabeçalho `Origin`. Para
+impedir chamadas diretas de clientes externos, o pipeline precisará ficar
+privado e o backend deverá autenticá-las.
 
 ## Atualizações futuras
 

@@ -3,6 +3,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_CORS_ALLOWED_ORIGINS_PADRAO = (
+    "https://api.monitorame.tech,"
+    "https://monitorame.amontadavalley.com.br"
+)
+CORS_ALLOWED_ORIGINS = tuple(
+    origem.strip().rstrip("/").casefold()
+    for origem in os.getenv(
+        "CORS_ALLOWED_ORIGINS", _CORS_ALLOWED_ORIGINS_PADRAO
+    ).split(",")
+    if origem.strip()
+)
+
 class ConfigError(RuntimeError):
     pass
 

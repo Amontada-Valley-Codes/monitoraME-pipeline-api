@@ -6,9 +6,11 @@ from time import perf_counter
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.api.errors import resposta_erro_validacao, usa_erro_padronizado
 from app.core import database, log_database
+from app.core.config import CORS_ALLOWED_ORIGINS
 from app.core.logging import (
     configurar_logging,
     desabilitar_persistencia_logs,
@@ -151,6 +153,20 @@ async def validation_exception_handler(
 @app.middleware("http")
 async def registrar_requisicao_http(request: Request, call_next):
     inicio = perf_counter()
+    origem = request.headers.get("origin")
+    origem_normalizada = origem.strip().rstrip("/").casefold() if origem else None
+
+    if origem_normalizada not in CORS_ALLOWED_ORIGINS and not (
+        request.url.path == "/health" and origem_normalizada is None
+    ):
+        logger.warning(
+            "Requisi\u00e7\u00e3o HTTP rejeitada por origem n\u00e3o autorizada",
+            extra={"method": request.method, "path": request.url.path},
+        )
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Origem ausente ou n\u00e3o autorizada."},
+        )
 
     try:
         response = await call_next(request)
@@ -181,5 +197,15 @@ async def registrar_requisicao_http(request: Request, call_next):
             },
         )
         return response
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(CORS_ALLOWED_ORIGINS),
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+    allow_credentials=False,
+    max_age=600,
+)
 
 app.include_router(router)
