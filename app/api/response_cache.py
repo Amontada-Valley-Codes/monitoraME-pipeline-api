@@ -37,6 +37,16 @@ def rota_tem_cache(request: Request) -> bool:
     )
 
 
+def deve_forcar_atualizacao(request: Request) -> bool:
+    """Indica que a resposta deve ser recalculada e substituir o cache atual."""
+    force_refresh = request.headers.get("x-force-refresh", "").strip().lower()
+    cache_control = {
+        diretiva.strip().lower()
+        for diretiva in request.headers.get("cache-control", "").split(",")
+    }
+    return force_refresh in {"1", "true", "yes"} or "no-cache" in cache_control
+
+
 def _chave_cache(request: Request, corpo: bytes) -> str:
     consulta = urlencode(
         sorted(parse_qsl(request.url.query, keep_blank_values=True)),
@@ -167,6 +177,7 @@ __all__ = [
     "MAX_CACHEABLE_REQUEST_BYTES",
     "RESPONSE_CACHE_TTL_SECONDS",
     "buscar_resposta",
+    "deve_forcar_atualizacao",
     "rota_tem_cache",
     "salvar_resposta",
 ]
