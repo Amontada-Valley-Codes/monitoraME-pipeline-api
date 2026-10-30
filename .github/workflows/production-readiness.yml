@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Set up Python 3.14
         uses: actions/setup-python@v7
@@ -108,7 +108,7 @@ jobs:
 
     steps:
       - name: Check out validated source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Configure and verify SSH
         shell: bash
