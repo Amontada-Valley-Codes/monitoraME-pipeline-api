@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
 from app.api.errors import obter_request_id, resposta_erro_validacao, usa_erro_padronizado
 from app.api import response_cache
@@ -252,3 +253,45 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+def _gerar_openapi_com_force_refresh() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    parametro_force_refresh = {
+        "name": "X-Force-Refresh",
+        "in": "header",
+        "required": False,
+        "description": (
+            "Defina como true para ignorar o cache, recalcular a resposta e "
+            "atualizar a entrada armazenada."
+        ),
+        "schema": {"type": "boolean", "default": False},
+    }
+    for caminho, operacoes in schema.get("paths", {}).items():
+        if not caminho.startswith(("/pipeline/", "/pncp/")):
+            continue
+        for metodo, operacao in operacoes.items():
+            if metodo not in {"get", "post"}:
+                continue
+            parametros = operacao.setdefault("parameters", [])
+            if not any(
+                item.get("in") == "header"
+                and item.get("name", "").lower() == "x-force-refresh"
+                for item in parametros
+            ):
+                parametros.append(parametro_force_refresh)
+
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _gerar_openapi_com_force_refresh
