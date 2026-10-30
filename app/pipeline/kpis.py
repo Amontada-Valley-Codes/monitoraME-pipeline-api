@@ -677,13 +677,14 @@ def calcular_overview_me_mei(
     compras_consideradas = _somar_centavos(compras["_valor_centavos"])
     microempresas = _somar_centavos(base["_valor_centavos"])
 
+    despesas_me = todos.loc[todos["porte_fornecedor"].eq("ME")]
     elementos_despesa = [
         {
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
             "valor_final_centavos": _somar_centavos(
-                base.loc[
-                    base["natureza_despesa_codigo"].eq(codigo),
+                despesas_me.loc[
+                    despesas_me["natureza_despesa_codigo"].eq(codigo),
                     "_valor_centavos",
                 ]
             ),
@@ -896,13 +897,14 @@ def calcular_overview_portes(
         + por_origem[ORIGEM_FORNECEDOR_FORA_CE]
     )
 
+    despesas_me = base.loc[base["porte_fornecedor"].eq("ME")]
     elementos = [
         {
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
             "valor_final_centavos": _somar_centavos(
-                base.loc[
-                    base["natureza_despesa_codigo"].eq(codigo),
+                despesas_me.loc[
+                    despesas_me["natureza_despesa_codigo"].eq(codigo),
                     "_valor_centavos",
                 ]
             ),
