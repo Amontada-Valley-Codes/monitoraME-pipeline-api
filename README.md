@@ -99,8 +99,10 @@ As respostas JSON de sucesso das rotas `/pipeline/*` e `/pncp/*` são
 armazenadas na tabela `api_response_cache`, no banco principal. A chave considera
 método, caminho, query string e corpo da requisição; as consultas retornam
 `X-Cache: HIT` quando atendidas pelo cache e `X-Cache: MISS` quando calculadas.
-Erros e rotas de saúde não são armazenados. O TTL padrão é de uma hora e pode
-ser alterado por `API_RESPONSE_CACHE_TTL_SECONDS`.
+Para recalcular uma resposta e substituir sua entrada atual, envie
+`X-Force-Refresh: true` ou `Cache-Control: no-cache`; a chamada retorna
+`X-Cache: MISS`. Erros e rotas de saúde não são armazenados. O TTL padrão é de
+uma hora e pode ser alterado por `API_RESPONSE_CACHE_TTL_SECONDS`.
 
 Inicie a aplicação completa e confira seu estado:
 

@@ -173,7 +173,9 @@ async def registrar_requisicao_http(request: Request, call_next):
                 return {"type": "http.request", "body": b"", "more_body": False}
 
             request._receive = receber_corpo_reproduzido
-            cacheado = await response_cache.buscar_resposta(request, corpo_cache)
+            cacheado = None
+            if not response_cache.deve_forcar_atualizacao(request):
+                cacheado = await response_cache.buscar_resposta(request, corpo_cache)
             if cacheado is not None:
                 resposta_do_cache = True
                 response = JSONResponse(
