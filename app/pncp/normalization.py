@@ -8,6 +8,7 @@ from app.core.models import PncpOportunidade, PncpQuarentena, RawPncpRecord
 from app.pncp.jobs import JobReivindicado
 from app.pncp.opportunities import registrar_eventos_alteracao_session
 from app.pncp.quality import avaliar_payload, registrar_avaliacao_session
+from app.pncp.urls import url_edital_oficial
 
 class ErroNormalizacaoPncp(ValueError):
     """Inconsistência estrutural: preservar RAW e aguardar replay autorizado."""
@@ -23,20 +24,6 @@ def _data(valor: Any) -> datetime | None:
     try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
     except ValueError: return None
 
-def _data_publicacao(valor: Any) -> date | None:
-    if not isinstance(valor, str): return None
-    try: return date.fromisoformat(valor[:10])
-    except ValueError: return None
-
-def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
-    p = raw.payload; externo = p.get("numeroControlePNCP")
-    if not isinstance(externo, str) or externo.strip() != raw.external_id:
-        raise ErroNormalizacaoPncp("numeroControlePNCP ausente ou divergente")
-    ano = p.get("anoCompra")
-    try: ano_compra = int(ano) if ano is not None and not isinstance(ano, bool) else None
-    except (TypeError, ValueError): ano_compra = None
-    if ano_compra is not None and not 1900 <= ano_compra <= 2200: ano_compra = None
-    return {"source": raw.source, "external_id": externo, "raw_record_id": raw.id, "payload_hash": raw.payload_hash, "source_updated_at": raw.source_updated_at, "orgao": p.get("orgaoEntidade"), "unidade": p.get("unidadeOrgao"), "objeto": p.get("objetoCompra"), "modalidade": p.get("modalidadeNome") or p.get("modalidadeContratacao"), "situacao": p.get("situacaoCompraNome") or p.get("situacaoCompra"), "data_publicacao": _data_publicacao(p.get("dataPublicacaoPncp")), "ano_compra": ano_compra, "prazo_proposta_final": _data(p.get("dataEncerramentoProposta")), "url_oficial": p.get("linkSistemaOrigem") or f"https://pncp.gov.br/app/editais/{externo}"}
 def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
     avaliacao = avaliar_payload(raw)
     if avaliacao["data_quality_status"] == "invalid":
@@ -62,7 +49,10 @@ def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
         "situacao": p.get("situacaoCompraNome") or p.get("situacaoCompra"),
         "prazo_proposta_final": (datetime.fromisoformat(campos["dataEncerramentoProposta"]["valor"]["valor"])
             if campos["dataEncerramentoProposta"]["valor"] and campos["dataEncerramentoProposta"]["valor"]["tipo"] == "instante" else None),
-        "url_oficial": p.get("linkSistemaOrigem") or f"https://pncp.gov.br/app/editais/{raw.external_id}",
+        "url_oficial": (url_edital_oficial(raw.external_id,
+            cnpj=(orgao or {}).get("cnpj"), ano=p.get("anoCompra"),
+            sequencial=p.get("sequencialCompra")) or p.get("linkSistemaOrigem") or
+            f"https://pncp.gov.br/app/editais/{raw.external_id}"),
         "data_quality_status": avaliacao["data_quality_status"], "dados_semanticos": semanticos,
     }
 

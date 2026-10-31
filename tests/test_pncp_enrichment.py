@@ -23,7 +23,8 @@ class EnriquecimentoPncpTest(unittest.TestCase):
 
     def test_cliente_usa_rotas_oficiais_sem_pca(self) -> None:
         resposta = MagicMock(status_code=200); resposta.json.return_value = []
-        cliente = ClienteEnriquecimentoPncp(base_url="https://pncp.exemplo", session=MagicMock())
+        protecao = MagicMock(); protecao.adquirir.return_value.permitida = True
+        cliente = ClienteEnriquecimentoPncp(base_url="https://pncp.exemplo", session=MagicMock(), protecao=protecao)
         cliente.session.get.return_value = resposta
         cliente.buscar(IdentidadeCompra("12345678000190", 2026, 7), "documents")
         url = cliente.session.get.call_args.args[0]
@@ -32,7 +33,19 @@ class EnriquecimentoPncpTest(unittest.TestCase):
 
     def test_falha_de_documento_e_independente_da_contratacao(self) -> None:
         resposta = MagicMock(status_code=500)
-        cliente = ClienteEnriquecimentoPncp(session=MagicMock()); cliente.session.get.return_value = resposta
+        protecao = MagicMock(); protecao.adquirir.return_value.permitida = True
+        cliente = ClienteEnriquecimentoPncp(session=MagicMock(), protecao=protecao); cliente.session.get.return_value = resposta
         with self.assertRaises(ErroEnriquecimentoPncp) as contexto:
             cliente.buscar(IdentidadeCompra("12345678000190", 2026, 7), "documents")
         self.assertTrue(contexto.exception.retryable)
+
+    def test_429_respeita_retry_after_e_registra_pressao_na_fonte(self) -> None:
+        resposta = MagicMock(status_code=429, headers={"Retry-After": "7"})
+        protecao = MagicMock(); protecao.adquirir.return_value.permitida = True
+        cliente = ClienteEnriquecimentoPncp(session=MagicMock(), protecao=protecao)
+        cliente.session.get.return_value = resposta
+        with self.assertRaises(ErroEnriquecimentoPncp) as contexto:
+            cliente.buscar(IdentidadeCompra("12345678000190", 2026, 7), "documents")
+        self.assertEqual(contexto.exception.retry_after.total_seconds(), 7)
+        protecao.registrar_resultado.assert_called_once()
+        self.assertFalse(protecao.registrar_resultado.call_args.kwargs["sucesso"])

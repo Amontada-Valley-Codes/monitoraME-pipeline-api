@@ -7,15 +7,20 @@ import hashlib
 import json
 import os
 import re
+import time
 from typing import Any
 
 import requests
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import orm
 from app.core.models import PncpEnriquecimento, PncpOportunidade, RawPncpRecord
 from app.pncp.jobs import JobReivindicado, NovoJob, agendar_job_session
 from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
+from app.pncp.protecao import PncpProtegidoError, ProtecaoPncp
+from app.pncp.participation import salvar_documentos_session, salvar_itens_session, salvar_resultados_session
+from app.core.models import PncpItem
 
 
 PRIORIDADE_ENRIQUECIMENTO = 40
@@ -23,12 +28,13 @@ RECURSOS = frozenset({"detail", "items", "documents"})
 
 
 class ErroEnriquecimentoPncp(RuntimeError):
-    def __init__(self, mensagem: str, *, retryable: bool = True, status_code: int | None = None) -> None:
+    def __init__(self, mensagem: str, *, retryable: bool = True, status_code: int | None = None, retry_after: timedelta | None = None) -> None:
         super().__init__(mensagem)
-        self.retryable, self.status_code = retryable, status_code
+        self.retryable, self.status_code, self.retry_after = retryable, status_code, retry_after
 
     def contexto(self) -> dict[str, object]:
-        return {"categoria": "enriquecimento", "status_code": self.status_code, "retryable": self.retryable}
+        return {"categoria": "enriquecimento", "status_code": self.status_code, "retryable": self.retryable,
+            "retry_after_seconds": self.retry_after.total_seconds() if self.retry_after else None}
 
 
 @dataclass(frozen=True)
@@ -91,36 +97,86 @@ def agendar_enriquecimento_session(
 class ClienteEnriquecimentoPncp:
     """Cliente somente GET das rotas oficiais de contratação; não consulta PCA."""
 
-    def __init__(self, base_url: str | None = None, *, session: requests.Session | None = None) -> None:
+    def __init__(self, base_url: str | None = None, *, session: requests.Session | None = None, protecao: ProtecaoPncp | None = None) -> None:
         self.base_url = (base_url or os.getenv("PNCP_ENRICHMENT_BASE_URL", "https://pncp.gov.br/api/pncp")).rstrip("/")
         self.timeout = (float(os.getenv("PNCP_CONNECT_TIMEOUT_SECONDS", "10")), float(os.getenv("PNCP_READ_TIMEOUT_SECONDS", "30")))
         self.session = session or requests.Session()
+        self.protecao = protecao or ProtecaoPncp()
+
+    def _buscar_json(self, caminho: str, recurso: str) -> Any:
+        limite_espera = time.monotonic() + 30
+        while True:
+            permissao = self.protecao.adquirir()
+            if permissao.permitida:
+                break
+            if permissao.motivo != "rate limit global" or time.monotonic() + permissao.aguardar.total_seconds() > limite_espera:
+                raise PncpProtegidoError(permissao)
+            time.sleep(max(0.01, permissao.aguardar.total_seconds()))
+        inicio = time.monotonic()
+        try:
+            resposta = self.session.get(f"{self.base_url}{caminho}", timeout=self.timeout, headers={"Accept": "application/json"})
+        except requests.RequestException as exc:
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio)
+            raise ErroEnriquecimentoPncp(type(exc).__name__) from exc
+        if resposta.status_code >= 400:
+            retryable = classificar_status_http(resposta.status_code)
+            self.protecao.registrar_resultado(sucesso=False, retryable=retryable, status_code=resposta.status_code, latency_seconds=time.monotonic() - inicio)
+            raise ErroEnriquecimentoPncp(f"HTTP {resposta.status_code} em {recurso}", retryable=retryable, status_code=resposta.status_code,
+                retry_after=retry_after_para_timedelta(resposta.headers.get("Retry-After")) if resposta.status_code == 429 else None)
+        try:
+            payload = resposta.json(parse_float=str) if recurso in {"items", "results"} else resposta.json()
+        except ValueError as exc:
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=resposta.status_code, latency_seconds=time.monotonic() - inicio)
+            raise ErroEnriquecimentoPncp("JSON invalido em enriquecimento") from exc
+        esperado = (payload if recurso == "detail" else
+            payload if isinstance(payload, list) else
+            payload.get({"items": "itens", "documents": "documentos", "results": "listaResultados"}[recurso]) if isinstance(payload, dict) else None)
+        valido = isinstance(esperado, dict) if recurso == "detail" else isinstance(esperado, list) and all(isinstance(item, dict) for item in esperado)
+        if not valido:
+            self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=resposta.status_code, latency_seconds=time.monotonic() - inicio)
+            raise ErroEnriquecimentoPncp("estrutura JSON invalida em enriquecimento")
+        self.protecao.registrar_resultado(sucesso=True, status_code=resposta.status_code, latency_seconds=time.monotonic() - inicio)
+        return payload
 
     def buscar(self, identidade: IdentidadeCompra, recurso: str) -> dict[str, Any] | list[dict[str, Any]]:
         if recurso not in RECURSOS:
             raise ValueError("recurso de enriquecimento invalido")
         raiz = f"/v1/orgaos/{identidade.cnpj}/compras/{identidade.ano}/{identidade.sequencial}"
         caminho = raiz if recurso == "detail" else f"{raiz}/{'itens' if recurso == 'items' else 'arquivos'}"
-        try:
-            resposta = self.session.get(f"{self.base_url}{caminho}", timeout=self.timeout, headers={"Accept": "application/json"})
-        except requests.RequestException as exc:
-            raise ErroEnriquecimentoPncp(type(exc).__name__) from exc
-        if resposta.status_code >= 400:
-            raise ErroEnriquecimentoPncp(f"HTTP {resposta.status_code} em {recurso}", retryable=classificar_status_http(resposta.status_code), status_code=resposta.status_code)
-        try:
-            payload = resposta.json()
-        except ValueError as exc:
-            raise ErroEnriquecimentoPncp("JSON invalido em enriquecimento") from exc
+        if recurso == "items":
+            tamanho = 50
+            itens: list[dict[str, Any]] = []
+            for pagina in range(1, int(os.getenv("PNCP_ENRICHMENT_MAX_ITEM_PAGES", "100")) + 1):
+                payload = self._buscar_json(f"{caminho}?pagina={pagina}&tamanhoPagina={tamanho}", recurso)
+                lote = payload if isinstance(payload, list) else payload.get("itens") if isinstance(payload, dict) else None
+                if not isinstance(lote, list) or any(not isinstance(item, dict) for item in lote):
+                    raise ErroEnriquecimentoPncp("pagina de itens PNCP invalida", retryable=False)
+                itens.extend(lote)
+                if len(lote) < tamanho:
+                    return itens
+            raise ErroEnriquecimentoPncp("limite de paginas de itens excedido", retryable=False)
+        payload = self._buscar_json(caminho, recurso)
         if recurso == "detail" and not isinstance(payload, dict):
             raise ErroEnriquecimentoPncp("detalhe PNCP invalido")
+        if recurso == "documents" and isinstance(payload, dict):
+            payload = payload.get("documentos")
         if recurso != "detail" and not isinstance(payload, list):
             raise ErroEnriquecimentoPncp("lista PNCP invalida")
         return payload
+
+    def buscar_resultados(self, identidade: IdentidadeCompra, numero_item: int) -> list[dict[str, Any]]:
+        raiz = f"/v1/orgaos/{identidade.cnpj}/compras/{identidade.ano}/{identidade.sequencial}"
+        payload = self._buscar_json(f"{raiz}/itens/{numero_item}/resultados", "results")
+        resultados = payload if isinstance(payload, list) else payload.get("listaResultados") if isinstance(payload, dict) else None
+        if not isinstance(resultados, list) or any(not isinstance(item, dict) for item in resultados):
+            raise ErroEnriquecimentoPncp("resultados PNCP invalidos", retryable=False)
+        return resultados
 
 
 def salvar_recurso_session(
     session: Session, *, oportunidade: PncpOportunidade, identidade: IdentidadeCompra,
     recurso: str, payload: dict[str, Any] | list[dict[str, Any]], agora: datetime | None = None,
+    observacao: str | None = None,
 ) -> None:
     agora = agora or datetime.now(timezone.utc)
     enriquecimento = session.get(PncpEnriquecimento, {"source": oportunidade.source, "external_id": oportunidade.external_id})
@@ -132,6 +188,10 @@ def salvar_recurso_session(
     enriquecimento.source_version_hash, enriquecimento.expires_at, enriquecimento.last_error = oportunidade.payload_hash, agora + timedelta(hours=int(os.getenv("PNCP_ENRICHMENT_TTL_HOURS", "24"))), None
     setattr(enriquecimento, f"{recurso}_payload", payload)
     setattr(enriquecimento, f"{recurso}_hash", _hash(payload))
+    if recurso == "items":
+        salvar_itens_session(session, oportunidade, payload)
+    elif recurso == "documents":
+        salvar_documentos_session(session, oportunidade, payload, observacao=observacao)
 
 
 def enriquecer_job(job: JobReivindicado, cliente: ClienteEnriquecimentoPncp) -> None:
@@ -151,4 +211,12 @@ def enriquecer_job(job: JobReivindicado, cliente: ClienteEnriquecimentoPncp) -> 
     with orm.main_session() as session:
         oportunidade = session.get(PncpOportunidade, {"source": job.source, "external_id": external_id})
         if oportunidade is not None and oportunidade.payload_hash == versao:
-            salvar_recurso_session(session, oportunidade=oportunidade, identidade=identidade, recurso=recurso, payload=payload)
+            salvar_recurso_session(session, oportunidade=oportunidade, identidade=identidade, recurso=recurso, payload=payload, observacao=str(job.id))
+    if recurso == "items":
+        for item_payload in payload:
+            numero_item = item_payload["numeroItem"]
+            resultados = [] if item_payload.get("temResultado") is False else cliente.buscar_resultados(identidade, numero_item)
+            with orm.main_session() as session:
+                oportunidade = session.get(PncpOportunidade, {"source": job.source, "external_id": external_id})
+                if oportunidade is not None and oportunidade.payload_hash == versao:
+                    salvar_resultados_session(session, oportunidade, numero_item, resultados, tem_resultado=item_payload.get("temResultado"))

@@ -1,0 +1,24 @@
+# Participação por item e manifesto de documentos PNCP
+
+Base: proposta local `workflow-pncp-monitorame.md`, [Swagger de integração de produção](https://pncp.gov.br/api/pncp/swagger-ui/index.html?configUrl=/pncp-api/v3/api-docs/swagger-config) e contratos oficiais do [Manual de Integração PNCP 2.6](https://pncp.gov.br/manual/pt-br/latest/singlehtml/), conferidos em 31/10/2026. A API pública de consulta de contratações não expõe esses recursos detalhados; os GETs abaixo pertencem à API de integração pública, sem credenciais de publicação.
+
+| Recurso | GET oficial | Chave no âmbito da contratação | Cobertura |
+| --- | --- | --- | --- |
+| Itens | [`/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens`](https://pncp.gov.br/manual/pt-br/latest/contratacao/consultar_itens_de_uma_contratacao.html) | `numeroItem` | Paginação `pagina`/`tamanhoPagina`; descrição, quantidade, unidade, valores decimais de até quatro casas, situação, critério e `temResultado`. |
+| Resultados | [`/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens/{numeroItem}/resultados`](https://pncp.gov.br/manual/pt-br/latest/contratacao/consultar_resultados_de_item_de_uma_contratacao.html) | `numeroItem` + `sequencialResultado` | Fornecedor, `niFornecedor`, quantidade/valor homologado, situação e data do resultado. Consulta individual por item; sem paginação documentada. |
+| Documentos | [`/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos`](https://pncp.gov.br/manual/pt-br/latest/contratacao/consultar_todos_documentos_de_uma_contratacao.html) | `sequencialDocumento` | Título, tipo, URL e data de publicação. A lista não documenta paginação ou hash de conteúdo. |
+| Histórico | [`/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/historico`](https://pncp.gov.br/manual/pt-br/latest/contratacao/consultar_historico_da_contratacao.html) | evento da contratação | Disponível oficialmente; conciliação com a visão local fica para evolução própria. |
+
+O retorno oficial dos itens não documenta `numeroLote`, identidade, descrição ou julgamento de lote. `numero_lote` só é preenchido se o payload o fornecer explicitamente; vários itens podem compartilhar esse valor e aparecem agrupados em `lotes_identificados`. O agrupamento não cria uma entidade oficial de lote. `lotes_identificados=0` significa ausência de chave de lote, não contratação sem lotes. Não se agrega valor ou se atribui resultado a lote sem relação oficial. Valores monetários de itens/resultados são preservados como texto decimal da fonte, com até quatro casas; não são convertidos para `float` nem para centavos de TCE.
+
+`resultado_status` começa `NAO_CONSULTADO`, vira `AUSENTE` com uma lista válida vazia e sem indicação positiva de resultado, `PARCIAL` com resultados sem indicação explícita de homologação no estado do item ou com `temResultado=true` e lista vazia, e `FINAL` somente quando o estado do item contém homologação. `temResultado=false` permite representar ausência sem GET adicional. Nome de fornecedor não prova participação de uma empresa; somente `niFornecedor` com `tipoPessoa=PJ` é exposto como CNPJ para eventual vínculo, sem matching automático.
+
+Quando um resultado antes visto desaparece de uma lista válida, sua visão atual recebe `REMOVIDO` e a versão anterior fica no histórico. A resposta de detalhe inclui somente resultados `ATUAL`.
+
+O manifesto guarda metadados e URL oficial, sem baixar bytes. `payload_hash` é hash dos metadados canônicos, não hash do arquivo. Mudança de título, tipo ou URL gera nova versão e evento após o commit. Uma falha HTTP/JSON não altera o manifesto. Em uma lista completa válida, a primeira ausência muda para `TEMPORARIAMENTE_INDISPONIVEL`; uma segunda observação distinta confirma `REMOVIDO`. O identificador do job de enriquecimento impede que a mesma execução conte duas vezes. URLs antigas ficam no histórico. Um retorno de item com paginação incompleta falha o job sem salvar conjunto parcial.
+
+As tabelas `pncp_itens`, `pncp_resultados_itens`, `pncp_documentos` mantêm a visão atual com chaves compostas ligadas à oportunidade; `pncp_recurso_versoes` preserva revisões monotônicas de metadados. `pncp_eventos` registra mudanças com chave idempotente baseada em recurso, revisão e versões anterior/atual. `GET /health/pncp` expõe contagens de oportunidades com itens, estados de resultado, documentos, indisponibilidades e versões. Essas contagens medem persistência local, não completude de todos os editais publicados no PNCP.
+
+## Repasse para a etapa seguinte
+
+Antes de consumir lotes em matching, confirmar no PNCP um contrato oficial que forneça uma chave de lote e sua relação com `numeroItem`; a consulta oficial atual de itens não documenta esses campos. Aplicar a migration `0020_pncp_recursos` em um PostgreSQL de homologação e conferir o manifesto com contratações reais. Os testes locais cobrem separação de chaves, estados, replay e paginação com mocks; não substituem a verificação da API externa nem da migration em banco real.

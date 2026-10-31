@@ -10,7 +10,7 @@ Exemplos no container:
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import sys
 from typing import Any
@@ -31,6 +31,9 @@ from app.pncp.ingestion import (
 )
 from app.pncp.jobs import WorkerPncp, agendar_job, replay_jobs
 from app.pncp.normalization import normalizar_job
+from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
+from app.pncp.enrichment import ClienteEnriquecimentoPncp, agendar_enriquecimento_session, enriquecer_job
+from app.core.models import PncpOportunidade
 
 
 def _worker_coleta(tamanho_pagina: int, job_type: str = "incremental") -> WorkerPncp:
@@ -96,6 +99,49 @@ def normalizar(args: argparse.Namespace) -> int:
     return 0
 
 
+def coletar_amostra(args: argparse.Namespace) -> int:
+    """Persiste no maximo N registros da primeira pagina, sem avancar cursor."""
+    cliente = ClientePncp()
+    pagina = cliente.buscar_publicacoes(inicio=args.data, fim=args.data, modalidade=args.modalidade,
+        pagina=1, tamanho_pagina=max(args.limite, 10))
+    external_ids = []
+    for payload in pagina.itens[:args.limite]:
+        external_id = payload.get("numeroControlePNCP")
+        if not isinstance(external_id, str) or not external_id.strip():
+            continue
+        with orm.main_session() as session:
+            persistido = salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(
+                entity_type="CONTRATACAO", external_id=external_id, payload=payload,
+                collected_at=datetime.now(timezone.utc), run_id=f"amostra:{args.data.isoformat()}:{args.modalidade}"))
+        external_ids.append({"external_id": external_id, "raw_id": persistido.raw_record_id, "job_id": persistido.job_id})
+    print({"data": args.data.isoformat(), "modalidade": args.modalidade, "limite": args.limite,
+        "persistidos": len(external_ids), "total_paginas_fonte": pagina.total_paginas, "cursor_avancado": False, "editais": external_ids})
+    return 0 if external_ids else 2
+
+
+def agendar_enriquecimento(args: argparse.Namespace) -> int:
+    agendados = {}
+    with orm.main_session() as session:
+        for external_id in args.id:
+            oportunidade = session.get(PncpOportunidade, {"source": "PNCP", "external_id": external_id})
+            if oportunidade is None:
+                agendados[external_id] = "NAO_ENCONTRADO"
+                continue
+            agendados[external_id] = agendar_enriquecimento_session(session,
+                oportunidade=oportunidade, motivo="validacao_local")
+    print({"editais": agendados})
+    return 0 if all(valor != "NAO_ENCONTRADO" for valor in agendados.values()) else 2
+
+
+def executar_enriquecimento(args: argparse.Namespace) -> int:
+    cliente = ClienteEnriquecimentoPncp()
+    worker = WorkerPncp("pncp-operacao-enriquecimento",
+        lambda job: enriquecer_job(job, cliente), job_type="enrich")
+    executados = sum(worker.executar_uma_vez() for _ in range(args.limite))
+    print({"executados": executados, "limite": args.limite})
+    return 0
+
+
 def status(_: argparse.Namespace) -> int:
     with orm.main_session() as session:
         jobs = session.execute(text("SELECT job_type, status, count(*) AS total FROM ingestion_jobs GROUP BY job_type, status ORDER BY job_type, status")).mappings().all()
@@ -131,6 +177,17 @@ def main() -> int:
     normalizador = comandos.add_parser("normalizar")
     normalizador.add_argument("--limite", type=int, default=100)
     normalizador.set_defaults(func=normalizar)
+    amostra = comandos.add_parser("coletar-amostra", help="Importa poucos editais sem avançar cursor")
+    amostra.add_argument("--data", type=date.fromisoformat, required=True)
+    amostra.add_argument("--modalidade", type=int, default=6)
+    amostra.add_argument("--limite", type=int, choices=range(1, 51), default=3)
+    amostra.set_defaults(func=coletar_amostra)
+    enriquecer = comandos.add_parser("agendar-enriquecimento")
+    enriquecer.add_argument("--id", action="append", required=True)
+    enriquecer.set_defaults(func=agendar_enriquecimento)
+    enriquecer_run = comandos.add_parser("enriquecer")
+    enriquecer_run.add_argument("--limite", type=int, default=10)
+    enriquecer_run.set_defaults(func=executar_enriquecimento)
     status_parser = comandos.add_parser("status")
     status_parser.set_defaults(func=status)
     replay_parser = comandos.add_parser("replay")
