@@ -582,8 +582,10 @@ que os contenha.
 O enriquecimento sob demanda consulta todas as páginas de itens (limite
 `PNCP_ENRICHMENT_MAX_ITEM_PAGES`), consulta resultados por item e mantém um
 manifesto de documentos sem baixar seus arquivos. `GET /pncp/editais/{id}`
-expõe `itens_estruturados`, `lotes_identificados`, `resultados_por_item`, `documentos_manifesto` e
-`cobertura_participacao`; `GET /health/pncp` inclui contagens de cobertura.
+retorna os dados principais e o detalhe adicional; `GET /pncp/editais/{id}/itens`
+retorna itens estruturados, resultados, lotes e cobertura; `GET
+/pncp/editais/{id}/anexos` retorna o manifesto e a disponibilidade dos documentos
+sem baixar seus arquivos. `GET /health/pncp` inclui contagens de cobertura.
 Consulte [o contrato e as limitações](docs/pncp-participacao-documentos.md)
 antes de usar lotes ou estados de resultado em matching.
 

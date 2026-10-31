@@ -136,7 +136,11 @@ def salvar_resultados_session(session: Session, oportunidade: PncpOportunidade, 
         _evento(session, oportunidade, "RESULTADO_REMOVIDO", chave_recurso, atual.revisao,
             atual.payload_hash, _hash([atual.payload_hash, "REMOVIDO"]))
         alterados += 1
-    status = ("PARCIAL" if tem_resultado else "AUSENTE") if not resultados else "FINAL" if item.situacao and "HOMOLOG" in item.situacao.upper() else "PARCIAL"
+    if resultados:
+        status = "FINAL" if item.situacao and "HOMOLOG" in item.situacao.upper() else "PARCIAL"
+    else:
+        # Ausência só é confirmada pela fonte; campo omitido/null permanece inconclusivo.
+        status = "AUSENTE" if tem_resultado is False else "PARCIAL"
     if item.resultado_status != status:
         anterior_status = item.resultado_status or "NAO_CONSULTADO"
         item.revisao += 1

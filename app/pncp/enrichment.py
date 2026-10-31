@@ -81,10 +81,15 @@ def agendar_enriquecimento_session(
         raise ValueError("RAW da oportunidade inexistente")
     identidade_do_payload(raw.payload)  # valida antes de criar qualquer job.
     cache = session.get(PncpEnriquecimento, {"source": oportunidade.source, "external_id": oportunidade.external_id})
-    if cache and cache.source_version_hash == oportunidade.payload_hash and cache.expires_at > agora:
-        return []
+    cache_valido = bool(
+        cache
+        and cache.source_version_hash == oportunidade.payload_hash
+        and cache.expires_at > agora
+    )
     resultados = []
     for recurso in RECURSOS:
+        if cache_valido and getattr(cache, f"{recurso}_hash", None) is not None:
+            continue
         scope = f"enrich:{recurso}:{oportunidade.external_id}:{oportunidade.payload_hash}"
         resultados.append(agendar_job_session(session, NovoJob(
             job_type="enrich", entity_type="CONTRATACAO", source=oportunidade.source,

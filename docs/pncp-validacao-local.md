@@ -92,10 +92,12 @@ Use o mesmo `external_id` retornado na coleta. A rota de detalhe é somente leit
 
 ```bash
 ID='COLE_O_EXTERNAL_ID'
-curl "http://localhost:18000/pncp/editais/$ID"
+curl -H 'X-Force-Refresh: true' "http://localhost:18000/pncp/editais/$ID"
+curl -H 'X-Force-Refresh: true' "http://localhost:18000/pncp/editais/$ID/itens"
+curl -H 'X-Force-Refresh: true' "http://localhost:18000/pncp/editais/$ID/anexos"
 ```
 
-Confira `itens_estruturados`, `lotes_identificados`, `resultados_por_item`, `documentos_manifesto` e `cobertura_participacao`. `lotes_identificados` pode ficar vazio porque o contrato oficial de itens não documenta chave de lote. Para as contagens gerais, consulte `http://localhost:18000/health/pncp`.
+O cabeçalho `X-Force-Refresh: true` ignora a resposta antiga do cache e atualiza a entrada. O detalhe traz dados principais, `/itens` traz itens estruturados, resultados, lotes e cobertura, e `/anexos` traz o manifesto e disponibilidade. `lotes_identificados` pode ficar vazio porque o contrato oficial de itens não documenta chave de lote. Para as contagens gerais, consulte `http://localhost:18000/health/pncp`.
 
 Encerre mantendo o banco isolado para a próxima execução:
 
