@@ -52,6 +52,8 @@ def buscar_editais(
     busca: str | None = Query(None, min_length=1, max_length=200),
     pagina: int = Query(1, ge=1),
     tamanho_pagina: int = Query(20, ge=1, le=100),
+    ano_publicacao: int | None = Query(None, ge=2000, le=2100),
+    ano_compra: int | None = Query(None, ge=2000, le=2100),
 ):
     return _executar(
         request,
@@ -60,8 +62,17 @@ def buscar_editais(
             busca=busca,
             pagina=pagina,
             tamanho_pagina=tamanho_pagina,
+            ano_publicacao=ano_publicacao,
+            ano_compra=ano_compra,
         ),
     )
+
+
+@router.get("/cobertura/{ano}", summary="Estado do backfill anual de publicações PNCP")
+def buscar_cobertura(ano: int, request: Request, response: Response):
+    if ano < 2000 or ano > 2100:
+        return resposta_erro(status_code=422, code="VALIDATION_ERROR", message="Ano deve estar entre 2000 e 2100.", details=[], request_id=obter_request_id(request))
+    return _executar(request, response, lambda: serving.obter_cobertura_anual(ano))
 
 
 @router.get(

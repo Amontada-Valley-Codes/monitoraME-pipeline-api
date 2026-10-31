@@ -559,6 +559,26 @@ docker compose -p monitorame-pncp-test exec -T api \
   python scripts/replay_pncp_jobs.py --job-id 123
 ```
 
+O cliente PNCP limita `tamanhoPagina` a 50. Para agendar um backfill anual de
+publicações, indique o ano e as modalidades; o padrão divide a coleta em janelas
+semanais. Consulte cobertura e oportunidades por cada conceito de ano:
+
+```bash
+docker compose exec api python scripts/pncp_operacao.py coletar-publicacao --ano 2026 --modalidade 6 --modalidade 8
+GET /pncp/cobertura/2026
+GET /pncp/editais?ano_publicacao=2026
+GET /pncp/editais?ano_compra=2026
+```
+
+O comando agenda jobs persistentes e tenta executar a coleta imediatamente. O
+Compose também oferece `pncp-worker-coleta` e `pncp-worker-normalizacao` para
+processar continuamente coleta/retries e RAW pendente; suba-os com
+`docker compose up -d pncp-worker-coleta pncp-worker-normalizacao`. A cobertura
+fica completa quando todas as janelas agendadas estiverem coletadas e seus jobs
+de normalização estiverem concluídos. Registros antigos sem esses campos na
+origem continuam com os campos anuais nulos até serem reprocessados de um RAW
+que os contenha.
+
 ## Testes
 
 ```bash

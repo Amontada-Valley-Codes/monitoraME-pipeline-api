@@ -18,6 +18,25 @@ class ErroNormalizacaoPncp(ValueError):
     def contexto(self) -> dict[str, object]:
         return {"categoria": "normalizacao_estrutural", "retryable": False}
 
+def _data(valor: Any) -> datetime | None:
+    if not isinstance(valor, str): return None
+    try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
+    except ValueError: return None
+
+def _data_publicacao(valor: Any) -> date | None:
+    if not isinstance(valor, str): return None
+    try: return date.fromisoformat(valor[:10])
+    except ValueError: return None
+
+def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
+    p = raw.payload; externo = p.get("numeroControlePNCP")
+    if not isinstance(externo, str) or externo.strip() != raw.external_id:
+        raise ErroNormalizacaoPncp("numeroControlePNCP ausente ou divergente")
+    ano = p.get("anoCompra")
+    try: ano_compra = int(ano) if ano is not None and not isinstance(ano, bool) else None
+    except (TypeError, ValueError): ano_compra = None
+    if ano_compra is not None and not 1900 <= ano_compra <= 2200: ano_compra = None
+    return {"source": raw.source, "external_id": externo, "raw_record_id": raw.id, "payload_hash": raw.payload_hash, "source_updated_at": raw.source_updated_at, "orgao": p.get("orgaoEntidade"), "unidade": p.get("unidadeOrgao"), "objeto": p.get("objetoCompra"), "modalidade": p.get("modalidadeNome") or p.get("modalidadeContratacao"), "situacao": p.get("situacaoCompraNome") or p.get("situacaoCompra"), "data_publicacao": _data_publicacao(p.get("dataPublicacaoPncp")), "ano_compra": ano_compra, "prazo_proposta_final": _data(p.get("dataEncerramentoProposta")), "url_oficial": p.get("linkSistemaOrigem") or f"https://pncp.gov.br/app/editais/{externo}"}
 def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
     avaliacao = avaliar_payload(raw)
     if avaliacao["data_quality_status"] == "invalid":
