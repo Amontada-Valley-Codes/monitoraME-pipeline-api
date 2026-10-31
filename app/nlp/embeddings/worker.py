@@ -1,0 +1,1 @@
+# Processamento incremental de embeddings
