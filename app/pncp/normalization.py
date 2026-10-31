@@ -9,6 +9,7 @@ from app.pncp.jobs import JobReivindicado
 from app.pncp.opportunities import registrar_eventos_alteracao_session
 from app.pncp.quality import avaliar_payload, registrar_avaliacao_session
 from app.pncp.urls import url_edital_oficial
+from app.pncp.derived_status import aplicar_status_session
 
 class ErroNormalizacaoPncp(ValueError):
     """Inconsistência estrutural: preservar RAW e aguardar replay autorizado."""
@@ -39,6 +40,7 @@ def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
         unidade["codigoIbge"] = campos["unidadeOrgao.codigoIbge"]["valor"]
     semanticos = {e["destino"].split(".", 1)[1]: e["valor"] for e in campos.values() if e["destino"].startswith("dados_semanticos.")}
     semanticos["prazo_proposta_final_origem"] = campos["dataEncerramentoProposta"]["valor"]
+    semanticos["forma_participacao_origem"] = p.get("modoDisputaNome") or p.get("modoDisputa")
     semanticos["rule_version"] = avaliacao["rule_version"]
     return {
         "source": raw.source, "external_id": campos["numeroControlePNCP"]["valor"],
@@ -103,12 +105,24 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
                 return concluir("INCOMPLETO")
     if atual is None:
         novo = PncpOportunidade(**dados); session.add(novo)
+        payload = raw.payload
+        aplicar_status_session(session, novo, agora=datetime.now(timezone.utc),
+            official_status=payload.get("situacaoCompraNome") or payload.get("situacaoCompra"),
+            inicio=(dados.get("dados_semanticos") or {}).get("data_abertura_proposta"),
+            encerramento=(dados.get("dados_semanticos") or {}).get("prazo_proposta_final_origem"),
+            forma_participacao=payload.get("modoDisputaNome") or payload.get("modoDisputa"))
         registrar_eventos_alteracao_session(session, anterior=None, atual=novo)
         return concluir("NOVO")
     anterior = PncpOportunidade(**{campo: getattr(atual, campo) for campo in dados})
     for campo, valor in dados.items():
         setattr(atual, campo, valor)
     atual.normalized_at = datetime.now(timezone.utc)
+    payload = raw.payload
+    aplicar_status_session(session, atual, agora=atual.normalized_at,
+        official_status=payload.get("situacaoCompraNome") or payload.get("situacaoCompra"),
+        inicio=(dados.get("dados_semanticos") or {}).get("data_abertura_proposta"),
+        encerramento=(dados.get("dados_semanticos") or {}).get("prazo_proposta_final_origem"),
+        forma_participacao=payload.get("modoDisputaNome") or payload.get("modoDisputa"))
     registrar_eventos_alteracao_session(session, anterior=anterior, atual=atual)
     return concluir("ALTERADO")
 

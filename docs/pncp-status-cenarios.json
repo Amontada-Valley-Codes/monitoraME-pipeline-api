@@ -1,0 +1,51 @@
+[
+  {
+    "caso": "abertura_futura",
+    "official_status": "Divulgada no PNCP",
+    "inicio": "2026-10-31T15:00:00Z",
+    "encerramento": "2026-11-02T18:00:00Z",
+    "agora": "2026-10-31T12:00:00Z"
+  },
+  {
+    "caso": "mesma_compra_depois_da_abertura",
+    "official_status": "Divulgada no PNCP",
+    "inicio": "2026-10-31T15:00:00Z",
+    "encerramento": "2026-11-02T18:00:00Z",
+    "agora": "2026-10-31T15:00:00Z"
+  },
+  {
+    "caso": "aberta",
+    "official_status": "Divulgada no PNCP",
+    "inicio": "2026-10-30T12:00:00Z",
+    "encerramento": "2026-11-05T12:00:00Z",
+    "agora": "2026-10-31T12:00:00Z"
+  },
+  {
+    "caso": "encerrando_em_48_horas",
+    "official_status": "Divulgada no PNCP",
+    "inicio": "2026-10-30T12:00:00Z",
+    "encerramento": "2026-11-02T12:00:00Z",
+    "agora": "2026-10-31T12:00:00Z"
+  },
+  {
+    "caso": "suspensao_prevalece_sobre_janela_aberta",
+    "official_status": "Suspensa",
+    "inicio": "2026-10-30T12:00:00Z",
+    "encerramento": "2026-11-05T12:00:00Z",
+    "agora": "2026-10-31T12:00:00Z"
+  },
+  {
+    "caso": "homologacao_parcial",
+    "official_status": "Homologada parcialmente",
+    "inicio": "2026-10-30T12:00:00Z",
+    "encerramento": "2026-11-05T12:00:00Z",
+    "agora": "2026-10-31T12:00:00Z"
+  },
+  {
+    "caso": "fuso_ausente_indeterminado",
+    "official_status": "Divulgada no PNCP",
+    "inicio": "2026-10-30T12:00:00",
+    "encerramento": "2026-11-05T12:00:00Z",
+    "agora": "2026-10-31T12:00:00Z"
+  }
+]
