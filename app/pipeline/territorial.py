@@ -91,8 +91,8 @@ def _agrupar(
         valor = int(recorte["_liquido_centavos"].sum())
         resultado.append({
             chave_saida: categoria,
-            "valor_liquido_centavos": valor,
-            "quantidade_empenhos": int(len(recorte)),
+            "valor_final_centavos": valor,
+            "quantidade_despesas": int(len(recorte)),
             "percentual": _percentual(valor, total),
         })
     return resultado
@@ -108,13 +108,13 @@ def _ranking_fornecedores(base: pd.DataFrame, limite: int, total: int) -> list[d
     agrupado = (
         dados.groupby(["_tipo", "_documento", "_nome"], dropna=False)
         .agg(
-            valor_liquido_centavos=("_liquido_centavos", "sum"),
-            quantidade_empenhos=("chave_empenho", "size"),
+            valor_final_centavos=("_liquido_centavos", "sum"),
+            quantidade_despesas=("chave_empenho", "size"),
             porte=("porte_fornecedor", "first"),
             origem=("origem_geografica", "first"),
         )
         .reset_index()
-        .sort_values(["valor_liquido_centavos", "quantidade_empenhos"], ascending=False)
+        .sort_values(["valor_final_centavos", "quantidade_despesas"], ascending=False)
         .head(limite)
     )
     return [
@@ -131,9 +131,9 @@ def _ranking_fornecedores(base: pd.DataFrame, limite: int, total: int) -> list[d
             "nome": str(item["_nome"]),
             "porte": item["porte"],
             "origem": ORIGENS_INVERSAS.get(item["origem"], "ORIGEM_NAO_IDENTIFICADA"),
-            "valor_liquido_centavos": int(item["valor_liquido_centavos"]),
-            "quantidade_empenhos": int(item["quantidade_empenhos"]),
-            "percentual": _percentual(int(item["valor_liquido_centavos"]), total),
+            "valor_final_centavos": int(item["valor_final_centavos"]),
+            "quantidade_despesas": int(item["quantidade_despesas"]),
+            "percentual": _percentual(int(item["valor_final_centavos"]), total),
         }
         for posicao, (_, item) in enumerate(agrupado.iterrows(), start=1)
     ]
@@ -233,11 +233,9 @@ def consultar_analise_territorial(
         raise empenhos.EmpenhoRequestError(
             "INVALID_PUBLISHED_DATA",
             "Existem empenhos publicados com valor liquido negativo no recorte.",
-            [{"field": "valor_liquido_centavos", "reason": "negative_value"}],
+            [{"field": "valor_final_centavos", "reason": "negative_value"}],
         )
 
-    bruto = int(base["_bruto_centavos"].sum())
-    anulado = int(base["_anulado_centavos"].sum())
     liquido = int(base["_liquido_centavos"].sum())
     origens = _agrupar(
         base,
@@ -249,17 +247,17 @@ def consultar_analise_territorial(
         item["origem"] = ORIGENS_INVERSAS.get(
             item.pop("origem_interna"), "ORIGEM_NAO_IDENTIFICADA"
         )
-    local = next(item["valor_liquido_centavos"] for item in origens if item["origem"] == "NO_MUNICIPIO_COMPRADOR")
-    outro_ce = next(item["valor_liquido_centavos"] for item in origens if item["origem"] == "EM_OUTRO_MUNICIPIO")
-    fora_ce = next(item["valor_liquido_centavos"] for item in origens if item["origem"] == "FORA_DO_CEARA")
-    desconhecida = next(item["valor_liquido_centavos"] for item in origens if item["origem"] == "ORIGEM_NAO_IDENTIFICADA")
+    local = next(item["valor_final_centavos"] for item in origens if item["origem"] == "NO_MUNICIPIO_COMPRADOR")
+    outro_ce = next(item["valor_final_centavos"] for item in origens if item["origem"] == "EM_OUTRO_MUNICIPIO")
+    fora_ce = next(item["valor_final_centavos"] for item in origens if item["origem"] == "FORA_DO_CEARA")
+    desconhecida = next(item["valor_final_centavos"] for item in origens if item["origem"] == "ORIGEM_NAO_IDENTIFICADA")
 
     por_porte = _agrupar(base, "porte_fornecedor", list(PORTES), chave_saida="porte")
     identificados_porte = sum(
-        item["valor_liquido_centavos"] for item in por_porte if item["porte"] != "NAO_IDENTIFICADO"
+        item["valor_final_centavos"] for item in por_porte if item["porte"] != "NAO_IDENTIFICADO"
     )
     me_mei = sum(
-        item["valor_liquido_centavos"] for item in por_porte if item["porte"] in {"ME", "MEI"}
+        item["valor_final_centavos"] for item in por_porte if item["porte"] in {"ME", "MEI"}
     )
     por_elemento = []
     for codigo in sorted(elementos, key=int):
@@ -268,8 +266,8 @@ def consultar_analise_territorial(
         por_elemento.append({
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
-            "valor_liquido_centavos": valor,
-            "quantidade_empenhos": int(len(recorte)),
+            "valor_final_centavos": valor,
+            "quantidade_despesas": int(len(recorte)),
             "percentual": _percentual(valor, liquido),
         })
 
@@ -283,7 +281,7 @@ def consultar_analise_territorial(
         evolucao.append({
             "competencia": competencia,
             "publicada": competencia in publicacoes,
-            "valor_liquido_centavos": valor if competencia in publicacoes else None,
+            "valor_final_centavos": valor if competencia in publicacoes else None,
             "valor_local_centavos": valor_local if competencia in publicacoes else None,
             "retencao_local_percentual": _percentual(valor_local, valor) if competencia in publicacoes else None,
         })
@@ -315,16 +313,14 @@ def consultar_analise_territorial(
             "competencias_solicitadas": competencias_solicitadas,
             "competencias_publicadas": competencias_publicadas,
             "competencias_ausentes": competencias_ausentes,
-            "empenhos": int(len(base)),
-            "empenhos_com_cache_cadastral": com_cache,
+            "despesas": int(len(base)),
+            "despesas_com_cache_cadastral": com_cache,
             "cobertura_cadastral_percentual": _percentual(com_cache, len(base)),
             "cobertura_geografica_por_valor_percentual": _percentual(valor_conhecido, liquido),
         },
         "resumo_financeiro": {
-            "valor_empenhado_centavos": bruto,
-            "valor_anulado_centavos": anulado,
-            "valor_liquido_centavos": liquido,
-            "quantidade_empenhos": int(len(base)),
+            "valor_final_centavos": liquido,
+            "quantidade_despesas": int(len(base)),
             "quantidade_fornecedores_identificados": int(
                 base.loc[base["documento_fornecedor"].astype("string").fillna("").str.strip().ne(""), "documento_fornecedor"].nunique()
             ),
@@ -347,9 +343,9 @@ def consultar_analise_territorial(
         "concentracao_fornecedores": _concentracao(base, liquido),
         "ranking_fornecedores": _ranking_fornecedores(base, ranking_limit, liquido),
         "metodologia": {
-            "base_financeira": "EMPENHO_LIQUIDO",
-            "formula_valor_liquido": "valor_empenhado - valor_anulado",
-            "formula_retencao_local": "valor_local / valor_liquido_total * 100",
+            "base_financeira": "DESPESA_FINAL",
+            "formula_valor_final": "valor final persistido",
+            "formula_retencao_local": "valor_local / valor_final_total * 100",
             "formula_participacao_me_mei": "(ME + MEI) / (ME + MEI + EPP + DEMAIS) * 100",
             "escala_percentual": "0_A_100",
             "escopo_elementos": list(NATUREZAS_DESPESA_MONITORADAS),

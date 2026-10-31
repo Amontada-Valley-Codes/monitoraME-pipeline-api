@@ -82,6 +82,26 @@ class FornecedorCache(MainBase):
     )
 
 
+class ApiResponseCache(MainBase):
+    """Resposta JSON calculada para uma combinação de método, rota e filtros."""
+
+    __tablename__ = "api_response_cache"
+    __table_args__ = (
+        Index("ix_api_response_cache_expires_at", "expires_at"),
+    )
+
+    cache_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    request_method: Mapped[str] = mapped_column(Text)
+    request_path: Mapped[str] = mapped_column(Text)
+    response_status: Mapped[int] = mapped_column(Integer)
+    response_content_type: Mapped[str] = mapped_column(Text)
+    response_body: Mapped[Any] = mapped_column(JSONB)
+    cached_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class RawPncpRecord(MainBase):
     """Versao imutavel de uma resposta publica do PNCP."""
 
@@ -196,6 +216,8 @@ class PncpOportunidade(MainBase):
     situacao: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     prazo_proposta_final: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     url_oficial: Mapped[str] = mapped_column(Text)
+    data_quality_status: Mapped[str] = mapped_column(Text, server_default=text("'not_evaluated'"))
+    dados_semanticos: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     normalized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
@@ -462,6 +484,7 @@ Index("idx_tce_anulacoes_chave_empenho", TceAnulacaoEmpenho.chave_empenho)
 
 
 __all__ = [
+    "ApiResponseCache",
     "FornecedorCache",
     "FornecedorMe",
     "IngestionJob",
@@ -485,3 +508,18 @@ __all__ = [
 
 # Registra as tabelas de observacoes mensais no metadata Alembic.
 from app.core.porte_models import PortePublicacao, PorteObservacao  # noqa: E402,F401
+
+
+class PncpAvaliacaoQualidade(MainBase):
+    """Uma evidencia por RAW e versao da regra; replay nao duplica metricas."""
+
+    __tablename__ = "pncp_avaliacoes_qualidade"
+    raw_record_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT"), primary_key=True)
+    rule_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    endpoint: Mapped[str] = mapped_column(Text, index=True)
+    run_id: Mapped[str | None] = mapped_column(Text, index=True)
+    data_quality_status: Mapped[str] = mapped_column(Text)
+    decisao: Mapped[str] = mapped_column(Text, server_default=text("'AVALIADO'"))
+    campos: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    tentativas: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    avaliado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

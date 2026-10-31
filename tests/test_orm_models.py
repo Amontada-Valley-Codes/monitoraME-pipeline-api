@@ -30,6 +30,7 @@ class OrmMetadataTest(unittest.TestCase):
         esperado = {
             "porte_publicacoes",
             "porte_observacoes",
+            "api_response_cache",
             "ibge_municipios",
             "tce_municipios",
             "fornecedores_me",
@@ -44,6 +45,7 @@ class OrmMetadataTest(unittest.TestCase):
             "pncp_eventos",
             "pncp_matchings",
             "pncp_quarentena",
+            "pncp_avaliacoes_qualidade",
             "pncp_sync_cursors",
             "pncp_source_controls",
             "tce_despesa_ingestion_runs",

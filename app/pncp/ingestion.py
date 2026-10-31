@@ -19,6 +19,7 @@ from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
 ENDPOINT_PUBLICACAO = "/v1/contratacoes/publicacao"
 ENDPOINT_ATUALIZACAO = "/v1/contratacoes/atualizacao"
+ENDPOINT_PROPOSTAS_ABERTAS = "/v1/contratacoes/proposta"
 FONTE = "PNCP"
 TIPO = "CONTRATACAO"
 
@@ -74,15 +75,23 @@ class ClientePncp:
         self.protecao = protecao or ProtecaoPncp()
 
     def buscar_publicacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
-        return self._buscar(ENDPOINT_PUBLICACAO, inicio=inicio, fim=fim, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+        parametros = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade}
+        return self._buscar(ENDPOINT_PUBLICACAO, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
     def buscar_atualizacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
-        return self._buscar(ENDPOINT_ATUALIZACAO, inicio=inicio, fim=fim, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+        parametros = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade}
+        return self._buscar(ENDPOINT_ATUALIZACAO, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
-    def _buscar(self, endpoint: str, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
+    def buscar_propostas_abertas(self, *, data_final: date, pagina: int, tamanho_pagina: int, modalidade: int | None = None) -> PaginaContratacoes:
+        parametros: dict[str, Any] = {"dataFinal": data_final.strftime("%Y%m%d")}
+        if modalidade is not None:
+            parametros["codigoModalidadeContratacao"] = modalidade
+        return self._buscar(ENDPOINT_PROPOSTAS_ABERTAS, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
+
+    def _buscar(self, endpoint: str, *, parametros: dict[str, Any], pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
         if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 50:
             raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 50")
-        params = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
+        params = {**parametros, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
         permissao = self.protecao.adquirir()
         if not permissao.permitida:
             raise PncpProtegidoError(permissao)
@@ -166,6 +175,53 @@ def agendar_backfill_anual(*, ano: int, modalidades: list[int], agora: datetime 
             jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
         inicio = fim + timedelta(seconds=1)
     return jobs
+
+
+def agendar_propostas_abertas(*, data_final: datetime, modalidades: list[int] | None = None, tamanho_pagina: int = 50, prioridade: int = 100) -> list[NovoJob]:
+    if data_final.tzinfo is None:
+        raise ValueError("data_final deve incluir timezone")
+    if not 1 <= tamanho_pagina <= 50:
+        raise ValueError("tamanho_pagina deve estar entre 1 e 50")
+    codigos = modalidades or [None]
+    jobs: list[NovoJob] = []
+    for modalidade in codigos:
+        codigo = str(modalidade) if modalidade is not None else "todas"
+        scope = f"propostas-abertas:{data_final.date().isoformat()}:modalidade:{codigo}:tamanho:{tamanho_pagina}"
+        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_end=data_final, page=1))
+    return jobs
+
+
+def coletar_propostas_abertas(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:
+    """Persiste todas as páginas de propostas abertas como RAW e agenda normalização."""
+    if job.source != FONTE or job.entity_type != TIPO or job.window_end is None:
+        raise ValueError("job nao representa uma consulta de propostas abertas PNCP")
+    try:
+        modalidade_texto = job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0]
+        modalidade = None if modalidade_texto == "todas" else int(modalidade_texto)
+    except (IndexError, ValueError) as exc:
+        raise ValueError("scope_key de propostas abertas invalido") from exc
+
+    data_final = job.window_end.date()
+    pagina = job.page or 1
+    total_registros = 0
+    while True:
+        resultado = cliente.buscar_propostas_abertas(data_final=data_final, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+        for item in resultado.itens:
+            external_id = item.get("numeroControlePNCP")
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise PncpColetaError("contratacao sem numeroControlePNCP valido", endpoint=ENDPOINT_PROPOSTAS_ABERTAS)
+            with orm.main_session() as session:
+                salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(entity_type=TIPO, external_id=external_id, payload=item, collected_at=datetime.now(timezone.utc), run_id=f"job:{job.id}:pagina:{pagina}"))
+            total_registros += 1
+
+        if resultado.total_paginas is not None:
+            if not resultado.itens and pagina < resultado.total_paginas:
+                raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP", endpoint=ENDPOINT_PROPOSTAS_ABERTAS)
+            if pagina >= resultado.total_paginas:
+                return total_registros
+        elif len(resultado.itens) < tamanho_pagina:
+            return total_registros
+        pagina += 1
 
 
 def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:

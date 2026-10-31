@@ -80,10 +80,10 @@ def _normalizar_busca(valor: str | None) -> str | None:
 def _item(registro: dict[str, Any]) -> dict[str, Any]:
     elemento = str(registro["codigo_elemento_despesa"])
     return {
-        "chave_empenho": registro["chave_empenho"],
+        "chave_despesa": registro["chave_empenho"],
         "display_id": _display_id(registro),
-        "numero_empenho": registro["numero_empenho"],
-        "data_empenho": registro["data_empenho"],
+        "numero_despesa": registro["numero_empenho"],
+        "data_despesa": registro["data_empenho"],
         "municipio_comprador": {
             "codigo_ibge": registro["codigo_municipio_ibge"],
             "codigo_tce": registro["codigo_municipio_tce"],
@@ -104,12 +104,8 @@ def _item(registro: dict[str, Any]) -> dict[str, Any]:
             "nome": NATUREZAS_DESPESA_MONITORADAS[elemento],
         },
         "valores": {
-            "valor_empenhado_centavos": int(registro["valor_empenhado_centavos"]),
-            "valor_anulado_centavos": int(registro["valor_anulado_centavos"]),
-            "valor_liquido_centavos": int(registro["valor_liquido_centavos"]),
+            "valor_final_centavos": int(registro["valor_liquido_centavos"]),
         },
-        "possui_anulacao": int(registro["quantidade_anulacoes"]) > 0,
-        "quantidade_anulacoes": int(registro["quantidade_anulacoes"]),
     }
 
 
@@ -221,14 +217,10 @@ def obter_empenho(chave_empenho: str) -> dict[str, Any]:
         raise EmpenhoRequestError(
             "COMMITMENT_NOT_FOUND",
             "Empenho nao encontrado entre os dados publicados.",
-            [{"field": "chave_empenho", "reason": "not_found", "value": chave_empenho}],
+            [{"field": "chave_despesa", "reason": "not_found", "value": chave_empenho}],
             status_code=404,
         )
     basico = _item(registro)
-    anulacoes = persistence.listar_anulacoes_publicadas_por_empenho(
-        chave_empenho=chave_empenho,
-        codigo_municipio_tce=registro["codigo_municipio_tce"],
-    )
     return {
         "source": "TCE-CE",
         "data_source": "LOCAL_DATABASE",
@@ -253,13 +245,11 @@ def obter_empenho(chave_empenho: str) -> dict[str, Any]:
             "observado_em": registro["fornecedor_observado_em"],
         },
         "referencias": {
-            "estado_empenho": registro["estado_empenho"],
+            "estado_despesa": registro["estado_empenho"],
             "numero_contrato": registro["numero_contrato"],
             "numero_licitacao": registro["numero_licitacao"],
             "numero_empenho_substituto": registro["numero_empenho_substituto"],
-            "numero_nota_anulacao_informado": registro["numero_nota_anulacao_informado"],
         },
-        "anulacoes": anulacoes,
         "publicacao": {
             "run_id": registro["run_id"],
             "status": registro["status_publicacao"],

@@ -6,8 +6,11 @@ from time import perf_counter
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from app.api.errors import resposta_erro_validacao, usa_erro_padronizado
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse, Response
+from app.api.errors import obter_request_id, resposta_erro_validacao, usa_erro_padronizado
+from app.api import response_cache
 from app.core import database, log_database
 from app.core.logging import (
     configurar_logging,
@@ -58,8 +61,8 @@ OPENAPI_TAGS = [
         "description": "Comparação de recortes históricos já armazenados no banco local.",
     },
     {
-        "name": "Empenhos TCE-CE",
-        "description": "Listagem e detalhe de empenhos publicados, sem consulta a fontes externas.",
+        "name": "Despesas TCE-CE",
+        "description": "Listagem e detalhe de despesas publicadas, retornando somente o valor final.",
     },
     {
         "name": "Fornecedores TCE-CE",
@@ -151,9 +154,44 @@ async def validation_exception_handler(
 @app.middleware("http")
 async def registrar_requisicao_http(request: Request, call_next):
     inicio = perf_counter()
-
+    corpo_cache = b""
+    cache_ativo = response_cache.rota_tem_cache(request)
+    resposta_do_cache = False
     try:
-        response = await call_next(request)
+        if cache_ativo:
+            corpo_cache = await request.body()
+            corpo_enviado = False
+
+            async def receber_corpo_reproduzido():
+                nonlocal corpo_enviado
+                if not corpo_enviado:
+                    corpo_enviado = True
+                    return {
+                        "type": "http.request",
+                        "body": corpo_cache,
+                        "more_body": False,
+                    }
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            request._receive = receber_corpo_reproduzido
+            cacheado = None
+            if not response_cache.deve_forcar_atualizacao(request):
+                cacheado = await response_cache.buscar_resposta(request, corpo_cache)
+            if cacheado is not None:
+                resposta_do_cache = True
+                response = JSONResponse(
+                    content=cacheado["body"],
+                    status_code=cacheado["status"],
+                    headers={
+                        "Content-Type": cacheado["content_type"],
+                        "X-Cache": "HIT",
+                        "X-Request-ID": obter_request_id(request),
+                    },
+                )
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
     except Exception as error:
         logger.exception(
             "Requisição HTTP falhou antes de gerar resposta",
@@ -166,6 +204,28 @@ async def registrar_requisicao_http(request: Request, call_next):
         )
         raise
     else:
+        if cache_ativo and not resposta_do_cache:
+            response.headers["X-Cache"] = "MISS"
+            content_type = response.headers.get("content-type", "")
+            if 200 <= response.status_code < 300 and "json" in content_type.lower():
+                corpo_resposta = b"".join(
+                    [parte async for parte in response.body_iterator]
+                )
+                headers = dict(response.headers)
+                headers.pop("content-length", None)
+                headers["X-Cache"] = "MISS"
+                response = Response(
+                    content=corpo_resposta,
+                    status_code=response.status_code,
+                    headers=headers,
+                )
+                await response_cache.salvar_resposta(
+                    request,
+                    corpo_cache,
+                    status=response.status_code,
+                    content_type=content_type,
+                    resposta=corpo_resposta,
+                )
         if request.url.path == "/health" and response.status_code < 400:
             nivel = logging.DEBUG
         else:
@@ -182,4 +242,56 @@ async def registrar_requisicao_http(request: Request, call_next):
         )
         return response
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+    allow_credentials=False,
+    max_age=600,
+)
+
 app.include_router(router)
+
+
+def _gerar_openapi_com_force_refresh() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    parametro_force_refresh = {
+        "name": "X-Force-Refresh",
+        "in": "header",
+        "required": False,
+        "description": (
+            "Defina como true para ignorar o cache, recalcular a resposta e "
+            "atualizar a entrada armazenada."
+        ),
+        "schema": {"type": "boolean", "default": False},
+    }
+    for caminho, operacoes in schema.get("paths", {}).items():
+        if not caminho.startswith(("/pipeline/", "/pncp/")):
+            continue
+        for metodo, operacao in operacoes.items():
+            if metodo not in {"get", "post"}:
+                continue
+            parametros = operacao.setdefault("parameters", [])
+            if not any(
+                item.get("in") == "header"
+                and item.get("name", "").lower() == "x-force-refresh"
+                for item in parametros
+            ):
+                parametros.append(parametro_force_refresh)
+
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _gerar_openapi_com_force_refresh

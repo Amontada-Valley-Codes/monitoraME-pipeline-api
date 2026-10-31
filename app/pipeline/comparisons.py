@@ -481,8 +481,8 @@ def _secoes(
                 "codigo": codigo,
                 "nome": esquerdo.get("nome") or direito.get("nome"),
                 **comparar(
-                    esquerdo.get("valor_liquido_centavos"),
-                    direito.get("valor_liquido_centavos"),
+                    esquerdo.get("valor_final_centavos"),
+                    direito.get("valor_final_centavos"),
                     "CENTAVOS",
                 ),
             }

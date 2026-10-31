@@ -8,9 +8,7 @@ class EmpenhoSortField(StrEnum):
     MUNICIPALITY = "municipality"
     SUPPLIER = "supplier"
     EXPENSE_ELEMENT = "expense_element"
-    GROSS_VALUE = "gross_value"
-    CANCELLED_VALUE = "cancelled_value"
-    NET_VALUE = "net_value"
+    FINAL_VALUE = "final_value"
 
 
 class SortOrder(StrEnum):

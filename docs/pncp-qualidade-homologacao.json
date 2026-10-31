@@ -1,0 +1,2856 @@
+{
+  "resultado": "APROVADO",
+  "natureza": "Homologacao tecnica em PostgreSQL 16 real e isolado; amostras reais mais controle e falha injetada identificados.",
+  "rule_version": "pncp-semantica-1",
+  "executado_em": "2026-10-21T17:37:45.033267+00:00",
+  "migration": "0017_pncp_qualidade",
+  "fontes": [
+    {
+      "endpoint": "/v1/contratacoes/publicacao",
+      "url": "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=20261020&dataFinal=20261020&codigoModalidadeContratacao=6&pagina=1&tamanhoPagina=10&uf=CE",
+      "capturado_em": "2026-10-21T17:23:17.961451+00:00",
+      "registros": 10,
+      "arquivo": "publicacao.json",
+      "sha256_arquivo": "ae0f447b352b1057be6c7f0ca60b4ff3dfe126bfa8ff1108825ff412e9c723a2",
+      "run_id": "job:1:pagina:1"
+    },
+    {
+      "endpoint": "/v1/contratacoes/atualizacao",
+      "url": "https://pncp.gov.br/api/consulta/v1/contratacoes/atualizacao?dataInicial=20261020&dataFinal=20261020&codigoModalidadeContratacao=6&pagina=1&tamanhoPagina=10&uf=CE",
+      "capturado_em": "2026-10-21T17:23:20.267122+00:00",
+      "registros": 10,
+      "arquivo": "atualizacao.json",
+      "sha256_arquivo": "7ca13b7ad7b6032caca3f480dd70d093a4647dc86caedd2f15e20cfe5c9709c7",
+      "run_id": "job:12:pagina:1"
+    }
+  ],
+  "registros": [
+    {
+      "raw_id": 1,
+      "job_id": 2,
+      "fluxo": "publicacao",
+      "payload_hash": "e5d675744f8c680b998e77ed0c573a0c9fcb1603cdf37024606739f5db2e9a70"
+    },
+    {
+      "raw_id": 2,
+      "job_id": 3,
+      "fluxo": "publicacao",
+      "payload_hash": "82ac23c89d59335c4ee8505343a6540f01a03bcdc8c0ce22718f42b6ee76795d"
+    },
+    {
+      "raw_id": 3,
+      "job_id": 4,
+      "fluxo": "publicacao",
+      "payload_hash": "5a8668c09b450a8782b2556d5252a119771b56e291a7cdc54fe8e27dc325443e"
+    },
+    {
+      "raw_id": 4,
+      "job_id": 5,
+      "fluxo": "publicacao",
+      "payload_hash": "ab4baf94733f85e9b75c9f1f1aa1abf913289fe994fbaaf7ea6c3d0e64869eae"
+    },
+    {
+      "raw_id": 5,
+      "job_id": 6,
+      "fluxo": "publicacao",
+      "payload_hash": "bb30a3684d49f968c8faefe2956b7b2c39c0f32f604a95258a52b9c52dbeebe4"
+    },
+    {
+      "raw_id": 6,
+      "job_id": 7,
+      "fluxo": "publicacao",
+      "payload_hash": "f8905a94c6ecbc6c1b079bd0ace025eb36697462657861a83694842f94d25110"
+    },
+    {
+      "raw_id": 7,
+      "job_id": 8,
+      "fluxo": "publicacao",
+      "payload_hash": "ce79946c37e0f6e8d182c759cfa3e68cc44f769c3a79bfdca78f867084deab86"
+    },
+    {
+      "raw_id": 8,
+      "job_id": 9,
+      "fluxo": "publicacao",
+      "payload_hash": "71f1478110b558e5a5092c764f00a25d97546b28e2755be85fa18e5f64a486eb"
+    },
+    {
+      "raw_id": 9,
+      "job_id": 10,
+      "fluxo": "publicacao",
+      "payload_hash": "1a3f47331dc0e40269f15916163a0b3b59b670e7929321cd7a0f786f737698bc"
+    },
+    {
+      "raw_id": 10,
+      "job_id": 11,
+      "fluxo": "publicacao",
+      "payload_hash": "a54b644d8dcc3082b072d7f788ee330bfcf2d1273e882b0461495e59175904d3"
+    },
+    {
+      "raw_id": 11,
+      "job_id": 13,
+      "fluxo": "atualizacao",
+      "payload_hash": "08f44fa4d6dba65673ed0423a11ec6ca00ec8ac5c621a8e9e8d552e72d88a782"
+    },
+    {
+      "raw_id": 1,
+      "job_id": 2,
+      "fluxo": "atualizacao",
+      "payload_hash": "e5d675744f8c680b998e77ed0c573a0c9fcb1603cdf37024606739f5db2e9a70"
+    },
+    {
+      "raw_id": 13,
+      "job_id": 14,
+      "fluxo": "atualizacao",
+      "payload_hash": "06dc832b6e5804383e2c59ae0700c854bd024c04fc81e17f088fc84a1f72f18c"
+    },
+    {
+      "raw_id": 14,
+      "job_id": 15,
+      "fluxo": "atualizacao",
+      "payload_hash": "2007152f2e98b4b639ca8cd88a396ee6d75cb67207f6364a577a2c34ce26cc89"
+    },
+    {
+      "raw_id": 15,
+      "job_id": 16,
+      "fluxo": "atualizacao",
+      "payload_hash": "00ec96e6aeaa91bf1752053baa4366d3922673705339e67dfe60617368727288"
+    },
+    {
+      "raw_id": 16,
+      "job_id": 17,
+      "fluxo": "atualizacao",
+      "payload_hash": "acbf3e8b5e86d14fd0535f39064cfbdc0c8d98d5334f0fb749d438c325078e1d"
+    },
+    {
+      "raw_id": 17,
+      "job_id": 18,
+      "fluxo": "atualizacao",
+      "payload_hash": "659f16124f51351d39b7497ebb882b150bf0729d38bc3c915118a1beefd7071c"
+    },
+    {
+      "raw_id": 18,
+      "job_id": 19,
+      "fluxo": "atualizacao",
+      "payload_hash": "7fd1743e78d6750bf2831ee70c5163bb4749a750e8e3e5b2987ab685b5981db8"
+    },
+    {
+      "raw_id": 19,
+      "job_id": 20,
+      "fluxo": "atualizacao",
+      "payload_hash": "0f058755eee7661d48d971ba89b6606b39016881b5e560ea00e68a577dce73bd"
+    },
+    {
+      "raw_id": 20,
+      "job_id": 21,
+      "fluxo": "atualizacao",
+      "payload_hash": "821b740cd78c260cb4abc6e9aa9d7f0cb5ea5b5a47fa5524377a2dfe780ce2f4"
+    }
+  ],
+  "controles": [
+    {
+      "raw_id": 21,
+      "natureza": "sintetico",
+      "cenario": "CNPJ com DV invalido"
+    }
+  ],
+  "verificacoes": [
+    {
+      "criterio": "migration aplicada em PostgreSQL real",
+      "aprovado": true
+    },
+    {
+      "criterio": "banco exclusivo inicialmente vazio",
+      "aprovado": true
+    },
+    {
+      "criterio": "amostra real nao vazia: publicacao",
+      "aprovado": true
+    },
+    {
+      "criterio": "amostra real nao vazia: atualizacao",
+      "aprovado": true
+    },
+    {
+      "criterio": "quarentena confirmada apos excecao do worker",
+      "aprovado": true
+    },
+    {
+      "criterio": "registro invalido isolado",
+      "aprovado": true
+    },
+    {
+      "criterio": "lote saudavel processado apesar das falhas",
+      "aprovado": true
+    },
+    {
+      "criterio": "replay autorizado usa mecanismo existente",
+      "aprovado": true
+    },
+    {
+      "criterio": "replay bem-sucedido remove quarentena ativa",
+      "aprovado": true
+    },
+    {
+      "criterio": "replay nao altera nem recoleta RAW",
+      "aprovado": true
+    },
+    {
+      "criterio": "job recuperado com auditoria de replay",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 1",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 1",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 2",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 2",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 3",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 3",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 4",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 4",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 5",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 5",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 6",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 6",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 7",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 7",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 8",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 8",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 9",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 9",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 10",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 10",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 11",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 11",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 13",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 13",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 14",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 14",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 15",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 15",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 16",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 16",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 17",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 17",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 18",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 18",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 19",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 19",
+      "aprovado": true
+    },
+    {
+      "criterio": "idempotencia RAW 20",
+      "aprovado": true
+    },
+    {
+      "criterio": "deduplicacao RAW 20",
+      "aprovado": true
+    },
+    {
+      "criterio": "unicidade RAW apos repeticao",
+      "aprovado": true
+    },
+    {
+      "criterio": "unicidade canonica apos repeticao",
+      "aprovado": true
+    },
+    {
+      "criterio": "sem evento duplicado no replay",
+      "aprovado": true
+    },
+    {
+      "criterio": "FK impede oportunidade sem RAW",
+      "aprovado": true
+    },
+    {
+      "criterio": "CNPJ string com zeros preservados no PostgreSQL",
+      "aprovado": true
+    },
+    {
+      "criterio": "IBGE string com zeros preservados no PostgreSQL",
+      "aprovado": true
+    },
+    {
+      "criterio": "Decimal preservado e zero sem evidencia excluido de gratuidade",
+      "aprovado": true
+    },
+    {
+      "criterio": "prazos UTC no consumo com origem preservada",
+      "aprovado": true
+    },
+    {
+      "criterio": "metricas filtraveis: /v1/contratacoes/publicacao",
+      "aprovado": true
+    },
+    {
+      "criterio": "filtros run/endpoint sem vazamento",
+      "aprovado": true
+    },
+    {
+      "criterio": "metricas filtraveis: /v1/contratacoes/atualizacao",
+      "aprovado": true
+    },
+    {
+      "criterio": "filtros run/endpoint sem vazamento",
+      "aprovado": true
+    },
+    {
+      "criterio": "unicidade e integridade da amostra",
+      "aprovado": true
+    },
+    {
+      "criterio": "100% dos RAW avaliados",
+      "aprovado": true
+    }
+  ],
+  "relatorio": {
+    "rule_version": "pncp-semantica-1",
+    "metricas": [
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "modalidadeId",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "objetoCompra",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAtualizacao",
+        "total": 10,
+        "presentes": 10,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "situacaoCompraId",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigiloso",
+        "total": 10,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataPublicacaoPncp",
+        "total": 10,
+        "presentes": 10,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "numeroControlePNCP",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orgaoEntidade.cnpj",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "valorTotalEstimado",
+        "total": 10,
+        "presentes": 10,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAberturaProposta",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "valorTotalHomologado",
+        "total": 10,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAtualizacaoGlobal",
+        "total": 10,
+        "presentes": 10,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigilosoCodigo",
+        "total": 10,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "unidadeOrgao.codigoIbge",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataEncerramentoProposta",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigilosoDescricao",
+        "total": 10,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "tipoInstrumentoConvocatorioCodigo",
+        "total": 10,
+        "presentes": 10,
+        "validos": 10,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "modalidadeId",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "objetoCompra",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAtualizacao",
+        "total": 1,
+        "presentes": 1,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "situacaoCompraId",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigiloso",
+        "total": 1,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataPublicacaoPncp",
+        "total": 1,
+        "presentes": 1,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "numeroControlePNCP",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orgaoEntidade.cnpj",
+        "total": 1,
+        "presentes": 1,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "valorTotalEstimado",
+        "total": 1,
+        "presentes": 1,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAberturaProposta",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "valorTotalHomologado",
+        "total": 1,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAtualizacaoGlobal",
+        "total": 1,
+        "presentes": 1,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigilosoCodigo",
+        "total": 1,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "unidadeOrgao.codigoIbge",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataEncerramentoProposta",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigilosoDescricao",
+        "total": 1,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 1,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "rule_version": "pncp-semantica-1",
+        "campo": "tipoInstrumentoConvocatorioCodigo",
+        "total": 1,
+        "presentes": 1,
+        "validos": 1,
+        "quarentena": 1,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "modalidadeId",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "objetoCompra",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAtualizacao",
+        "total": 9,
+        "presentes": 9,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "situacaoCompraId",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigiloso",
+        "total": 9,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataPublicacaoPncp",
+        "total": 9,
+        "presentes": 9,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "numeroControlePNCP",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orgaoEntidade.cnpj",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "valorTotalEstimado",
+        "total": 9,
+        "presentes": 9,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAberturaProposta",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "valorTotalHomologado",
+        "total": 9,
+        "presentes": 4,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.4444444444444444,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataAtualizacaoGlobal",
+        "total": 9,
+        "presentes": 9,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigilosoCodigo",
+        "total": 9,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "unidadeOrgao.codigoIbge",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "dataEncerramentoProposta",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "orcamentoSigilosoDescricao",
+        "total": 9,
+        "presentes": 0,
+        "validos": 0,
+        "quarentena": 0,
+        "completude": 0.0,
+        "validade": 0.0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "rule_version": "pncp-semantica-1",
+        "campo": "tipoInstrumentoConvocatorioCodigo",
+        "total": 9,
+        "presentes": 9,
+        "validos": 9,
+        "quarentena": 0,
+        "completude": 1.0,
+        "validade": 1.0
+      }
+    ],
+    "cobertura_integridade_unicidade": [
+      {
+        "run_id": "controle:contrato-invalido",
+        "endpoint": "unknown",
+        "raw_total": 1,
+        "avaliados": 1,
+        "cobertura": "1.00000000000000000000",
+        "entidades_distintas": 1,
+        "versoes_distintas": 1,
+        "duplicatas_raw": 0,
+        "invalidos": 1,
+        "quarentena_atual": 1,
+        "versoes_canonicas": 0,
+        "sem_entidade_normalizada": 0
+      },
+      {
+        "run_id": "job:12:pagina:1",
+        "endpoint": "/v1/contratacoes/atualizacao",
+        "raw_total": 9,
+        "avaliados": 9,
+        "cobertura": "1.00000000000000000000",
+        "entidades_distintas": 9,
+        "versoes_distintas": 9,
+        "duplicatas_raw": 0,
+        "invalidos": 0,
+        "quarentena_atual": 0,
+        "versoes_canonicas": 9,
+        "sem_entidade_normalizada": 0
+      },
+      {
+        "run_id": "job:1:pagina:1",
+        "endpoint": "/v1/contratacoes/publicacao",
+        "raw_total": 10,
+        "avaliados": 10,
+        "cobertura": "1.00000000000000000000",
+        "entidades_distintas": 10,
+        "versoes_distintas": 10,
+        "duplicatas_raw": 0,
+        "invalidos": 0,
+        "quarentena_atual": 0,
+        "versoes_canonicas": 10,
+        "sem_entidade_normalizada": 0
+      }
+    ],
+    "excecoes": [
+      {
+        "raw_id": 2,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "valorTotalEstimado",
+        "motivo": "zero_sem_evidencia_gratuidade",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 2,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "orgaoEntidade.cnpj",
+        "motivo": "cnpj_tipo_formato_ou_verificador_invalido",
+        "impacto": "error",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 21,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "isolar",
+        "tentativas": 1,
+        "evidencia_reprocessamento": false,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 1,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 3,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 3,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 4,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 10,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 5,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "valorTotalEstimado",
+        "motivo": "zero_sem_evidencia_gratuidade",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 6,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 7,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 8,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 9,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 11,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "valorTotalHomologado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 13,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "valorTotalEstimado",
+        "motivo": "zero_sem_evidencia_gratuidade",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 14,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "valorTotalHomologado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 15,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 16,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "valorTotalEstimado",
+        "motivo": "zero_sem_evidencia_gratuidade",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 17,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "valorTotalEstimado",
+        "motivo": "zero_sem_evidencia_gratuidade",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "valorTotalHomologado",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 18,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "valorTotalHomologado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 19,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "dataAtualizacao",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "orcamentoSigiloso",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "dataPublicacaoPncp",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "valorTotalEstimado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "valorTotalHomologado",
+        "motivo": "origem_float_precisao_nao_comprovada",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "dataAtualizacaoGlobal",
+        "motivo": "fuso_ausente",
+        "impacto": "warning",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "orcamentoSigilosoCodigo",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      },
+      {
+        "raw_id": 20,
+        "campo": "orcamentoSigilosoDescricao",
+        "motivo": "ausencia_legitima",
+        "impacto": "missing",
+        "decisao": "preservar_com_ressalva",
+        "tentativas": 2,
+        "evidencia_reprocessamento": true,
+        "rule_version": "pncp-semantica-1"
+      }
+    ],
+    "reprocessamentos": [
+      {
+        "raw_id": 2,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.861315-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 1,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 3,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.851986-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 3,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.869098-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 4,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.879640-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 10,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.919210-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 5,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.886649-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 6,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.895577-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 7,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.902476-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 8,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.908210-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 9,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.912213-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 11,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.924561-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 13,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.933226-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 14,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.940228-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 15,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.948363-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 16,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.959352-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 17,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.970782-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 18,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.976297-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 19,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.980296-03:00",
+        "sucesso": true
+      },
+      {
+        "raw_id": 20,
+        "rule_version": "pncp-semantica-1",
+        "tentativas": 2,
+        "decisao": "INALTERADO",
+        "avaliado_em": "2026-10-21 14:37:44.985296-03:00",
+        "sucesso": true
+      }
+    ],
+    "job_recuperado": {
+      "id": 2,
+      "raw_id": 1,
+      "status": "SUCCEEDED",
+      "replay_count": 1,
+      "eventos": [
+        "STARTED",
+        "QUARANTINED",
+        "REPLAYED",
+        "STARTED",
+        "SUCCEEDED"
+      ]
+    },
+    "totais": {
+      "raw": 20,
+      "oportunidades": 19,
+      "eventos": 19,
+      "quarentena_controle": 1
+    }
+  }
+}

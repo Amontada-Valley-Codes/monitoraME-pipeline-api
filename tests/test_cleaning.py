@@ -25,6 +25,15 @@ from app.pipeline.cleaners import tce as tce_cleaning
 from app.pipeline.ingestion import fornecedores, ibge, tce
 
 
+
+def setUpModule() -> None:
+    # A persistencia do cache nao integra estes testes de limpeza/merge.
+    # Evita tentar conexoes ao banco definido no .env durante testes unitarios.
+    unittest.enterModuleContext(patch("app.pipeline.ingestion.ibge.database.salvar_municipios_ibge"))
+    unittest.enterModuleContext(patch("app.core.logging.log_database.registrar_log_ingestao"))
+    unittest.enterModuleContext(patch("app.core.logging.log_database.registrar_log_aplicacao"))
+
+
 def _fake_response(payload, status_code: int = 200) -> MagicMock:
     resposta = MagicMock()
     resposta.status_code = status_code

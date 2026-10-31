@@ -140,7 +140,7 @@ class AnaliseTerritorialTest(unittest.TestCase):
         )
 
         self.assertFalse(resultado["consultas_externas"])
-        self.assertEqual(resultado["resumo_financeiro"]["valor_liquido_centavos"], 200_000)
+        self.assertEqual(resultado["resumo_financeiro"]["valor_final_centavos"], 200_000)
         indicadores = resultado["indicadores_territoriais"]
         self.assertEqual(indicadores["valor_local_centavos"], 90_000)
         self.assertEqual(indicadores["valor_outros_municipios_ce_centavos"], 50_000)
@@ -153,7 +153,7 @@ class AnaliseTerritorialTest(unittest.TestCase):
         self.assertEqual(resultado["cobertura"]["cobertura_cadastral_percentual"], 75.0)
         self.assertEqual(resultado["cobertura"]["cobertura_geografica_por_valor_percentual"], 90.0)
         self.assertEqual(len(resultado["ranking_fornecedores"]), 3)
-        self.assertEqual(resultado["ranking_fornecedores"][0]["valor_liquido_centavos"], 90_000)
+        self.assertEqual(resultado["ranking_fornecedores"][0]["valor_final_centavos"], 90_000)
         self.assertEqual(resultado["evolucao_mensal"][0]["retencao_local_percentual"], 45.0)
 
     @patch("app.pipeline.territorial.persistence.listar_publicacoes_competencias", return_value={})

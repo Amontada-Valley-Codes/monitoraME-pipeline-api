@@ -123,11 +123,11 @@ class FornecedoresTest(unittest.TestCase):
             search=None,
             page=1,
             page_size=50,
-            sort_by="net_value",
+            sort_by="final_value",
             sort_order="desc",
         )
         self.assertEqual(resultado["items"][0]["tipo_documento"], "CNPJ")
-        self.assertEqual(resultado["items"][0]["valores"]["valor_considerado_centavos"], 90_000)
+        self.assertEqual(resultado["items"][0]["valores"]["valor_final_centavos"], 90_000)
         self.assertEqual(resultado["pagination"]["total_pages"], 2)
 
     @patch("app.pipeline.fornecedores.tce_fornecedores.obter_resumo_fornecedor_publicado")
@@ -168,7 +168,7 @@ class FornecedoresTest(unittest.TestCase):
             search=None,
             page=1,
             page_size=20,
-            sort_by="net_value",
+            sort_by="final_value",
             sort_order="desc",
         )
         self.assertEqual(resultado["items"][0]["display_id"], "EMP-2025-1")
