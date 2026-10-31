@@ -29,10 +29,17 @@ class SessaoFalsa:
         retorno = MagicMock()
         tipo_consulta = consulta.column_descriptions[0]["entity"].__name__
         parametros = set(consulta.compile().params.values())
+        if tipo_consulta == "PncpItem":
+            retorno.all.return_value = [r.resultado_status for (tipo, _), r in self.registros.items()
+                if tipo == tipo_consulta and r.external_id in parametros]
+            return retorno
         retorno.all.return_value = [r for (tipo, _), r in self.registros.items()
             if tipo == tipo_consulta and r.external_id in parametros
             and (tipo != "PncpResultadoItem" or r.numero_item in parametros)]
         return retorno
+
+    def execute(self, consulta):
+        return MagicMock()
 
 
 def oportunidade(external_id: str) -> PncpOportunidade:

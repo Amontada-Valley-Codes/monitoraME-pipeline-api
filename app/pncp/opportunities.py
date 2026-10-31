@@ -26,6 +26,12 @@ def contrato_consumo(oportunidade: PncpOportunidade, enriquecimento: PncpEnrique
     """DTO persistido para NestJS/frontend; nunca chama o PNCP."""
     return {
         "data_quality_status": oportunidade.data_quality_status or "not_evaluated",
+        "official_status": oportunidade.official_status,
+        "derived_status": oportunidade.derived_status,
+        "reason_codes": oportunidade.reason_codes or [],
+        "data_confidence": oportunidade.data_confidence,
+        "status_evaluated_at": oportunidade.evaluated_at,
+        "status_rule_version": oportunidade.status_rule_version,
         "sync_status": estado_sincronizacao(qualidade=oportunidade.data_quality_status),
         "dados_semanticos": oportunidade.dados_semanticos or {},
         "id": oportunidade.external_id, "source": oportunidade.source,

@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.models import PncpDocumento, PncpEvento, PncpItem, PncpOportunidade, PncpRecursoVersao, PncpResultadoItem
+from app.pncp.derived_status import aplicar_status_session, inferir_status_resultado_itens
 
 
 def _hash(valor: Any) -> str:
@@ -149,6 +150,10 @@ def salvar_resultados_session(session: Session, oportunidade: PncpOportunidade, 
             _hash(status), status, {"status": status, "anterior": anterior_status})
         _evento(session, oportunidade, "RESULTADO_STATUS_ALTERADO", str(numero_item), item.revisao,
             _hash(anterior_status), _hash(status))
+    estados = list(session.scalars(select(PncpItem.resultado_status).where(
+        PncpItem.source == oportunidade.source, PncpItem.external_id == oportunidade.external_id)))
+    geral = inferir_status_resultado_itens(estados)
+    aplicar_status_session(session, oportunidade, agora=datetime.now(timezone.utc), resultado_estado=geral)
     return {"alterados": alterados, "status": status}
 
 

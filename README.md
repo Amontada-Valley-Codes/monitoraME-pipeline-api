@@ -589,6 +589,17 @@ sem baixar seus arquivos. `GET /health/pncp` inclui contagens de cobertura.
 Consulte [o contrato e as limitações](docs/pncp-participacao-documentos.md)
 antes de usar lotes ou estados de resultado em matching.
 
+A situação oficial e a situação operacional calculada seguem a regra versionada
+[pncp-status-v1](docs/pncp-status-operacional.md). Para atualizar estados por
+passagem do tempo sem consultar novamente o PNCP, mantenha ativo o processo
+`python scripts/pncp_status_scheduler.py` (reavaliação local a cada 60 segundos).
+Para simular casos e ver o resultado JSON sem alterar o banco, execute no
+PowerShell: `Get-Content -Raw docs/pncp-status-cenarios.json | .venv\Scripts\python.exe scripts\avaliar_status_pncp.py`.
+Para inspecionar oportunidades persistidas, abra `http://localhost:18000/docs`
+ou consulte `GET /pncp/editais/{external_id}`; a resposta inclui
+`official_status`, `derived_status`, `reason_codes`, `data_confidence`,
+`status_evaluated_at` e `status_rule_version`.
+
 Para validar localmente com apenas alguns registros e sem avançar cursores,
 consulte `docs/pncp-validacao-local.md`.
 
