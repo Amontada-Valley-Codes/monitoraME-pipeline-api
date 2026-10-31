@@ -10,6 +10,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Text,
@@ -240,6 +241,77 @@ class PncpEnriquecimento(MainBase):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpItem(MainBase):
+    __tablename__ = "pncp_itens"
+    __table_args__ = (ForeignKeyConstraint(["source", "external_id"], ["pncp_oportunidades.source", "pncp_oportunidades.external_id"]),)
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    numero_item: Mapped[int] = mapped_column(Integer, primary_key=True)
+    numero_lote: Mapped[str | None] = mapped_column(Text)
+    descricao: Mapped[str | None] = mapped_column(Text)
+    quantidade: Mapped[str | None] = mapped_column(Text)
+    unidade: Mapped[str | None] = mapped_column(Text)
+    valor_unitario_estimado: Mapped[str | None] = mapped_column(Text)
+    valor_total_estimado: Mapped[str | None] = mapped_column(Text)
+    situacao: Mapped[str | None] = mapped_column(Text)
+    criterio_julgamento: Mapped[str | None] = mapped_column(Text)
+    resultado_status: Mapped[str] = mapped_column(Text, server_default="'NAO_CONSULTADO'")
+    payload_hash: Mapped[str] = mapped_column(Text)
+    revisao: Mapped[int] = mapped_column(Integer, server_default="1")
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpResultadoItem(MainBase):
+    __tablename__ = "pncp_resultados_itens"
+    __table_args__ = (ForeignKeyConstraint(["source", "external_id", "numero_item"], ["pncp_itens.source", "pncp_itens.external_id", "pncp_itens.numero_item"]),)
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    numero_item: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sequencial_resultado: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fornecedor: Mapped[str | None] = mapped_column(Text)
+    cnpj_fornecedor: Mapped[str | None] = mapped_column(Text)
+    valor_unitario_homologado: Mapped[str | None] = mapped_column(Text)
+    quantidade_homologada: Mapped[str | None] = mapped_column(Text)
+    situacao: Mapped[str | None] = mapped_column(Text)
+    data_resultado: Mapped[date | None] = mapped_column(Date)
+    disponibilidade: Mapped[str] = mapped_column(Text, server_default="'ATUAL'")
+    payload_hash: Mapped[str] = mapped_column(Text)
+    revisao: Mapped[int] = mapped_column(Integer, server_default="1")
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpDocumento(MainBase):
+    __tablename__ = "pncp_documentos"
+    __table_args__ = (ForeignKeyConstraint(["source", "external_id"], ["pncp_oportunidades.source", "pncp_oportunidades.external_id"]),)
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    sequencial_documento: Mapped[int] = mapped_column(Integer, primary_key=True)
+    titulo: Mapped[str | None] = mapped_column(Text)
+    tipo: Mapped[str | None] = mapped_column(Text)
+    url_oficial: Mapped[str] = mapped_column(Text)
+    publicado_em: Mapped[date | None] = mapped_column(Date)
+    payload_hash: Mapped[str] = mapped_column(Text)
+    revisao: Mapped[int] = mapped_column(Integer, server_default="1")
+    disponibilidade: Mapped[str] = mapped_column(Text, server_default="'DISPONIVEL'")
+    ausencias_consecutivas: Mapped[int] = mapped_column(Integer, server_default="0")
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PncpRecursoVersao(MainBase):
+    __tablename__ = "pncp_recurso_versoes"
+    __table_args__ = (UniqueConstraint("source", "external_id", "resource_type", "resource_key", "revisao", name="uq_pncp_recurso_versao"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str] = mapped_column(Text)
+    resource_type: Mapped[str] = mapped_column(Text)
+    resource_key: Mapped[str] = mapped_column(Text)
+    revisao: Mapped[int] = mapped_column(Integer)
+    payload_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
 class PncpEvento(MainBase):
@@ -495,6 +567,10 @@ __all__ = [
     "PncpContratacaoAtual",
     "PncpOportunidade",
     "PncpEnriquecimento",
+    "PncpItem",
+    "PncpResultadoItem",
+    "PncpDocumento",
+    "PncpRecursoVersao",
     "PncpEvento",
     "PncpMatching",
     "PncpQuarentena",

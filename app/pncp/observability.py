@@ -26,7 +26,23 @@ def metricas_session(session: Session) -> dict[str, object]:
           (SELECT count(*)::int FROM ingestion_job_events WHERE event_type = 'LEASE_EXPIRED') AS leases_expirados,
           (SELECT count(*)::int FROM pncp_eventos) AS eventos_gerados
     """)).mappings().one()
-    return {"jobs": {r["status"]: {"total": r["total"], "tentativas": r["tentativas"]} for r in jobs}, "fluxos": [dict(r) for r in fluxos], "totais": dict(totais)}
+    cobertura = session.execute(text("""
+        SELECT
+          (SELECT count(*)::int FROM pncp_oportunidades) AS oportunidades,
+          (SELECT count(DISTINCT (source, external_id))::int FROM pncp_itens) AS oportunidades_com_itens,
+          (SELECT count(*)::int FROM pncp_itens) AS itens,
+          (SELECT count(*)::int FROM pncp_itens WHERE numero_lote IS NOT NULL) AS itens_com_lote,
+          (SELECT count(DISTINCT (source, external_id, numero_lote))::int FROM pncp_itens WHERE numero_lote IS NOT NULL) AS lotes_identificados,
+          (SELECT count(*)::int FROM pncp_itens WHERE resultado_status = 'AUSENTE') AS itens_resultado_ausente,
+          (SELECT count(*)::int FROM pncp_itens WHERE resultado_status = 'PARCIAL') AS itens_resultado_parcial,
+          (SELECT count(*)::int FROM pncp_itens WHERE resultado_status = 'FINAL') AS itens_resultado_final,
+          (SELECT count(*)::int FROM pncp_resultados_itens) AS resultados,
+          (SELECT count(*)::int FROM pncp_documentos) AS documentos,
+          (SELECT count(*)::int FROM pncp_documentos WHERE disponibilidade = 'TEMPORARIAMENTE_INDISPONIVEL') AS documentos_temporarios,
+          (SELECT count(*)::int FROM pncp_documentos WHERE disponibilidade = 'REMOVIDO') AS documentos_removidos,
+          (SELECT count(*)::int FROM pncp_recurso_versoes) AS versoes
+    """)).mappings().one()
+    return {"jobs": {r["status"]: {"total": r["total"], "tentativas": r["tentativas"]} for r in jobs}, "fluxos": [dict(r) for r in fluxos], "totais": dict(totais), "cobertura_participacao": dict(cobertura)}
 
 
 def metricas() -> dict[str, object]:

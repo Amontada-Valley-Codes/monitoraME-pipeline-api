@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.pncp.quality import estado_sincronizacao
+from app.pncp.urls import url_edital_oficial
 from app.core.models import PncpEnriquecimento, PncpEvento, PncpMatching, PncpOportunidade
 
 
@@ -28,7 +29,7 @@ def contrato_consumo(oportunidade: PncpOportunidade, enriquecimento: PncpEnrique
         "sync_status": estado_sincronizacao(qualidade=oportunidade.data_quality_status),
         "dados_semanticos": oportunidade.dados_semanticos or {},
         "id": oportunidade.external_id, "source": oportunidade.source,
-        "url_oficial": oportunidade.url_oficial, "orgao": oportunidade.orgao,
+        "url_oficial": url_edital_oficial(oportunidade.external_id, cnpj=(oportunidade.orgao or {}).get("cnpj")) or oportunidade.url_oficial, "orgao": oportunidade.orgao,
         "unidade": oportunidade.unidade, "objeto": oportunidade.objeto,
         "modalidade": oportunidade.modalidade, "situacao": oportunidade.situacao,
         "data_publicacao": oportunidade.data_publicacao,

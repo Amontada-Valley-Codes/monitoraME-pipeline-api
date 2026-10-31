@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 
 from app.core import orm
-from app.core.models import IngestionJob, PncpEnriquecimento, PncpOportunidade, RawPncpRecord
+from app.core.models import IngestionJob, PncpDocumento, PncpEnriquecimento, PncpItem, PncpOportunidade, PncpResultadoItem, RawPncpRecord
 from app.pncp.opportunities import contrato_consumo
 
 
@@ -64,7 +64,11 @@ def listar_editais(
         registros = session.execute(consulta).all()
 
     return {
-        "dados": [contrato_consumo(oportunidade, enriquecimento) for oportunidade, enriquecimento in registros],
+        "dados": [
+            {chave: valor for chave, valor in contrato_consumo(oportunidade, enriquecimento).items()
+             if chave != "dados_semanticos"}
+            for oportunidade, enriquecimento in registros
+        ],
         "paginacao": {
             "pagina": pagina,
             "tamanho_pagina": tamanho_pagina,
@@ -74,24 +78,59 @@ def listar_editais(
 
 
 def obter_edital(external_id: str) -> dict[str, Any]:
-    """Retorna um edital e seus detalhes locais, se já enriquecidos."""
+    """Retorna apenas os dados principais da contratacao e o detalhe enriquecido."""
     with orm.main_session() as session:
-        oportunidade = session.get(
-            PncpOportunidade,
-            {"source": "PNCP", "external_id": external_id},
-        )
+        oportunidade = session.get(PncpOportunidade, {"source": "PNCP", "external_id": external_id})
         if oportunidade is None:
             raise LookupError("Edital PNCP nao encontrado.")
-        enriquecimento = session.get(
-            PncpEnriquecimento,
-            {"source": "PNCP", "external_id": external_id},
-        )
-
+        enriquecimento = session.get(PncpEnriquecimento, {"source": "PNCP", "external_id": external_id})
     resultado = contrato_consumo(oportunidade, enriquecimento)
     resultado["detalhe"] = enriquecimento.detail_payload if enriquecimento else None
-    resultado["itens"] = enriquecimento.items_payload if enriquecimento else None
-    resultado["anexos"] = enriquecimento.documents_payload if enriquecimento else None
     return resultado
+
+
+def obter_itens_edital(external_id: str) -> dict[str, Any]:
+    """Retorna itens normalizados, resultados e cobertura de participacao."""
+    with orm.main_session() as session:
+        oportunidade = session.get(PncpOportunidade, {"source": "PNCP", "external_id": external_id})
+        if oportunidade is None:
+            raise LookupError("Edital PNCP nao encontrado.")
+        itens = session.scalars(select(PncpItem).where(PncpItem.source == "PNCP", PncpItem.external_id == external_id).order_by(PncpItem.numero_item)).all()
+        resultados = session.scalars(select(PncpResultadoItem).where(PncpResultadoItem.source == "PNCP", PncpResultadoItem.external_id == external_id, PncpResultadoItem.disponibilidade == "ATUAL").order_by(PncpResultadoItem.numero_item, PncpResultadoItem.sequencial_resultado)).all()
+    itens_json = [{"numero_item": item.numero_item, "numero_lote": item.numero_lote,
+        "descricao": item.descricao, "quantidade": item.quantidade, "unidade": item.unidade,
+        "valor_unitario_estimado": item.valor_unitario_estimado, "valor_total_estimado": item.valor_total_estimado,
+        "situacao": item.situacao, "criterio_julgamento": item.criterio_julgamento,
+        "resultado_status": item.resultado_status, "revisao": item.revisao} for item in itens]
+    resultados_json = [{"numero_item": r.numero_item, "sequencial_resultado": r.sequencial_resultado,
+        "fornecedor": r.fornecedor, "cnpj_fornecedor": r.cnpj_fornecedor,
+        "valor_unitario_homologado": r.valor_unitario_homologado, "quantidade_homologada": r.quantidade_homologada,
+        "situacao": r.situacao, "data_resultado": r.data_resultado, "revisao": r.revisao} for r in resultados]
+    lotes: dict[str, list[int]] = {}
+    for item in itens:
+        if item.numero_lote is not None:
+            lotes.setdefault(item.numero_lote, []).append(item.numero_item)
+    return {"edital_id": external_id, "itens": itens_json, "resultados_por_item": resultados_json,
+        "lotes_identificados": [{"numero_lote": numero, "numeros_itens": numeros} for numero, numeros in sorted(lotes.items())],
+        "cobertura": {"itens": len(itens), "resultados": len(resultados), "lotes_identificados": len(lotes),
+            "itens_sem_resultado": sum(item.resultado_status == "AUSENTE" for item in itens),
+            "itens_resultado_parcial": sum(item.resultado_status == "PARCIAL" for item in itens)}}
+
+
+def obter_anexos_edital(external_id: str) -> dict[str, Any]:
+    """Retorna o manifesto e o estado dos anexos, sem baixar seus arquivos."""
+    with orm.main_session() as session:
+        oportunidade = session.get(PncpOportunidade, {"source": "PNCP", "external_id": external_id})
+        if oportunidade is None:
+            raise LookupError("Edital PNCP nao encontrado.")
+        documentos = session.scalars(select(PncpDocumento).where(PncpDocumento.source == "PNCP", PncpDocumento.external_id == external_id).order_by(PncpDocumento.sequencial_documento)).all()
+    manifesto = [{"sequencial_documento": d.sequencial_documento, "titulo": d.titulo,
+        "tipo": d.tipo, "url_oficial": d.url_oficial, "publicado_em": d.publicado_em,
+        "hash_metadados": d.payload_hash, "disponibilidade": d.disponibilidade, "revisao": d.revisao} for d in documentos]
+    return {"edital_id": external_id, "anexos": manifesto, "cobertura": {"total": len(manifesto),
+        "disponiveis": sum(d.disponibilidade == "DISPONIVEL" for d in documentos),
+        "temporariamente_indisponiveis": sum(d.disponibilidade == "TEMPORARIAMENTE_INDISPONIVEL" for d in documentos),
+        "removidos": sum(d.disponibilidade == "REMOVIDO" for d in documentos)}}
 
 
 def obter_cobertura_anual(ano: int) -> dict[str, Any]:

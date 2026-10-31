@@ -122,15 +122,27 @@ O overview sem município consolida o Ceará e considera somente ME no recorte p
 
 ### `GET /pncp/editais`
 
+Retorna apenas os campos de resumo para montar listagens e cart?es.
+
 ```json
-{"dados":[{"data_quality_status":"VALID","sync_status":"SUCCEEDED","dados_semanticos":{},"id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisição de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false}],"paginacao":{"pagina":1,"tamanho_pagina":20,"total":1}}
+{"dados":[{"data_quality_status":"VALID","sync_status":"SUCCEEDED","id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisi??o de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false}],"paginacao":{"pagina":1,"tamanho_pagina":20,"total":1}}
 ```
 
 ### `GET /pncp/editais/{external_id}`
 
+Retorna os dados da contrata??o e o detalhe enriquecido, quando dispon?vel. O identificador pode conter barras, por exemplo `80881915000192-1-000105/2026`.
+
 ```json
-{"data_quality_status":"VALID","sync_status":"SUCCEEDED","dados_semanticos":{},"id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisição de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false,"detalhe":null,"itens":null,"anexos":null}
+{"data_quality_status":"VALID","sync_status":"SUCCEEDED","dados_semanticos":{},"id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisi??o de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false,"detalhe":null}
 ```
+
+### `GET /pncp/editais/{external_id}/itens`
+
+Retorna itens estruturados, resultados por item, lotes identificados e cobertura da participa??o.
+
+### `GET /pncp/editais/{external_id}/anexos`
+
+Retorna o manifesto de documentos, URLs oficiais, disponibilidade e cobertura, sem baixar os arquivos.
 
 ## Formato de erro
 

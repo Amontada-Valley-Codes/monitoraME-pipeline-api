@@ -571,13 +571,26 @@ GET /pncp/editais?ano_compra=2026
 ```
 
 O comando agenda jobs persistentes e tenta executar a coleta imediatamente. O
-Compose também oferece `pncp-worker-coleta` e `pncp-worker-normalizacao` para
+Compose também oferece `pncp-worker-coleta`, `pncp-worker-normalizacao` e `pncp-worker-enriquecimento` para
 processar continuamente coleta/retries e RAW pendente; suba-os com
-`docker compose up -d pncp-worker-coleta pncp-worker-normalizacao`. A cobertura
+`docker compose up -d pncp-worker-coleta pncp-worker-normalizacao pncp-worker-enriquecimento`. A cobertura
 fica completa quando todas as janelas agendadas estiverem coletadas e seus jobs
 de normalização estiverem concluídos. Registros antigos sem esses campos na
 origem continuam com os campos anuais nulos até serem reprocessados de um RAW
 que os contenha.
+
+O enriquecimento sob demanda consulta todas as páginas de itens (limite
+`PNCP_ENRICHMENT_MAX_ITEM_PAGES`), consulta resultados por item e mantém um
+manifesto de documentos sem baixar seus arquivos. `GET /pncp/editais/{id}`
+retorna os dados principais e o detalhe adicional; `GET /pncp/editais/{id}/itens`
+retorna itens estruturados, resultados, lotes e cobertura; `GET
+/pncp/editais/{id}/anexos` retorna o manifesto e a disponibilidade dos documentos
+sem baixar seus arquivos. `GET /health/pncp` inclui contagens de cobertura.
+Consulte [o contrato e as limitações](docs/pncp-participacao-documentos.md)
+antes de usar lotes ou estados de resultado em matching.
+
+Para validar localmente com apenas alguns registros e sem avançar cursores,
+consulte `docs/pncp-validacao-local.md`.
 
 ## Testes
 

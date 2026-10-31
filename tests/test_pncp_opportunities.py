@@ -14,6 +14,12 @@ class OpportunitiesPncpTest(unittest.TestCase):
         dto = contrato_consumo(self.o)
         self.assertEqual(dto["url_oficial"], "https://pncp.gov.br/x")
         self.assertFalse(dto["itens_disponiveis"])
+    def test_contrato_corrige_url_antiga_a_partir_do_id_pncp(self) -> None:
+        self.o.external_id = "00394460000141-1-000105/2026"
+        self.o.orgao = {"cnpj": "00394460000141"}
+        self.o.url_oficial = "https://pncp.gov.br/app/editais/00394460000141-1-000105/2026"
+        dto = contrato_consumo(self.o)
+        self.assertEqual(dto["url_oficial"], "https://pncp.gov.br/app/editais/00394460000141/2026/000105")
     def test_matching_exige_depara_explicito(self) -> None:
         s = MagicMock(); s.query.return_value.filter_by.return_value.one_or_none.return_value = None
         match = avaliar_matching_session(s, oportunidade=self.o, profile_key="empresa:1", cnaes=["6201"], mapa_cnae_categoria={"6201": {"informatica"}}, rule_version="v1")
