@@ -67,20 +67,28 @@ def registrar_eventos_alteracao_session(session: Session, *, anterior: PncpOport
         registrar_evento_session(session, event_type="SITUACAO_RELEVANTE", oportunidade=atual, details={"situacao": atual.situacao})
 
 
-def avaliar_matching_session(session: Session, *, oportunidade: PncpOportunidade, profile_key: str, cnaes: list[str], mapa_cnae_categoria: dict[str, set[str]], rule_version: str) -> PncpMatching:
-    categorias = {item.lower() for valores in mapa_cnae_categoria.values() for item in valores}
+def avaliar_matching_session(session: Session, *, oportunidade: PncpOportunidade, profile_key: str, cnaes: list[str], mapa_cnae_categoria: dict[str, set[str]], rule_version: str, map_version: str, categoria_confirmada: set[str] | None = None) -> PncpMatching:
     objeto = (oportunidade.objeto or "").lower()
     reasons, missing = [], []
     if not objeto: missing.append("objeto")
-    if not cnaes: missing.append("cnaes")
-    categorias_cnae = {categoria.lower() for cnae in cnaes for categoria in mapa_cnae_categoria.get(cnae, set())}
-    encontradas = sorted(categoria for categoria in categorias_cnae if categoria in objeto)
+    if categoria_confirmada:
+        categorias_empresa = {item.strip().lower() for item in categoria_confirmada if item.strip()}
+        encontradas = sorted(categoria for categoria in categorias_empresa if categoria in objeto)
+        reasons.append("origem_categoria:confirmada_empresa")
+        if not encontradas:
+            reasons.append("categoria_confirmada_sem_correspondencia_no_objeto")
+    else:
+        if not cnaes: missing.append("cnaes")
+        categorias_cnae = {categoria.lower() for cnae in cnaes for categoria in mapa_cnae_categoria.get(cnae, set())}
+        encontradas = sorted(categoria for categoria in categorias_cnae if categoria in objeto)
+        if encontradas: reasons.append("origem_categoria:inferida_cnae")
     if encontradas: reasons.append(f"categorias_compativeis:{','.join(encontradas)}")
     elif not missing: reasons.append("nenhuma_categoria_mapeada_no_objeto")
     compatível = bool(encontradas)
-    atual = session.query(PncpMatching).filter_by(source=oportunidade.source, external_id=oportunidade.external_id, profile_key=profile_key, rule_version=rule_version).one_or_none()
+    versao_regra = f"{rule_version}|mapa:{map_version}"
+    atual = session.query(PncpMatching).filter_by(source=oportunidade.source, external_id=oportunidade.external_id, profile_key=profile_key, rule_version=versao_regra).one_or_none()
     if atual is None:
-        atual = PncpMatching(source=oportunidade.source, external_id=oportunidade.external_id, profile_key=profile_key, rule_version=rule_version, compatible=compatível, reasons=reasons, missing_fields=missing)
+        atual = PncpMatching(source=oportunidade.source, external_id=oportunidade.external_id, profile_key=profile_key, rule_version=versao_regra, compatible=compatível, reasons=reasons, missing_fields=missing)
         session.add(atual)
     else:
         atual.compatible, atual.reasons, atual.missing_fields = compatível, reasons, missing

@@ -670,3 +670,11 @@ Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagame
 ### Qualidade semantica PNCP
 
 A normalizacao avalia qualidade por campo e RAW, preserva valores monetarios com Decimal, datas de origem e codigos desconhecidos, e isola erros de contrato. A migration `0017_pncp_qualidade` acrescenta evidencias versionadas. Homologacao tecnica aprovada em PostgreSQL isolado com amostras reais dos dois endpoints, 63 verificacoes e relatorios publicados em `docs/`. Consulte a [matriz, metricas e procedimento de homologacao](docs/pncp-qualidade-semantica.md). Para exportar metricas e excecoes locais: `python scripts/relatorio_pncp_qualidade.py --saida relatorio-qualidade.json` (filtros opcionais `--run-id` e `--endpoint`).
+
+### De-para CNAE e categoria PNCP
+
+A migration `0026_pncp_cnae_taxonomy` cria uma taxonomia inicial versionada para matching. Consulte o snapshot ativo e suas métricas em `GET /pncp/taxonomia/cnae-categoria`; passe `?versao=...` para reproduzir um mapa histórico. Revisões são imutáveis após ativação; o fluxo controlado de rascunho, cópia, revisão e ativação está em [docs/pncp-raw.md](docs/pncp-raw.md#taxonomia-cnae-categoria). Categoria confirmada pela empresa prevalece sobre inferência CNAE. O catálogo PNCP é isolado dos indicadores TCE.
+
+Para sincronizar as subclasses oficiais do IBGE para o catálogo local (ampliando a base usada nas métricas de cobertura), execute `.venv\Scripts\python.exe scripts\sincronizar_catalogo_cnae_ibge.py`. A rota `GET /pncp/taxonomia/cnaes/busca?q=software` pesquisa código/descrição e informa categorias já relacionadas; sincronizar CNAE não cria relações automaticamente.
+
+O de-para é revisado pela CLI: `pncp taxonomia --help` (container) ou `.venv\Scripts\python.exe scripts\pncp_operacao.py taxonomia --help` (Windows). O passo a passo está em [docs/pncp-raw.md](docs/pncp-raw.md#revisao-pelo-cli).

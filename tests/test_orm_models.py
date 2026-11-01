@@ -48,6 +48,10 @@ class OrmMetadataTest(unittest.TestCase):
             "pncp_recurso_versoes",
             "pncp_eventos",
             "pncp_matchings",
+            "pncp_taxonomia_categorias",
+            "pncp_taxonomia_cnaes",
+            "pncp_mapa_revisoes",
+            "pncp_mapa_cnae_categoria",
             "pncp_quarentena",
             "pncp_avaliacoes_qualidade",
             "pncp_sync_cursors",
@@ -110,6 +114,12 @@ class OrmMetadataTest(unittest.TestCase):
             {"logs_aplicacao", "logs_ingestao"},
         )
 
+    def test_mapa_pncp_nao_tem_dependencias_com_tabelas_analytics_tce(self) -> None:
+        for nome in ("pncp_taxonomia_categorias", "pncp_taxonomia_cnaes", "pncp_mapa_revisoes", "pncp_mapa_cnae_categoria"):
+            tabela = orm.MainBase.metadata.tables[nome]
+            destinos = {fk.target_fullname.split(".", 1)[0] for fk in tabela.foreign_keys}
+            self.assertFalse(any(destino.startswith("tce_") for destino in destinos))
+
         tabela = log_models.LogIngestao.__table__
         self.assertIsInstance(tabela.c.parametros.type, JSONB)
         self.assertFalse(tabela.c.registros_processados.nullable)
@@ -124,8 +134,21 @@ class OrmMetadataTest(unittest.TestCase):
 class OrmEngineFactoryTest(unittest.TestCase):
     def setUp(self) -> None:
         orm.dispose_engines()
+        self.sslmode_env_patch = patch.dict(
+            os.environ,
+            {"DATABASE_SSLMODE": "require", "LOG_DATABASE_SSLMODE": "require"},
+        )
+        self.sslmode_env_patch.start()
+        self.sslmode_patch = patch.multiple(
+            orm,
+            DATABASE_SSLMODE="require",
+            LOG_DATABASE_SSLMODE="require",
+        )
+        self.sslmode_patch.start()
 
     def tearDown(self) -> None:
+        self.sslmode_patch.stop()
+        self.sslmode_env_patch.stop()
         orm.dispose_engines()
 
     @patch("app.core.orm.create_engine")
