@@ -10,3 +10,4 @@ alembic
 pydantic
 python-dotenv
 tzdata
+psutil>=5.9,<8
