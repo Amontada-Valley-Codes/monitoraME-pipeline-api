@@ -636,9 +636,12 @@ Suba-o independentemente com `docker compose up -d --build matching-nlp-worker`
 (em produção, `docker compose -f compose.production.yaml up -d --build
 matching-nlp-worker`). O padrão limita a 1,5 CPU, 2 GiB, uma inferência por vez
 e batch size 1; ajuste `MATCHING_NLP_MEMORY_LIMIT` e `MATCHING_NLP_CPUS` à VPS.
-Configure `NLP_EMBEDDING_REVISION` com o SHA do modelo para manter a identidade
-de `model_version` reproduzível. Erros usam retry e lease da fila PostgreSQL;
-após esgotar tentativas, o job fica `FAILED` para replay operacional.
+O padrão de `NLP_EMBEDDING_REVISION` é o SHA
+`fd1525a9fd15316a2d503bf26ab031a61d056e98`, usado na validação local. Fixe a
+mesma revisão nos ambientes para manter `model_version` reproduzível; trocar o
+SHA agenda uma nova geração sem apagar os vetores anteriores. Erros usam retry
+e lease da fila PostgreSQL; após esgotar tentativas, o job fica `FAILED` para
+replay operacional.
 
 ## Testes
 
