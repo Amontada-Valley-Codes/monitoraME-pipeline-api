@@ -33,6 +33,46 @@ class MatchingReason(BaseModel):
     evidence: str | None = Field(default=None, max_length=1000)
 
 
+class MatchingEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    criterion: str = Field(min_length=1, max_length=40)
+    score: float | None = Field(default=None, ge=0, le=1)
+    details: str = Field(min_length=1, max_length=1000)
+
+
+class EligibilityStatus(StrEnum):
+    ELIGIBLE = "ELIGIBLE"
+    INELIGIBLE = "INELIGIBLE"
+    NOT_CONFIRMED = "NOT_CONFIRMED"
+
+
+class ProcurementProfile(BaseModel):
+    """Atributos normalizados opcionais necessários ao matching determinístico."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    procurement_id: str = Field(min_length=1, max_length=300)
+    source: str = Field(default="PNCP", min_length=1, max_length=30)
+    external_id: str = Field(min_length=1, max_length=300)
+    object: str | None = Field(default=None, max_length=10_000)
+    items: list[str] = Field(default_factory=list, max_length=500)
+    categories: list[str] = Field(default_factory=list, max_length=100)
+    accepted_company_sizes: list[str] | None = Field(default=None, max_length=4)
+    territory_states: list[str] | None = Field(default=None, max_length=27)
+    territory_municipalities: list[str] | None = Field(default=None, max_length=5_600)
+    participation_forms: list[str] | None = Field(default=None, max_length=30)
+    participation_form: str | None = Field(default=None, max_length=80)
+    operational_requirements: dict[str, str | bool | int] = Field(default_factory=dict, max_length=50)
+    status: str | None = Field(default=None, max_length=40)
+    deadline: datetime | None = None
+    revoked: bool | None = None
+    annulled: bool | None = None
+    suspended: bool | None = None
+    url: str | None = Field(default=None, max_length=2000)
+    version: str = Field(min_length=1, max_length=100)
+
+
 class ProcurementReference(BaseModel):
     """Referência a edital já normalizado pelo Pipeline; sem coleta PNCP aqui."""
 
@@ -41,7 +81,7 @@ class ProcurementReference(BaseModel):
     procurement_id: str = Field(min_length=1, max_length=300)
     source: str = Field(default="PNCP", min_length=1, max_length=30)
     external_id: str = Field(min_length=1, max_length=300)
-    object: str = Field(min_length=1, max_length=10_000)
+    object: str | None = Field(default=None, max_length=10_000)
     url: str | None = Field(default=None, max_length=2000)
     version: str = Field(min_length=1, max_length=100)
 
@@ -51,12 +91,18 @@ class MatchingResult(BaseModel):
 
     company_id: UUID
     edital: ProcurementReference
-    score: float = Field(ge=0, le=1)
+    score: float = Field(ge=0, le=100)
+    data_confidence: float = Field(ge=0, le=100)
+    eligibility: EligibilityStatus
     compatibility_level: CompatibilityLevel
+    reason_codes: list[str] = Field(default_factory=list, max_length=50)
+    warning_codes: list[str] = Field(default_factory=list, max_length=50)
+    evidence: list[MatchingEvidence] = Field(default_factory=list, max_length=20)
     justifications: list[MatchingReason] = Field(default_factory=list, max_length=50)
     profile_version: str = Field(min_length=1, max_length=100)
     schema_version: Literal["matching.v1"] = SCHEMA_VERSION
     matching_version: str = Field(min_length=1, max_length=100)
+    taxonomy_version: str = Field(min_length=1, max_length=100)
     processing_state: BatchStatus
     processed_at: datetime | None = None
 
