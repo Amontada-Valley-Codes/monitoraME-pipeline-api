@@ -114,7 +114,10 @@ class ClienteEnriquecimentoPncp:
             permissao = self.protecao.adquirir()
             if permissao.permitida:
                 break
-            if permissao.motivo != "rate limit global" or time.monotonic() + permissao.aguardar.total_seconds() > limite_espera:
+            if (
+                permissao.motivo not in {"rate limit global", "limite de concorrencia"}
+                or time.monotonic() + permissao.aguardar.total_seconds() > limite_espera
+            ):
                 raise PncpProtegidoError(permissao)
             time.sleep(max(0.01, permissao.aguardar.total_seconds()))
         inicio = time.monotonic()

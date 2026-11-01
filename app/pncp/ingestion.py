@@ -88,17 +88,28 @@ class ClientePncp:
             parametros["codigoModalidadeContratacao"] = modalidade
         return self._buscar(ENDPOINT_PROPOSTAS_ABERTAS, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
+    def _adquirir_permissao(self) -> None:
+        limite_espera = time.monotonic() + 90
+        while True:
+            permissao = self.protecao.adquirir()
+            if permissao.permitida:
+                return
+            if (
+                permissao.motivo not in {"rate limit global", "limite de concorrencia"}
+                or time.monotonic() + permissao.aguardar.total_seconds() > limite_espera
+            ):
+                raise PncpProtegidoError(permissao)
+            time.sleep(max(0.01, permissao.aguardar.total_seconds()))
+
     def _buscar(self, endpoint: str, *, parametros: dict[str, Any], pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
         if pagina < 1 or tamanho_pagina < 1 or tamanho_pagina > 50:
             raise ValueError("pagina deve ser positiva e tamanho_pagina deve estar entre 1 e 50")
         params = {**parametros, "pagina": pagina, "tamanhoPagina": tamanho_pagina}
-        permissao = self.protecao.adquirir()
-        if not permissao.permitida:
-            raise PncpProtegidoError(permissao)
         if self._ultima_requisicao_monotonic is not None:
             intervalo = time.monotonic() - self._ultima_requisicao_monotonic
             if intervalo < self.request_interval_seconds:
                 time.sleep(self.request_interval_seconds - intervalo)
+        self._adquirir_permissao()
         self._ultima_requisicao_monotonic = time.monotonic()
         inicio_chamada = time.monotonic()
         try:
