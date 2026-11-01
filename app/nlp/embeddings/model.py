@@ -12,6 +12,7 @@ TipoTexto = Literal["query", "passage"]
 MODEL_ID_PADRAO = "intfloat/multilingual-e5-small"
 MAX_TOKENS = 512
 DIMENSAO_EMBEDDING = 384
+MODEL_REVISION_PADRAO = "fd1525a9fd15316a2d503bf26ab031a61d056e98"
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,7 @@ class E5EmbeddingModel:
         if batch_size < 1:
             raise ValueError("batch_size deve ser maior que zero")
         self.model_id = model_id or os.getenv("NLP_EMBEDDING_MODEL", MODEL_ID_PADRAO)
-        self.revision = revision or os.getenv("NLP_EMBEDDING_REVISION", "main")
+        self.revision = revision or os.getenv("NLP_EMBEDDING_REVISION", MODEL_REVISION_PADRAO)
         self.device = device or os.getenv("NLP_EMBEDDING_DEVICE", "cpu")
         self.batch_size = batch_size
         self._model: SentenceTransformer | None = None

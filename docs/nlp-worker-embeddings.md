@@ -38,8 +38,10 @@ docker compose -f compose.production.yaml logs -f matching-nlp-worker
 `matching-nlp-worker` usa `DATABASE_URL` e `LOG_DATABASE_URL` do ambiente do
 Pipeline. O padrão é 2 GiB, 1,5 CPU, CPU-only, batch 1 e um processo. Ajuste os
 limites no `.env` da VPS conforme a memória disponível. Fixe
-`NLP_EMBEDDING_REVISION` em um SHA do repositório do modelo: a revisão participa
-de `model_version`, de modo que atualização do modelo produz novos vetores.
+`NLP_EMBEDDING_REVISION` em um SHA do repositório do modelo. O padrão é
+`fd1525a9fd15316a2d503bf26ab031a61d056e98`, a revisão usada na validação
+local. A revisão participa de `model_version`, de modo que uma atualização do
+modelo agenda vetores novos sem sobrescrever os anteriores.
 
 Falhas transitórias usam o retry exponencial/jitter da fila compartilhada.
 Tentativas esgotadas ficam `FAILED`; use o procedimento existente de replay
