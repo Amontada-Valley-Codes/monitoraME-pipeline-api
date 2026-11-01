@@ -228,6 +228,37 @@ class PncpOportunidade(MainBase):
     normalized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class NlpProcurementSegment(MainBase):
+    """Representação textual preparada, isolada das tabelas de ingestão PNCP."""
+
+    __tablename__ = "nlp_procurement_segments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source", "external_id"],
+            ["pncp_oportunidades.source", "pncp_oportunidades.external_id"],
+            ondelete="CASCADE",
+        ),
+        Index("idx_nlp_procurement_segments_opportunity", "source", "external_id"),
+        Index("idx_nlp_procurement_segments_text_hash", "text_hash"),
+    )
+
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    segment_type: Mapped[str] = mapped_column(Text, primary_key=True)
+    segment_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    source_field: Mapped[str] = mapped_column(Text)
+    source_version_hash: Mapped[str] = mapped_column(Text)
+    segment_version_hash: Mapped[str | None] = mapped_column(Text)
+    text_hash: Mapped[str | None] = mapped_column(Text)
+    normalized_text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    item_id: Mapped[int | None] = mapped_column(Integer)
+    lot_id: Mapped[str | None] = mapped_column(Text)
+    item_ids: Mapped[list[int]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    structured_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    prepared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class PncpEnriquecimento(MainBase):
     """Detalhes opcionais, versionados e independentes da oportunidade básica."""
 

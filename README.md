@@ -603,6 +603,23 @@ ou consulte `GET /pncp/editais/{external_id}`; a resposta inclui
 Para validar localmente com apenas alguns registros e sem avançar cursores,
 consulte `docs/pncp-validacao-local.md`.
 
+## Contratos locais de Matching NLP
+
+Os contratos v1, fixtures compatíveis com `Company`/`CompanyCnae` e os
+endpoints planejados (sem implementação HTTP nesta fase) estão em
+[docs/matching-contratos-v1.md](docs/matching-contratos-v1.md). Valide as
+fixtures sem Backend, autenticação ou Redis com:
+
+```powershell
+.venv\Scripts\python.exe -m app.nlp.cli validate-fixtures
+```
+
+Para preparar o corpus semântico a partir das contratações e itens normalizados
+no PostgreSQL Analytics, consulte [docs/nlp-corpus-pncp.md](docs/nlp-corpus-pncp.md).
+O comando `python -m app.nlp.cli sync-corpus --dry-run` calcula o delta sem
+persistir; sem `--dry-run`, grava segmentos versionados e hashes em
+`nlp_procurement_segments`. O processo não consulta a API PNCP.
+
 ## Testes
 
 ```bash
