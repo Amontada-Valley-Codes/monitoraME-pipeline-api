@@ -44,6 +44,9 @@ class CompanyProfile(BaseModel):
     primary_cnae: str = Field(min_length=7, max_length=7, pattern=r"^\d{7}$")
     cnaes: list[CnaeProfile] = Field(min_length=1, max_length=100)
     location: CompanyLocation
+    categories: list[str] = Field(default_factory=list, max_length=100)
+    operational_preferences: dict[str, str | bool | int] = Field(default_factory=dict, max_length=50)
+    participation_forms: list[str] | None = Field(default=None, max_length=30)
 
     @model_validator(mode="after")
     def validar_cnaes_primario(self) -> CompanyProfile:

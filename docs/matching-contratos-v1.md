@@ -34,13 +34,19 @@ IDs repetidos. Erros de validação informam o caminho do campo.
 ## Saída
 
 `MatchingResult` associa obrigatoriamente `company_id` ao edital normalizado e
-inclui `score` entre 0 e 1, nível (`LOW`, `MEDIUM`, `HIGH`), justificativas
-codificadas, `profile_version`, `schema_version`, `matching_version`, estado
-de processamento e timestamp opcional. A referência do edital contém
+inclui `score` entre 0 e 100, `data_confidence` entre 0 e 100, elegibilidade
+(`ELIGIBLE`, `INELIGIBLE`, `NOT_CONFIRMED`), nível (`LOW`, `MEDIUM`, `HIGH`),
+`reason_codes`, `warning_codes`, evidências, `profile_version`, `schema_version`,
+`matching_version`, `taxonomy_version`, estado de processamento e timestamp.
+A referência do edital contém
 `procurement_id`, origem/ID externo, objeto, URL opcional e versão do registro
 normalizado. Os envelopes `BatchAccepted`, `BatchStatusResponse` e
 `MatchingResultsPage` definem os formatos previstos para aceitação, consulta
 de estado e resultados paginados.
+
+As regras locais e a definição de confiança ficam em
+[`matching-deterministico.md`](matching-deterministico.md). Resultados LOW
+continuam pesquisáveis; os estados de elegibilidade permanecem explícitos.
 
 ## Planejamento das rotas futuras
 

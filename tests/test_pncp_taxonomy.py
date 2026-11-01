@@ -9,7 +9,11 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.pncp.cnae_ibge import ErroCatalogoCnaeIbge, normalizar_subclasses
-from app.pncp.taxonomy import adicionar_relacao, mapa_ativo_para_matching
+from app.pncp.taxonomy import (
+    adicionar_relacao,
+    mapa_ativo_detalhado_para_matching,
+    mapa_ativo_para_matching,
+)
 
 
 class PncpTaxonomyTest(unittest.TestCase):
@@ -38,6 +42,24 @@ class PncpTaxonomyTest(unittest.TestCase):
         self.assertEqual(versao, "v2")
         self.assertEqual(mapa, {"6201501": {"software"}})
         session.query.return_value.filter_by.assert_called_with(versao="v2", ativo=True)
+
+    def test_matching_detalhado_preserva_tipo_confianca_e_condicao(self) -> None:
+        session = MagicMock()
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = SimpleNamespace(versao="v2")
+        session.query.return_value.filter_by.return_value.all.return_value = [
+            SimpleNamespace(
+                cnae_codigo="6201501", categoria_slug="software", tipo="CONDICIONAL",
+                confianca=0.63, condicao="porte mínimo",
+            ),
+        ]
+
+        version, associations = mapa_ativo_detalhado_para_matching(session)
+
+        self.assertEqual(version, "v2")
+        self.assertEqual(associations["6201501"][0].category, "software")
+        self.assertEqual(associations["6201501"][0].relation_type, "CONDICIONAL")
+        self.assertEqual(associations["6201501"][0].confidence, 0.63)
+        self.assertEqual(associations["6201501"][0].condition, "porte mínimo")
 
     def test_rejeita_cnae_ausente_na_taxonomia(self) -> None:
         session = MagicMock()
