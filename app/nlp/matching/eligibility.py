@@ -15,8 +15,19 @@ class EligibilityDecision:
     warning_codes: tuple[str, ...]
 
 
-_OPEN_STATUSES = {"ABERTA", "OPEN", "RECEBENDO_PROPOSTAS"}
-_CLOSED_STATUSES = {"FECHADA", "CLOSED", "ENCERRADA", "HOMOLOGADA", "DESERTA"}
+_OPEN_STATUSES = {
+    "ABERTA", "OPEN", "RECEBENDO_PROPOSTAS", "ENCERRANDO_EM_BREVE",
+}
+_CLOSED_STATUSES = {
+    "FECHADA", "CLOSED", "ENCERRADA", "HOMOLOGADA", "DESERTA",
+    "RESULTADO_PUBLICADO", "HOMOLOGADA_PARCIAL", "HOMOLOGADA_TOTAL",
+    "CANCELADA",
+}
+_INVALIDATION_MARKERS = (
+    ("REVOG", "OPPORTUNITY_REVOKED"),
+    ("ANUL", "OPPORTUNITY_ANNULLED"),
+    ("SUSPEN", "OPPORTUNITY_SUSPENDED"),
+)
 
 
 def avaliar_elegibilidade(
@@ -32,14 +43,23 @@ def avaliar_elegibilidade(
     reasons: list[str] = []
     warnings: list[str] = []
 
-    if opportunity.revoked is True or opportunity.annulled is True or opportunity.suspended is True:
-        reasons.append("OPPORTUNITY_INVALIDATED")
+    status = (opportunity.status or "").strip().upper().replace(" ", "_")
+    for marker, code in _INVALIDATION_MARKERS:
+        if marker in status:
+            reasons.append(code)
+    if opportunity.revoked is True:
+        reasons.append("OPPORTUNITY_REVOKED")
+    if opportunity.annulled is True:
+        reasons.append("OPPORTUNITY_ANNULLED")
+    if opportunity.suspended is True:
+        reasons.append("OPPORTUNITY_SUSPENDED")
     if opportunity.revoked is None or opportunity.annulled is None or opportunity.suspended is None:
         warnings.append("INVALIDATION_STATUS_INCOMPLETE")
 
-    status = (opportunity.status or "").strip().upper()
     if status in _CLOSED_STATUSES:
         reasons.append("OPPORTUNITY_CLOSED")
+    elif status == "ABERTURA_FUTURA":
+        reasons.append("OPPORTUNITY_NOT_YET_OPEN")
     elif status not in _OPEN_STATUSES:
         warnings.append("OPEN_STATUS_UNCONFIRMED")
 

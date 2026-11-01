@@ -103,9 +103,32 @@ class DeterministicScoringTests(TestCase):
         decision = avaliar_elegibilidade(empresa(participation_forms=["CONSORTIUM"]), bad, as_of=NOW)
         self.assertEqual(decision.status, EligibilityStatus.INELIGIBLE)
         self.assertEqual(set(decision.reason_codes), {
-            "OPPORTUNITY_INVALIDATED", "DEADLINE_EXPIRED", "COMPANY_SIZE_NOT_ACCEPTED",
+            "OPPORTUNITY_SUSPENDED", "DEADLINE_EXPIRED", "COMPANY_SIZE_NOT_ACCEPTED",
             "TERRITORY_NOT_ACCEPTED", "PARTICIPATION_FORM_NOT_ACCEPTED",
         })
+
+    def test_gate_reconhece_estados_derivados_pncp_sem_flags_auxiliares(self) -> None:
+        for status, expected in (
+            ("REVOGADA", EligibilityStatus.INELIGIBLE),
+            ("ANULADA", EligibilityStatus.INELIGIBLE),
+            ("SUSPENSA", EligibilityStatus.INELIGIBLE),
+            ("HOMOLOGADA_TOTAL", EligibilityStatus.INELIGIBLE),
+            ("ABERTURA_FUTURA", EligibilityStatus.INELIGIBLE),
+            ("ENCERRANDO_EM_BREVE", EligibilityStatus.NOT_CONFIRMED),
+        ):
+            with self.subTest(status=status):
+                decision = avaliar_elegibilidade(
+                    empresa(), oportunidade(
+                        status=status, revoked=None, annulled=None, suspended=None
+                    ), as_of=NOW
+                )
+                self.assertEqual(decision.status, expected)
+        near_deadline = avaliar_elegibilidade(
+            empresa(), oportunidade(
+                status="ENCERRANDO_EM_BREVE", revoked=None, annulled=None, suspended=None
+            ), as_of=NOW
+        )
+        self.assertNotIn("OPEN_STATUS_UNCONFIRMED", near_deadline.warning_codes)
 
     def test_publicada_sem_status_derivado_aberto_fica_nao_confirmada(self) -> None:
         decision = avaliar_elegibilidade(empresa(), oportunidade(status="PUBLICADA"), as_of=NOW)
