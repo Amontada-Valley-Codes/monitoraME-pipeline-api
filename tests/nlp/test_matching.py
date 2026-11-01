@@ -10,7 +10,7 @@ from app.nlp.matching.eligibility import avaliar_elegibilidade
 from app.nlp.matching.engine import calcular_matching
 from app.nlp.matching.jobs import agendar_recalculo_perfil_session
 from app.nlp.matching.schemas import EligibilityStatus, ProcurementProfile
-from app.nlp.matching.scoring import WEIGHTS, classificar_score
+from app.nlp.matching.scoring import TaxonomyAssociation, WEIGHTS, calcular_score, classificar_score
 from app.nlp.profiles.schemas import CompanyProfile
 
 
@@ -65,7 +65,7 @@ class DeterministicScoringTests(TestCase):
     def test_calculo_reprodutivel_inclui_taxonomia_evidencias_e_timestamp(self) -> None:
         kwargs = dict(
             taxonomy_version="cnae-objeto-v2",
-            cnae_categories={"6201501": {"software"}},
+            cnae_categories={"6201501": [TaxonomyAssociation("software", "DIRETA", 1.0)]},
             as_of=NOW,
         )
         first = calcular_matching(empresa(), oportunidade(), **kwargs)
@@ -118,6 +118,33 @@ class DeterministicScoringTests(TestCase):
         )
         self.assertEqual(result.compatibility_level.value, "MEDIUM")
         self.assertIn("OBJECT_DATA_MISSING", result.warning_codes)
+
+    def test_categoria_inferida_nao_duplica_criterio_cnae(self) -> None:
+        breakdown = calcular_score(
+            empresa(categories=[]),
+            oportunidade(),
+            taxonomy_version="tax-v1",
+            cnae_categories={"6201501": [TaxonomyAssociation("software", "DIRETA", 1.0)]},
+        )
+        self.assertNotIn("category", {item.criterion for item in breakdown.evidence})
+        self.assertIn("cnae", {item.criterion for item in breakdown.evidence})
+
+    def test_score_cnae_respeita_confianca_e_omite_relacao_condicional_nao_avaliada(self) -> None:
+        company = empresa(categories=[])
+        op = oportunidade(object=None, items=[], categories=["software", "hardware"])
+        breakdown = calcular_score(
+            company,
+            op,
+            taxonomy_version="tax-v2",
+            cnae_categories={"6201501": [
+                TaxonomyAssociation("software", "RELACIONADA", 0.4),
+                TaxonomyAssociation("hardware", "CONDICIONAL", 0.95, "exige certificação"),
+            ]},
+        )
+        cnae_evidence = next(item for item in breakdown.evidence if item.criterion == "cnae")
+        self.assertEqual(cnae_evidence.score, 0.2)
+        self.assertIn("CONDICIONAL", cnae_evidence.details)
+        self.assertIn("CNAE_CONDITIONAL_UNRESOLVED", breakdown.warning_codes)
 
     def test_agendamento_de_perfil_e_idempotente_por_versao(self) -> None:
         session = SimpleNamespace()

@@ -20,6 +20,14 @@ assert sum(WEIGHTS.values()) == 100
 
 
 @dataclass(frozen=True)
+class TaxonomyAssociation:
+    category: str
+    relation_type: str
+    confidence: float
+    condition: str | None = None
+
+
+@dataclass(frozen=True)
 class ScoreBreakdown:
     score: float
     data_confidence: float
@@ -57,14 +65,13 @@ def calcular_score(
     opportunity: ProcurementProfile,
     *,
     taxonomy_version: str,
-    cnae_categories: dict[str, set[str]],
+    cnae_categories: dict[str, list[TaxonomyAssociation]],
 ) -> ScoreBreakdown:
     """Calcula score 0-100; critérios sem entrada não reduzem compatibilidade."""
     values: dict[str, float] = {}
     details: dict[str, str] = {}
+    # Categorias confirmadas pelo perfil são independentes da inferência por CNAE.
     company_categories = set(company.categories)
-    if not company_categories:
-        company_categories = set().union(*(cnae_categories.get(c.code, set()) for c in company.cnaes))
     opportunity_categories = set(opportunity.categories)
     if opportunity_categories and company_categories:
         values["category"] = len(opportunity_categories & company_categories) / len(opportunity_categories | company_categories)
@@ -78,11 +85,33 @@ def calcular_score(
         terms = _termos_comuns(profile_text, opportunity_text)
         details["object"] = f"Similaridade lexical determinística; termos coincidentes: {', '.join(terms) or 'nenhum'} ({len(_tokens(opportunity_text))} termos no edital)."
 
-    mapped_categories = set().union(*(cnae_categories.get(c.code, set()) for c in company.cnaes))
+    associations: dict[str, TaxonomyAssociation] = {}
+    conditional_categories: set[str] = set()
+    conditional_details: dict[str, str | None] = {}
+    for cnae in company.cnaes:
+        for association in cnae_categories.get(cnae.code, []):
+            if association.relation_type == "CONDICIONAL":
+                conditional_categories.add(association.category)
+                conditional_details[association.category] = association.condition
+                continue
+            current = associations.get(association.category)
+            if current is None or association.confidence > current.confidence:
+                associations[association.category] = association
+    mapped_categories = set(associations)
     if opportunity_categories and mapped_categories:
-        values["cnae"] = len(opportunity_categories & mapped_categories) / len(opportunity_categories | mapped_categories)
         matched = sorted(opportunity_categories & mapped_categories)
-        details["cnae"] = f"Taxonomia {taxonomy_version}; categorias coincidentes: {', '.join(matched) or 'nenhuma'}."
+        values["cnae"] = sum(associations[category].confidence for category in matched) / len(opportunity_categories | mapped_categories)
+        provenance = ", ".join(
+            f"{category} ({associations[category].relation_type}, confiança {associations[category].confidence:.2f})"
+            for category in matched
+        ) or "nenhuma"
+        unresolved = sorted(conditional_categories & opportunity_categories)
+        unresolved_text = ", ".join(
+            f"{category} (CONDICIONAL: {conditional_details[category] or 'condição não informada'})"
+            for category in unresolved
+        )
+        suffix = f" Relações não avaliadas: {unresolved_text}." if unresolved else ""
+        details["cnae"] = f"Taxonomia {taxonomy_version}; associações coincidentes: {provenance}.{suffix}"
 
     territory_known = opportunity.territory_states is not None or opportunity.territory_municipalities is not None
     if territory_known:
@@ -102,10 +131,12 @@ def calcular_score(
     confidence = float(coverage)
     evidence = tuple(MatchingEvidence(criterion=key, score=round(value, 6), details=details[key]) for key, value in values.items())
     reasons = tuple(f"{key.upper()}_MATCH" if value > 0 else f"{key.upper()}_NO_MATCH" for key, value in values.items())
-    warnings = tuple(f"{key.upper()}_DATA_MISSING" for key in WEIGHTS if key not in values)
+    warnings = [f"{key.upper()}_DATA_MISSING" for key in WEIGHTS if key not in values]
+    if conditional_categories & opportunity_categories:
+        warnings.append("CNAE_CONDITIONAL_UNRESOLVED")
     # Score alto exige pelo menos uma evidência concreta nos critérios de atividade.
     activity_evidence = any(key in values for key in ("category", "object", "cnae"))
     if score >= 75 and not activity_evidence:
         score = 74.999999
-        warnings += ("HIGH_WITHOUT_ACTIVITY_EVIDENCE",)
-    return ScoreBreakdown(round(score, 6), confidence, evidence, reasons, warnings)
+        warnings.append("HIGH_WITHOUT_ACTIVITY_EVIDENCE")
+    return ScoreBreakdown(round(score, 6), confidence, evidence, reasons, tuple(warnings))

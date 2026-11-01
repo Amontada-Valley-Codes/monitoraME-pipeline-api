@@ -12,7 +12,7 @@ from app.nlp.matching.schemas import (
     ProcurementProfile,
     ProcurementReference,
 )
-from app.nlp.matching.scoring import calcular_score, classificar_score
+from app.nlp.matching.scoring import TaxonomyAssociation, calcular_score, classificar_score
 from app.nlp.profiles.schemas import CompanyProfile
 
 
@@ -24,7 +24,7 @@ def calcular_matching(
     opportunity: ProcurementProfile,
     *,
     taxonomy_version: str,
-    cnae_categories: dict[str, set[str]],
+    cnae_categories: dict[str, list[TaxonomyAssociation]],
     as_of: datetime | None = None,
 ) -> MatchingResult:
     """Gera resultado reprodutível; `as_of` pode congelar o instante de avaliação."""

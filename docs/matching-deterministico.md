@@ -23,6 +23,12 @@ um critério de atividade disponível (categoria, objeto/itens ou CNAE). Sem ess
 evidência, o nível fica limitado a MEDIUM. Níveis: LOW 0–49, MEDIUM 50–74 e
 HIGH 75–100.
 
+O critério categoria usa apenas categorias explicitamente informadas no
+perfil; não reutiliza as categorias inferidas dos CNAEs. O critério CNAE
+preserva tipo e confiança de cada associação versionada. Relações `CONDICIONAL`
+não pontuam enquanto o motor não tiver dados para avaliar sua condição e geram
+aviso quando a categoria da oportunidade depende delas.
+
 Este score é uma ordenação para revisão. Não comprova habilitação legal. A
 classificação lexical é deliberadamente simples e exige validação contra rótulos
 antes de ser usada como qualidade de ranking em produção.

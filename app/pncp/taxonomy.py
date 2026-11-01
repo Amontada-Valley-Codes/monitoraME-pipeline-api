@@ -204,3 +204,26 @@ def mapa_ativo_para_matching(session: Session) -> tuple[str, dict[str, set[str]]
     for relacao in linhas:
         mapa.setdefault(relacao.cnae_codigo, set()).add(relacao.categoria_slug)
     return versao, mapa
+
+
+def mapa_ativo_detalhado_para_matching(session: Session):
+    """Retorna associações sem descartar tipo, confiança ou condição.
+
+    A condição de uma relação `CONDICIONAL` é preservada para o consumidor;
+    até existir um avaliador de condições, o scorer não a trata como positiva.
+    """
+    from app.nlp.matching.scoring import TaxonomyAssociation
+
+    versao = obter_versao_ativa(session)
+    if versao is None:
+        raise LookupError("Nenhuma versão ativa do mapa CNAE-categoria")
+    linhas = session.query(PncpMapaCnaeCategoria).filter_by(versao=versao, ativo=True).all()
+    mapa: dict[str, list[TaxonomyAssociation]] = {}
+    for relacao in linhas:
+        mapa.setdefault(relacao.cnae_codigo, []).append(TaxonomyAssociation(
+            category=relacao.categoria_slug,
+            relation_type=relacao.tipo,
+            confidence=float(relacao.confianca),
+            condition=relacao.condicao,
+        ))
+    return versao, mapa
