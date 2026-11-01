@@ -115,7 +115,9 @@ def adquirir_permissao_session(
         return PermissaoFonte(False, timedelta(seconds=1), "limite de concorrencia", controle.circuit_state)
     slot = max(agora, controle.next_request_at or agora)
     if slot > agora:
-        controle.next_request_at = slot + timedelta(milliseconds=controle.interval_milliseconds)
+        # O slot futuro continua disponível para quem recebeu este retry.
+        # Avançá-lo aqui fazia o worker reagendar para o horário antigo e
+        # encontrar a janela empurrada novamente, podendo nunca obter permissão.
         return PermissaoFonte(False, slot - agora, "rate limit global", controle.circuit_state)
     controle.next_request_at = agora + timedelta(milliseconds=controle.interval_milliseconds)
     controle.active_requests += 1

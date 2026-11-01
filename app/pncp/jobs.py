@@ -9,7 +9,7 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
@@ -450,18 +450,57 @@ class WorkerPncp:
                         session, job=job, erro=f"{type(exc).__name__}: {exc}",
                         retryable=retryable, retry_after=retry_after, contexto=contexto,
                     )
-            logger.warning("Job PNCP falhou", extra={"job_id": job.id, "status": status, "error": str(exc)[:2048], "retryable": retryable})
+            detalhes_falha: dict[str, Any] = {
+                "job_id": job.id,
+                "status": status,
+                "error": str(exc)[:2048],
+                "retryable": retryable,
+            }
+            if job.job_type == "enrich":
+                detalhes_falha.update(_detalhes_job_enriquecimento(job))
+                detalhes_falha.update(_contar_fila_enriquecimento())
+            logger.warning("Job PNCP falhou", extra=detalhes_falha)
         else:
             with orm.main_session() as session:
                 concluido = concluir_job_session(session, job_id=job.id, lease_token=job.lease_token)
             if not concluido:
                 logger.warning("Job PNCP perdeu lease antes da conclusao", extra={"job_id": job.id})
+            elif job.job_type == "enrich":
+                detalhes = _detalhes_job_enriquecimento(job)
+                detalhes.update(_contar_fila_enriquecimento())
+                logger.info("Registro de enriquecimento PNCP concluido", extra={"job_id": job.id, **detalhes})
         return True
 
     def executar_loop(self, *, parar: Callable[[], bool], idle_seconds: float = 1.0) -> None:
         while not parar():
             if not self.executar_uma_vez():
                 time.sleep(idle_seconds)
+
+
+def _detalhes_job_enriquecimento(job: JobReivindicado) -> dict[str, str | None]:
+    partes = job.scope_key.split(":", 3)
+    if len(partes) == 4 and partes[0] == "enrich":
+        return {"recurso": partes[1], "external_id": partes[2]}
+    return {"recurso": None, "external_id": None}
+
+
+def _contar_fila_enriquecimento() -> dict[str, int]:
+    with orm.main_session() as session:
+        total = session.scalar(
+            select(func.count())
+            .select_from(IngestionJob)
+            .where(IngestionJob.job_type == "enrich", IngestionJob.status.in_(ACTIVE_STATUSES))
+        ) or 0
+        documentos = session.scalar(
+            select(func.count())
+            .select_from(IngestionJob)
+            .where(
+                IngestionJob.job_type == "enrich",
+                IngestionJob.scope_key.like("enrich:documents:%"),
+                IngestionJob.status.in_(ACTIVE_STATUSES),
+            )
+        ) or 0
+    return {"fila_enriquecimento_restante": int(total), "documentos_na_fila": int(documentos)}
 
 
 def executar_recuperador(*, parar: Callable[[], bool], interval_seconds: float = 30.0) -> None:
