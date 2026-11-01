@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date, datetime, timedelta, timezone
+import json
 from pathlib import Path
 import sys
 from typing import Any
@@ -34,6 +35,8 @@ from app.pncp.normalization import normalizar_job
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.enrichment import ClienteEnriquecimentoPncp, agendar_enriquecimento_session, enriquecer_job
 from app.core.models import PncpOportunidade
+from app.pncp import taxonomy
+from app.pncp.cnae_ibge import buscar_catalogo_session
 
 
 def _worker_coleta(tamanho_pagina: int, job_type: str = "incremental") -> WorkerPncp:
@@ -156,6 +159,71 @@ def replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def gerenciar_taxonomia(args: argparse.Namespace) -> int:
+    if args.acao == "status":
+        with orm.main_session() as session:
+            resultado = taxonomy.obter_snapshot(session, args.versao)
+    elif args.acao == "buscar":
+        with orm.main_session() as session:
+            resultado = buscar_catalogo_session(session, consulta=args.consulta, limite=args.limite)
+    elif args.acao == "revisar":
+        with orm.main_session() as session:
+            origem = taxonomy.obter_versao_ativa(session)
+            if origem is None:
+                raise ValueError("Não existe versão ativa para copiar")
+            taxonomy.criar_revisao(
+                session, versao=args.versao, evidencia=args.evidencia,
+                responsavel=args.responsavel,
+            )
+            session.flush()
+            copiados = taxonomy.copiar_relacoes(
+                session, versao_origem=origem, versao_destino=args.versao,
+            )
+        resultado = {"rascunho": args.versao, "copiada_de": origem, "relacoes_copiadas": copiados}
+    elif args.acao == "mapear":
+        with orm.main_session() as session:
+            relacao = taxonomy.adicionar_relacao(
+                session, versao=args.versao, cnae=args.cnae,
+                categoria=args.categoria, tipo=args.tipo,
+                confianca=args.confianca, responsavel=args.responsavel,
+                evidencias=args.evidencia, condicao=args.condicao,
+            )
+            resultado = {
+                "versao": relacao.versao, "cnae": relacao.cnae_codigo,
+                "categoria": relacao.categoria_slug, "tipo": relacao.tipo,
+                "confianca": relacao.confianca, "ativo": relacao.ativo,
+            }
+    elif args.acao == "atualizar":
+        with orm.main_session() as session:
+            relacao = taxonomy.atualizar_relacao(
+                session, versao=args.versao, cnae=args.cnae,
+                categoria=args.categoria, tipo=args.tipo,
+                confianca=args.confianca, responsavel=args.responsavel,
+                evidencias=args.evidencia, ativo=args.ativo,
+                condicao=args.condicao,
+            )
+            resultado = {
+                "versao": relacao.versao, "cnae": relacao.cnae_codigo,
+                "categoria": relacao.categoria_slug, "tipo": relacao.tipo,
+                "confianca": relacao.confianca, "ativo": relacao.ativo,
+            }
+    elif args.acao == "desativar":
+        with orm.main_session() as session:
+            relacao = taxonomy.desativar_relacao(
+                session, versao=args.versao, cnae=args.cnae,
+                categoria=args.categoria, responsavel=args.responsavel,
+                evidencia=args.evidencia,
+            )
+            resultado = {"versao": relacao.versao, "cnae": relacao.cnae_codigo,
+                         "categoria": relacao.categoria_slug, "ativo": relacao.ativo}
+    else:
+        with orm.main_session() as session:
+            taxonomy.ativar_revisao(session, versao=args.versao, responsavel=args.responsavel)
+        resultado = {"versao_ativa": args.versao}
+    print(json.dumps(resultado, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     comandos = parser.add_subparsers(dest="comando", required=True)
@@ -194,6 +262,54 @@ def main() -> int:
     replay_parser.add_argument("--job-id", type=int)
     replay_parser.add_argument("--flow")
     replay_parser.set_defaults(func=replay)
+    taxonomia = comandos.add_parser("taxonomia", help="Busca CNAEs e revisa o de-para versionado")
+    acoes_taxonomia = taxonomia.add_subparsers(dest="acao", required=True)
+    tax_status = acoes_taxonomia.add_parser("status", help="Exibe snapshot e métricas da versão ativa ou informada")
+    tax_status.add_argument("--versao")
+    tax_status.set_defaults(func=gerenciar_taxonomia)
+    tax_busca = acoes_taxonomia.add_parser("buscar", help="Busca código/descrição no catálogo CNAE sincronizado do IBGE")
+    tax_busca.add_argument("--consulta", required=True)
+    tax_busca.add_argument("--limite", type=int, default=20)
+    tax_busca.set_defaults(func=gerenciar_taxonomia)
+    tax_revisar = acoes_taxonomia.add_parser("revisar", help="Cria rascunho copiando a versão ativa")
+    tax_revisar.add_argument("--versao", required=True)
+    tax_revisar.add_argument("--responsavel", required=True)
+    tax_revisar.add_argument("--evidencia", required=True)
+    tax_revisar.set_defaults(func=gerenciar_taxonomia)
+    tax_mapear = acoes_taxonomia.add_parser("mapear", help="Adiciona associação em um rascunho")
+    tax_mapear.add_argument("--versao", required=True)
+    tax_mapear.add_argument("--cnae", required=True)
+    tax_mapear.add_argument("--categoria", required=True)
+    tax_mapear.add_argument("--tipo", required=True, choices=("DIRETA", "RELACIONADA", "CONDICIONAL"))
+    tax_mapear.add_argument("--confianca", required=True, type=float)
+    tax_mapear.add_argument("--responsavel", required=True)
+    tax_mapear.add_argument("--evidencia", required=True, action="append")
+    tax_mapear.add_argument("--condicao")
+    tax_mapear.set_defaults(func=gerenciar_taxonomia)
+    tax_atualizar = acoes_taxonomia.add_parser("atualizar", help="Atualiza associação existente no rascunho")
+    tax_atualizar.add_argument("--versao", required=True)
+    tax_atualizar.add_argument("--cnae", required=True)
+    tax_atualizar.add_argument("--categoria", required=True)
+    tax_atualizar.add_argument("--tipo", required=True, choices=("DIRETA", "RELACIONADA", "CONDICIONAL"))
+    tax_atualizar.add_argument("--confianca", required=True, type=float)
+    tax_atualizar.add_argument("--responsavel", required=True)
+    tax_atualizar.add_argument("--evidencia", required=True, action="append")
+    estado_relacao = tax_atualizar.add_mutually_exclusive_group(required=True)
+    estado_relacao.add_argument("--ativo", dest="ativo", action="store_true")
+    estado_relacao.add_argument("--inativo", dest="ativo", action="store_false")
+    tax_atualizar.add_argument("--condicao")
+    tax_atualizar.set_defaults(func=gerenciar_taxonomia)
+    tax_desativar = acoes_taxonomia.add_parser("desativar", help="Desativa uma associação no rascunho, preservando a trilha")
+    tax_desativar.add_argument("--versao", required=True)
+    tax_desativar.add_argument("--cnae", required=True)
+    tax_desativar.add_argument("--categoria", required=True)
+    tax_desativar.add_argument("--responsavel", required=True)
+    tax_desativar.add_argument("--evidencia", required=True)
+    tax_desativar.set_defaults(func=gerenciar_taxonomia)
+    tax_ativar = acoes_taxonomia.add_parser("ativar", help="Ativa um rascunho e substitui o mapa ativo")
+    tax_ativar.add_argument("--versao", required=True)
+    tax_ativar.add_argument("--responsavel", required=True)
+    tax_ativar.set_defaults(func=gerenciar_taxonomia)
     args = parser.parse_args()
     return args.func(args)
 

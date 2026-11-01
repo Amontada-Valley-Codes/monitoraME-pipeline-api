@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -411,6 +412,56 @@ class PncpMatching(MainBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class PncpTaxonomiaCategoria(MainBase):
+    __tablename__ = "pncp_taxonomia_categorias"
+    slug: Mapped[str] = mapped_column(Text, primary_key=True)
+    nome: Mapped[str] = mapped_column(Text)
+    descricao: Mapped[str] = mapped_column(Text)
+
+
+class PncpTaxonomiaCnae(MainBase):
+    __tablename__ = "pncp_taxonomia_cnaes"
+    codigo: Mapped[str] = mapped_column(Text, primary_key=True)
+    descricao: Mapped[str] = mapped_column(Text)
+    fonte: Mapped[str] = mapped_column(Text)
+
+
+class PncpMapaRevisao(MainBase):
+    __tablename__ = "pncp_mapa_revisoes"
+    __table_args__ = (CheckConstraint("estado IN ('RASCUNHO', 'ATIVA', 'SUBSTITUIDA')", name="ck_pncp_mapa_estado"),)
+    versao: Mapped[str] = mapped_column(Text, primary_key=True)
+    estado: Mapped[str] = mapped_column(Text, server_default=text("'RASCUNHO'"))
+    evidencia: Mapped[str] = mapped_column(Text)
+    criado_por: Mapped[str] = mapped_column(Text)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    ativado_por: Mapped[str | None] = mapped_column(Text)
+    ativado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PncpMapaCnaeCategoria(MainBase):
+    __tablename__ = "pncp_mapa_cnae_categoria"
+    __table_args__ = (
+        UniqueConstraint("versao", "cnae_codigo", "categoria_slug", name="uq_pncp_mapa_relacao"),
+        CheckConstraint("tipo IN ('DIRETA', 'RELACIONADA', 'CONDICIONAL')", name="ck_pncp_mapa_tipo"),
+        CheckConstraint("confianca >= 0 AND confianca <= 1", name="ck_pncp_mapa_confianca"),
+        CheckConstraint("tipo != 'CONDICIONAL' OR condicao IS NOT NULL", name="ck_pncp_mapa_condicao"),
+        ForeignKeyConstraint(["versao"], ["pncp_mapa_revisoes.versao"], ondelete="RESTRICT"),
+        ForeignKeyConstraint(["cnae_codigo"], ["pncp_taxonomia_cnaes.codigo"], ondelete="RESTRICT"),
+        ForeignKeyConstraint(["categoria_slug"], ["pncp_taxonomia_categorias.slug"], ondelete="RESTRICT"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    versao: Mapped[str] = mapped_column(Text)
+    cnae_codigo: Mapped[str] = mapped_column(Text)
+    categoria_slug: Mapped[str] = mapped_column(Text)
+    tipo: Mapped[str] = mapped_column(Text)
+    confianca: Mapped[float] = mapped_column(Float)
+    ativo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    condicao: Mapped[str | None] = mapped_column(Text)
+    evidencias: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    revisado_por: Mapped[str] = mapped_column(Text)
+    revisado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class PncpQuarentena(MainBase):
     __tablename__ = "pncp_quarentena"
     raw_record_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT"), primary_key=True)
@@ -595,6 +646,7 @@ Index("idx_pncp_oportunidades_ano_compra", PncpOportunidade.ano_compra)
 Index("idx_pncp_enriquecimentos_expiracao", PncpEnriquecimento.expires_at)
 Index("idx_pncp_eventos_contratacao", PncpEvento.source, PncpEvento.external_id)
 Index("idx_pncp_matchings_profile", PncpMatching.profile_key, PncpMatching.compatible)
+Index("idx_pncp_mapa_snapshot", PncpMapaCnaeCategoria.versao, PncpMapaCnaeCategoria.ativo, PncpMapaCnaeCategoria.cnae_codigo)
 Index(
     "uq_tce_despesa_run_publicado_competencia",
     TceDespesaIngestionRun.codigo_municipio_tce,
@@ -644,6 +696,10 @@ __all__ = [
     "PncpRecursoVersao",
     "PncpEvento",
     "PncpMatching",
+    "PncpTaxonomiaCategoria",
+    "PncpTaxonomiaCnae",
+    "PncpMapaRevisao",
+    "PncpMapaCnaeCategoria",
     "PncpQuarentena",
     "PncpSyncCursor",
     "PncpSourceControl",
