@@ -629,8 +629,8 @@ Ele lê apenas segmentos já preparados no Pipeline, não consulta o PNCP e não
 usa banco ou fila do Backend. A normalização e o enriquecimento de itens
 atualizam o corpus; o worker agenda embeddings faltantes na tabela
 `ingestion_jobs` e grava vetores em `nlp_procurement_embeddings`, identificados
-por origem, segmento, `text_hash` e `model_version`. O payload do vetor é JSONB
-de dimensão 384, sem exigir extensão pgvector.
+por origem, segmento, `text_hash` e `model_version`. Após a migration NLP-06,
+os vetores usam `pgvector vector(384)` e índice HNSW no PostgreSQL Analytics.
 
 Suba-o independentemente com `docker compose up -d --build matching-nlp-worker`
 (em produção, `docker compose -f compose.production.yaml up -d --build
@@ -642,6 +642,14 @@ mesma revisão nos ambientes para manter `model_version` reproduzível; trocar o
 SHA agenda uma nova geração sem apagar os vetores anteriores. Erros usam retry
 e lease da fila PostgreSQL; após esgotar tentativas, o job fica `FAILED` para
 replay operacional.
+
+A recuperação Top-K por CNAE usa pgvector, retorna segmentos de objeto e itens
+e consolida editais repetidos pela maior similaridade. As 14 modalidades
+permanecem dados estruturados. K pode ser definido por chamada ou por
+`NLP_RETRIEVAL_TOP_K`; filtros de modalidade, região e situação só são
+aplicados quando informados. Consulte
+[docs/nlp-recuperacao-top-k.md](docs/nlp-recuperacao-top-k.md) para benchmark e
+operação.
 
 ## Testes
 

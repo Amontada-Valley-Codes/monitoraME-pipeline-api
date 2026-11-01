@@ -22,7 +22,7 @@ o cache local ainda não contém a revisão configurada.
 5. O vetor é inserido por chave idempotente `(origem, edital, segmento,
    text_hash, model_version)`. Reexecução do mesmo job não duplica registros.
 
-Os vetores ficam em JSONB como números normalizados de dimensão 384. A chave
+Os vetores ficam em `vector(384)` do pgvector como números normalizados de dimensão 384. A chave
 primária preserva vetores de hashes e versões anteriores, enquanto a FK ao
 segmento mantém a identidade de origem e remove vetores quando o segmento é
 removido. Consumidores devem sempre selecionar o vetor cujo `text_hash`

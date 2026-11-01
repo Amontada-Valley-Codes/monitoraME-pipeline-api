@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import VECTOR
 
 from app.core.orm import MainBase
 
@@ -271,6 +272,13 @@ class NlpProcurementEmbedding(MainBase):
             ondelete="CASCADE",
         ),
         Index("idx_nlp_procurement_embeddings_model", "model_version"),
+        Index(
+            "idx_nlp_procurement_embeddings_hnsw",
+            "vector",
+            postgresql_using="hnsw",
+            postgresql_ops={"vector": "vector_cosine_ops"},
+            postgresql_with={"m": 12, "ef_construction": 48},
+        ),
     )
 
     source: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -280,7 +288,7 @@ class NlpProcurementEmbedding(MainBase):
     text_hash: Mapped[str] = mapped_column(Text, primary_key=True)
     model_version: Mapped[str] = mapped_column(Text, primary_key=True)
     dimensions: Mapped[int] = mapped_column(Integer)
-    vector: Mapped[list[float]] = mapped_column(JSONB)
+    vector: Mapped[list[float]] = mapped_column(VECTOR(384))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
