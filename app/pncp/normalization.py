@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 from app.core import orm
 from app.core.models import PncpOportunidade, PncpQuarentena, RawPncpRecord
+from app.nlp.corpus import sincronizar_corpus
 from app.pncp.jobs import JobReivindicado
 from app.pncp.opportunities import registrar_eventos_alteracao_session
 from app.pncp.quality import avaliar_payload, registrar_avaliacao_session
@@ -137,6 +138,12 @@ def normalizar_job(job: JobReivindicado) -> str:
             raise ValueError("RAW inexistente")
         try:
             resultado = normalizar_raw_session(session, raw)
+            if resultado in {"NOVO", "ALTERADO", "INALTERADO", "INCOMPLETO"}:
+                session.flush()
+                sincronizar_corpus(
+                    session,
+                    opportunity_keys=[(raw.source, raw.external_id)],
+                )
             quarentena = session.get(PncpQuarentena, raw.id)
             if quarentena is not None:
                 session.delete(quarentena)

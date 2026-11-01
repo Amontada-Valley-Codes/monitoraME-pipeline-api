@@ -623,8 +623,22 @@ persistir; sem `--dry-run`, grava segmentos versionados e hashes em
 O adaptador inicial E5 e seu protocolo de validação estão em
 [docs/nlp-validacao-embeddings.md](docs/nlp-validacao-embeddings.md). A
 dependência pesada é opcional (`requirements-nlp.txt`) e deve ser instalada
-somente no worker que gera vetores; fixe `NLP_EMBEDDING_REVISION` em um SHA
-antes de execução reproduzível/produção.
+somente no worker que gera vetores. O serviço `matching-nlp-worker` é isolado,
+usa a rede privada do Compose e o mesmo `DATABASE_URL` PostgreSQL Analytics.
+Ele lê apenas segmentos já preparados no Pipeline, não consulta o PNCP e não
+usa banco ou fila do Backend. A normalização e o enriquecimento de itens
+atualizam o corpus; o worker agenda embeddings faltantes na tabela
+`ingestion_jobs` e grava vetores em `nlp_procurement_embeddings`, identificados
+por origem, segmento, `text_hash` e `model_version`. O payload do vetor é JSONB
+de dimensão 384, sem exigir extensão pgvector.
+
+Suba-o independentemente com `docker compose up -d --build matching-nlp-worker`
+(em produção, `docker compose -f compose.production.yaml up -d --build
+matching-nlp-worker`). O padrão limita a 1,5 CPU, 2 GiB, uma inferência por vez
+e batch size 1; ajuste `MATCHING_NLP_MEMORY_LIMIT` e `MATCHING_NLP_CPUS` à VPS.
+Configure `NLP_EMBEDDING_REVISION` com o SHA do modelo para manter a identidade
+de `model_version` reproduzível. Erros usam retry e lease da fila PostgreSQL;
+após esgotar tentativas, o job fica `FAILED` para replay operacional.
 
 ## Testes
 

@@ -220,6 +220,11 @@ def enriquecer_job(job: JobReivindicado, cliente: ClienteEnriquecimentoPncp) -> 
         oportunidade = session.get(PncpOportunidade, {"source": job.source, "external_id": external_id})
         if oportunidade is not None and oportunidade.payload_hash == versao:
             salvar_recurso_session(session, oportunidade=oportunidade, identidade=identidade, recurso=recurso, payload=payload, observacao=str(job.id))
+            if recurso == "items":
+                from app.nlp.corpus import sincronizar_corpus
+
+                session.flush()
+                sincronizar_corpus(session, opportunity_keys=[(job.source, external_id)])
     if recurso == "items":
         for item_payload in payload:
             numero_item = item_payload["numeroItem"]
