@@ -1,3 +1,6 @@
 # Dependência opcional: instalar somente nos workers/ambientes que geram vetores.
+# Resolve o wheel CPU oficial para nao instalar bibliotecas/runtime CUDA na VPS.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
 sentence-transformers>=3.4,<6
 psutil>=5.9,<8

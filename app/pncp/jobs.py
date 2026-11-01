@@ -300,14 +300,15 @@ def adiar_job_sem_tentativa_session(
     return False
 
 
-def recuperar_leases_expirados_session(session: Session) -> int:
-    resultado = session.execute(text("""
+def recuperar_leases_expirados_session(session: Session, *, job_type: str | None = None) -> int:
+    filtro_tipo = " AND job_type = :job_type" if job_type is not None else ""
+    resultado = session.execute(text(f"""
         UPDATE ingestion_jobs SET status = 'PENDING', locked_by = NULL, lease_token = NULL,
             lease_until = NULL, heartbeat_at = NULL,
             last_error = 'lease expirado; job devolvido a fila', next_run_at = now(), updated_at = now()
-        WHERE status = 'RUNNING' AND lease_until <= now()
+        WHERE status = 'RUNNING' AND lease_until <= now(){filtro_tipo}
         RETURNING id, attempts
-    """))
+    """), {"job_type": job_type} if job_type is not None else {})
     recuperados = resultado.mappings().all()
     for registro in recuperados:
         _registrar_evento_session(

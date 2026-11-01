@@ -89,6 +89,40 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  matching-nlp-worker:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_NLP: "1"
+    image: ${MATCHING_NLP_IMAGE:-monitorame-matching-nlp:local}
+    init: true
+    command: ["python", "scripts/matching_nlp_worker.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    mem_limit: ${MATCHING_NLP_MEMORY_LIMIT:-2g}
+    cpus: ${MATCHING_NLP_CPUS:-1.50}
+    volumes:
+      - matching_nlp_model_cache:/opt/huggingface
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-monitorame}:${POSTGRES_PASSWORD:-monitorame}@postgres:5432/${POSTGRES_DB:-monitorame}
+      LOG_DATABASE_URL: postgresql://${POSTGRES_USER:-monitorame}:${POSTGRES_PASSWORD:-monitorame}@postgres:5432/${POSTGRES_DB:-monitorame}
+      DATABASE_SSLMODE: disable
+      LOG_DATABASE_SSLMODE: disable
+      NLP_EMBEDDING_DEVICE: ${NLP_EMBEDDING_DEVICE:-cpu}
+      NLP_EMBEDDING_REVISION: ${NLP_EMBEDDING_REVISION:-main}
+      NLP_EMBEDDING_BATCH_SIZE: "1"
+      NLP_EMBEDDING_IDLE_SECONDS: ${NLP_EMBEDDING_IDLE_SECONDS:-10}
+      NLP_EMBEDDING_MAX_ATTEMPTS: ${NLP_EMBEDDING_MAX_ATTEMPTS:-5}
+      HF_HOME: /opt/huggingface
+      OMP_NUM_THREADS: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
 volumes:
+  matching_nlp_model_cache:
+    name: ${MATCHING_NLP_CACHE_VOLUME:-monitorame_matching_nlp_hf_cache}
   postgres_data:
     name: ${POSTGRES_VOLUME_NAME:-monitorame_pipeline_api_postgres_data}

@@ -15,6 +15,10 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip \
     && python -m pip install --requirement requirements.txt
 
+ARG INSTALL_NLP=0
+COPY requirements-nlp.txt ./
+RUN if [ "$INSTALL_NLP" = "1" ]; then python -m pip install --requirement requirements-nlp.txt; fi
+
 COPY --chown=app:app alembic.ini ./
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app app ./app
@@ -31,6 +35,8 @@ RUN chmod +x ./scripts/pncp \
     && ln -s /app/scripts/enriquecer_tce_fornecedores.py /usr/local/bin/tce-enriquecer \
     && chmod +x ./scripts/ingestir_enriquecer_tce.py \
     && ln -s /app/scripts/ingestir_enriquecer_tce.py /usr/local/bin/tce-ingestir-enriquecer
+
+RUN mkdir -p /opt/huggingface && chown app:app /opt/huggingface
 
 USER app 
 

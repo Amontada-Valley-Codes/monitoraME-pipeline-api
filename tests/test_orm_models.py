@@ -53,6 +53,7 @@ class OrmMetadataTest(unittest.TestCase):
             "pncp_sync_cursors",
             "pncp_source_controls",
             "nlp_procurement_segments",
+            "nlp_procurement_embeddings",
             "tce_despesa_ingestion_runs",
             "tce_empenhos",
             "tce_anulacoes_empenhos",

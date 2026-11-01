@@ -298,18 +298,25 @@ def _lotes[T](valores: list[T], tamanho: int) -> Iterator[list[T]]:
 
 
 def sincronizar_corpus(
-    session: Session, *, page_size: int = 200, dry_run: bool = False
+    session: Session, *, page_size: int = 200, dry_run: bool = False,
+    opportunity_keys: list[tuple[str, str]] | None = None,
 ) -> ResultadoSincronizacao:
     """Varre oportunidades em páginas e grava somente segmentos novos/alterados."""
     if not 1 <= page_size <= 2000:
         raise ValueError("page_size deve estar entre 1 e 2000")
     resultado = ResultadoSincronizacao()
     ultima_chave: tuple[str, str] | None = None
+    if opportunity_keys is not None and not opportunity_keys:
+        return resultado
 
     while True:
         consulta = select(PncpOportunidade).order_by(
             PncpOportunidade.source, PncpOportunidade.external_id
         ).limit(page_size)
+        if opportunity_keys is not None:
+            consulta = consulta.where(
+                tuple_(PncpOportunidade.source, PncpOportunidade.external_id).in_(opportunity_keys)
+            )
         if ultima_chave is not None:
             consulta = consulta.where(
                 tuple_(PncpOportunidade.source, PncpOportunidade.external_id) > tuple_(*ultima_chave)

@@ -259,6 +259,31 @@ class NlpProcurementSegment(MainBase):
     prepared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class NlpProcurementEmbedding(MainBase):
+    """Vetor imutavel por conteudo, origem e versao do modelo."""
+
+    __tablename__ = "nlp_procurement_embeddings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source", "external_id", "segment_type", "segment_key"],
+            ["nlp_procurement_segments.source", "nlp_procurement_segments.external_id",
+             "nlp_procurement_segments.segment_type", "nlp_procurement_segments.segment_key"],
+            ondelete="CASCADE",
+        ),
+        Index("idx_nlp_procurement_embeddings_model", "model_version"),
+    )
+
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    segment_type: Mapped[str] = mapped_column(Text, primary_key=True)
+    segment_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    text_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    model_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    dimensions: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[list[float]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class PncpEnriquecimento(MainBase):
     """Detalhes opcionais, versionados e independentes da oportunidade básica."""
 
