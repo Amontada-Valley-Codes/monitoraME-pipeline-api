@@ -1,8 +1,11 @@
 """Normalizacao de RAW PNCP sem acesso a rede."""
 from __future__ import annotations
+
 from datetime import date, datetime, timezone
 from typing import Any
+
 from sqlalchemy.orm import Session
+
 from app.core import orm
 from app.core.models import PncpOportunidade, PncpQuarentena, RawPncpRecord
 from app.nlp.corpus import sincronizar_corpus
@@ -21,10 +24,15 @@ class ErroNormalizacaoPncp(ValueError):
     def contexto(self) -> dict[str, object]:
         return {"categoria": "normalizacao_estrutural", "retryable": False}
 
+
 def _data(valor: Any) -> datetime | None:
-    if not isinstance(valor, str): return None
-    try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
-    except ValueError: return None
+    if not isinstance(valor, str):
+        return None
+    try:
+        return datetime.fromisoformat(valor.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
 
 def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
     avaliacao = avaliar_payload(raw)
@@ -39,30 +47,54 @@ def normalizar_payload(raw: RawPncpRecord) -> dict[str, Any]:
         orgao["cnpj"] = campos["orgaoEntidade.cnpj"]["valor"]
     if unidade is not None:
         unidade["codigoIbge"] = campos["unidadeOrgao.codigoIbge"]["valor"]
-    semanticos = {e["destino"].split(".", 1)[1]: e["valor"] for e in campos.values() if e["destino"].startswith("dados_semanticos.")}
+    semanticos = {
+        e["destino"].split(".", 1)[1]: e["valor"]
+        for e in campos.values()
+        if e["destino"].startswith("dados_semanticos.")
+    }
     semanticos["prazo_proposta_final_origem"] = campos["dataEncerramentoProposta"]["valor"]
     semanticos["forma_participacao_origem"] = p.get("modoDisputaNome") or p.get("modoDisputa")
     semanticos["rule_version"] = avaliacao["rule_version"]
     return {
-        "source": raw.source, "external_id": campos["numeroControlePNCP"]["valor"],
-        "raw_record_id": raw.id, "payload_hash": raw.payload_hash,
+        "source": raw.source,
+        "external_id": campos["numeroControlePNCP"]["valor"],
+        "raw_record_id": raw.id,
+        "payload_hash": raw.payload_hash,
         "source_updated_at": raw.source_updated_at,
-        "orgao": orgao, "unidade": unidade, "objeto": campos["objetoCompra"]["valor"],
+        "orgao": orgao,
+        "unidade": unidade,
+        "objeto": campos["objetoCompra"]["valor"],
         "modalidade": p.get("modalidadeNome") or p.get("modalidadeContratacao"),
         "situacao": p.get("situacaoCompraNome") or p.get("situacaoCompra"),
-        "prazo_proposta_final": (datetime.fromisoformat(campos["dataEncerramentoProposta"]["valor"]["valor"])
-            if campos["dataEncerramentoProposta"]["valor"] and campos["dataEncerramentoProposta"]["valor"]["tipo"] == "instante" else None),
-        "url_oficial": (url_edital_oficial(raw.external_id,
-            cnpj=(orgao or {}).get("cnpj"), ano=p.get("anoCompra"),
-            sequencial=p.get("sequencialCompra")) or p.get("linkSistemaOrigem") or
-            f"https://pncp.gov.br/app/editais/{raw.external_id}"),
-        "data_quality_status": avaliacao["data_quality_status"], "dados_semanticos": semanticos,
+        "prazo_proposta_final": (
+            datetime.fromisoformat(campos["dataEncerramentoProposta"]["valor"]["valor"])
+            if campos["dataEncerramentoProposta"]["valor"]
+            and campos["dataEncerramentoProposta"]["valor"]["tipo"] == "instante"
+            else None
+        ),
+        "url_oficial": (
+            url_edital_oficial(
+                raw.external_id,
+                cnpj=(orgao or {}).get("cnpj"),
+                ano=p.get("anoCompra"),
+                sequencial=p.get("sequencialCompra"),
+            )
+            or p.get("linkSistemaOrigem")
+            or f"https://pncp.gov.br/app/editais/{raw.external_id}"
+        ),
+        "data_quality_status": avaliacao["data_quality_status"],
+        "dados_semanticos": semanticos,
     }
+
 
 def _chave_versao(dados: dict[str, Any]) -> tuple[str, date | datetime] | None:
     global_origem = (dados.get("dados_semanticos") or {}).get("data_atualizacao_global")
     if global_origem:
-        valor = date.fromisoformat(global_origem["valor"]) if global_origem["tipo"] == "civil" else datetime.fromisoformat(global_origem["valor"])
+        valor = (
+            date.fromisoformat(global_origem["valor"])
+            if global_origem["tipo"] == "civil"
+            else datetime.fromisoformat(global_origem["valor"])
+        )
         return "global:" + global_origem["tipo"], valor
     atualizado = dados.get("source_updated_at")
     if atualizado is not None and atualizado.tzinfo is not None:
@@ -85,7 +117,12 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
 
     dados = normalizar_payload(raw)
     atual = session.get(PncpOportunidade, {"source": raw.source, "external_id": raw.external_id})
-    if atual and atual.payload_hash == raw.payload_hash and (atual.dados_semanticos or {}).get("rule_version") == avaliacao["rule_version"]: return concluir("INALTERADO")
+    if (
+        atual
+        and atual.payload_hash == raw.payload_hash
+        and (atual.dados_semanticos or {}).get("rule_version") == avaliacao["rule_version"]
+    ):
+        return concluir("INALTERADO")
     if atual and atual.payload_hash != raw.payload_hash:
         anterior_versao = _chave_versao({"source_updated_at": atual.source_updated_at, "dados_semanticos": atual.dados_semanticos})
         nova_versao = _chave_versao(dados)
@@ -97,7 +134,10 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
             return concluir("AMBIGUO")
     if atual and atual.payload_hash != raw.payload_hash:
         # Um snapshot menos completo nao deve apagar campos ja conhecidos.
-        if any(getattr(atual, campo) is not None and dados[campo] is None for campo in ("orgao", "unidade", "objeto", "prazo_proposta_final")):
+        if any(
+            getattr(atual, campo) is not None and dados[campo] is None
+            for campo in ("orgao", "unidade", "objeto", "prazo_proposta_final")
+        ):
             return concluir("INCOMPLETO")
         for campo, filho in (("orgao", "cnpj"), ("unidade", "codigoIbge")):
             anterior_entidade = getattr(atual, campo) or {}
@@ -105,13 +145,18 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
             if anterior_entidade.get(filho) is not None and nova_entidade.get(filho) is None:
                 return concluir("INCOMPLETO")
     if atual is None:
-        novo = PncpOportunidade(**dados); session.add(novo)
+        novo = PncpOportunidade(**dados)
+        session.add(novo)
         payload = raw.payload
-        aplicar_status_session(session, novo, agora=datetime.now(timezone.utc),
+        aplicar_status_session(
+            session,
+            novo,
+            agora=datetime.now(timezone.utc),
             official_status=payload.get("situacaoCompraNome") or payload.get("situacaoCompra"),
             inicio=(dados.get("dados_semanticos") or {}).get("data_abertura_proposta"),
             encerramento=(dados.get("dados_semanticos") or {}).get("prazo_proposta_final_origem"),
-            forma_participacao=payload.get("modoDisputaNome") or payload.get("modoDisputa"))
+            forma_participacao=payload.get("modoDisputaNome") or payload.get("modoDisputa"),
+        )
         registrar_eventos_alteracao_session(session, anterior=None, atual=novo)
         return concluir("NOVO")
     anterior = PncpOportunidade(**{campo: getattr(atual, campo) for campo in dados})
@@ -119,13 +164,18 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
         setattr(atual, campo, valor)
     atual.normalized_at = datetime.now(timezone.utc)
     payload = raw.payload
-    aplicar_status_session(session, atual, agora=atual.normalized_at,
+    aplicar_status_session(
+        session,
+        atual,
+        agora=atual.normalized_at,
         official_status=payload.get("situacaoCompraNome") or payload.get("situacaoCompra"),
         inicio=(dados.get("dados_semanticos") or {}).get("data_abertura_proposta"),
         encerramento=(dados.get("dados_semanticos") or {}).get("prazo_proposta_final_origem"),
-        forma_participacao=payload.get("modoDisputaNome") or payload.get("modoDisputa"))
+        forma_participacao=payload.get("modoDisputaNome") or payload.get("modoDisputa"),
+    )
     registrar_eventos_alteracao_session(session, anterior=anterior, atual=atual)
     return concluir("ALTERADO")
+
 
 def normalizar_job(job: JobReivindicado) -> str:
     if job.raw_record_id is None:
