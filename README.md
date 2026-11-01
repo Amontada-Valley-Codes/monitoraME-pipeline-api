@@ -620,6 +620,12 @@ O comando `python -m app.nlp.cli sync-corpus --dry-run` calcula o delta sem
 persistir; sem `--dry-run`, grava segmentos versionados e hashes em
 `nlp_procurement_segments`. O processo não consulta a API PNCP.
 
+O adaptador inicial E5 e seu protocolo de validação estão em
+[docs/nlp-validacao-embeddings.md](docs/nlp-validacao-embeddings.md). A
+dependência pesada é opcional (`requirements-nlp.txt`) e deve ser instalada
+somente no worker que gera vetores; fixe `NLP_EMBEDDING_REVISION` em um SHA
+antes de execução reproduzível/produção.
+
 ## Testes
 
 ```bash
