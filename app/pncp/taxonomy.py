@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,9 @@ from app.core.models import (
     PncpMapaCnaeCategoria, PncpMapaRevisao,
     PncpTaxonomiaCategoria, PncpTaxonomiaCnae,
 )
+
+if TYPE_CHECKING:
+    from app.nlp.matching.scoring import TaxonomyAssociation
 
 
 def criar_revisao(session: Session, *, versao: str, evidencia: str, responsavel: str) -> PncpMapaRevisao:
@@ -206,7 +210,9 @@ def mapa_ativo_para_matching(session: Session) -> tuple[str, dict[str, set[str]]
     return versao, mapa
 
 
-def mapa_ativo_detalhado_para_matching(session: Session):
+def mapa_ativo_detalhado_para_matching(
+    session: Session,
+) -> tuple[str, dict[str, list[TaxonomyAssociation]]]:
     """Retorna associações sem descartar tipo, confiança ou condição.
 
     A condição de uma relação `CONDICIONAL` é preservada para o consumidor;
@@ -220,10 +226,12 @@ def mapa_ativo_detalhado_para_matching(session: Session):
     linhas = session.query(PncpMapaCnaeCategoria).filter_by(versao=versao, ativo=True).all()
     mapa: dict[str, list[TaxonomyAssociation]] = {}
     for relacao in linhas:
-        mapa.setdefault(relacao.cnae_codigo, []).append(TaxonomyAssociation(
-            category=relacao.categoria_slug,
-            relation_type=relacao.tipo,
-            confidence=float(relacao.confianca),
-            condition=relacao.condicao,
-        ))
+        mapa.setdefault(relacao.cnae_codigo, []).append(
+            TaxonomyAssociation(
+                category=relacao.categoria_slug,
+                relation_type=relacao.tipo,
+                confidence=float(relacao.confianca),
+                condition=relacao.condicao,
+            )
+        )
     return versao, mapa
