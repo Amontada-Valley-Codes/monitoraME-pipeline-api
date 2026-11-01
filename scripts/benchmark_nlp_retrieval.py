@@ -92,7 +92,9 @@ def avaliar(dataset: dict[str, Any], *, k: int) -> dict[str, Any]:
                     exact=exact,
                 )
             latencies[search_type].append(perf_counter() - start)
-            rankings[search_type] = [item.procurement_id for item in results]
+            rankings[search_type] = [
+                f"{item.source}|{item.procurement_id}" for item in results
+            ]
         output["queries"][profile["query_id"]] = {
             "cnaes": [item.codigo for item in consultas],
             "ann": _metricas(rankings["ann"], profile["judgments"], ks),
