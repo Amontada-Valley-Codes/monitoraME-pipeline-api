@@ -495,6 +495,7 @@ abaixo; o modelo E5 segue a revisao fixada em `NLP_EMBEDDING_REVISION`.
 .venv\Scripts\python.exe -m app.nlp.cli run-matching --fixtures tests/nlp/fixtures/companies.json --batch-id 11111111-1111-4111-8111-111111111111 --k 20
 .venv\Scripts\python.exe -m app.nlp.cli enqueue-matching --fixtures tests/nlp/fixtures/companies.json --batch-id 11111111-1111-4111-8111-111111111111
 .venv\Scripts\python.exe -m app.nlp.cli matching-status --batch-id 11111111-1111-4111-8111-111111111111
+.venv\Scripts\python.exe -m app.nlp.cli matching-batch-results --batch-id 11111111-1111-4111-8111-111111111111 --limit 100
 .venv\Scripts\python.exe -m app.nlp.cli matching-results --company-id 5382d207-d756-5d52-909a-afed5c17f6cb
 ```
 
@@ -505,6 +506,10 @@ consome esse job junto aos embeddings. Repetir o mesmo `batch_id` e payload e
 idempotente; reutilizar o ID com outro payload causa conflito. Score e
 preferencias sao sinais de ordenacao/relevancia; `ELIGIBLE` nao e garantia de
 habilitacao legal. Endpoints HTTP e integracao NestJS continuam em fase futura.
+Resultados de batch têm paginação estável por score, empresa e contratação;
+use o `next_cursor` da resposta como `--cursor` na chamada seguinte. A repetição
+do processamento preserva snapshots anteriores e atualiza apenas a mesma
+combinação de versões.
 
 O banco principal mantém:
 

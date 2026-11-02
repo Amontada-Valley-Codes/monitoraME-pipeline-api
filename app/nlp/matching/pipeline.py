@@ -62,7 +62,7 @@ def _executar_matching_local(
             if existing.payload_hash != payload_hash:
                 raise ValueError("batch_id já existe associado a outro payload")
             if existing.status == "COMPLETED":
-                previous = listar_resultados_batch_session(session, batch_id=batch_id)
+                previous, _ = listar_resultados_batch_session(session, batch_id=batch_id)
                 return [MatchingResult.model_validate(item) for item in previous], False
         else:
             registrar_batch_session(session, batch_id=batch_id, profiles=profiles)
@@ -223,6 +223,25 @@ def consultar_resultados_empresa(company_id: str, *, limit: int = 100) -> list[d
 def consultar_status_batch(batch_id: str) -> dict[str, object] | None:
     with orm.main_session() as session:
         return consultar_batch_session(session, batch_id=batch_id)
+
+
+def consultar_resultados_batch(
+    batch_id: str, *, limit: int = 100, cursor: str | None = None,
+) -> dict[str, object] | None:
+    with orm.main_session() as session:
+        status = consultar_batch_session(session, batch_id=batch_id)
+        if status is None:
+            return None
+        results, next_cursor = listar_resultados_batch_session(
+            session, batch_id=batch_id, limit=limit, cursor=cursor,
+        )
+        return {
+            "batch_id": batch_id,
+            "schema_version": "matching.v1",
+            "status": status["status"],
+            "results": results,
+            "next_cursor": next_cursor,
+        }
 
 
 def processar_batch_enfileirado(job: Any, *, model: E5EmbeddingModel, k: int = 20) -> tuple[list[MatchingResult], bool]:

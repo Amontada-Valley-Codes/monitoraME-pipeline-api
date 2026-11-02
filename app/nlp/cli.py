@@ -17,7 +17,7 @@ from app.nlp.profiles.schemas import MatchingBatchRequest, SCHEMA_VERSION
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.nlp.cli")
-    parser.add_argument("command", choices=["validate-fixtures", "sync-corpus", "run-matching", "enqueue-matching", "matching-results", "matching-status"])
+    parser.add_argument("command", choices=["validate-fixtures", "sync-corpus", "run-matching", "enqueue-matching", "matching-results", "matching-status", "matching-batch-results"])
     parser.add_argument(
         "--fixtures",
         type=Path,
@@ -30,6 +30,7 @@ def main() -> int:
     parser.add_argument("--company-id", help="UUID usado por matching-results.")
     parser.add_argument("--k", type=int, default=20, help="Candidatos Top-K por perfil.")
     parser.add_argument("--limit", type=int, default=100, help="Máximo de resultados consultados.")
+    parser.add_argument("--cursor", help="Cursor opaco para paginação de resultados do batch.")
     args = parser.parse_args()
 
     if args.command == "sync-corpus":
@@ -80,6 +81,26 @@ def main() -> int:
             print(json.dumps({"error": "batch_not_found", "batch_id": batch_id}))
             return 1
         print(json.dumps(status, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "matching-batch-results":
+        if not args.batch_id:
+            parser.error("matching-batch-results exige --batch-id")
+        try:
+            batch_id = str(UUID(args.batch_id))
+        except ValueError:
+            parser.error("--batch-id deve ser UUID")
+        if not 1 <= args.limit <= 500:
+            parser.error("--limit deve estar entre 1 e 500")
+        from app.nlp.matching.pipeline import consultar_resultados_batch
+        try:
+            page = consultar_resultados_batch(batch_id, limit=args.limit, cursor=args.cursor)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if page is None:
+            print(json.dumps({"error": "batch_not_found", "batch_id": batch_id}))
+            return 1
+        print(json.dumps(page, ensure_ascii=False, indent=2))
         return 0
 
     if args.command in {"run-matching", "enqueue-matching"}:
