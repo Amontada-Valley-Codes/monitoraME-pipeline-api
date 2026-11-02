@@ -7,6 +7,7 @@ from hashlib import sha256
 from sqlalchemy.orm import Session
 
 from app.nlp.profiles.schemas import CompanyProfile
+from app.nlp.matching.engine import MATCHING_VERSION
 from app.pncp.jobs import NovoJob, agendar_job_session
 
 
@@ -20,7 +21,7 @@ def agendar_recalculo_perfil_session(
     instant = now or datetime.now(timezone.utc)
     if instant.tzinfo is None:
         raise ValueError("now deve incluir timezone")
-    identidade = f"{profile.company_id}:{profile.profile_version}:deterministic-matching-v1"
+    identidade = f"{profile.company_id}:{profile.profile_version}:{MATCHING_VERSION}"
     dedupe_key = "matching-profile:" + sha256(identidade.encode("utf-8")).hexdigest()
     return agendar_job_session(session, NovoJob(
         job_type="nlp_matching",

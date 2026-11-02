@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 from app.nlp.matching.eligibility import avaliar_elegibilidade
@@ -11,7 +11,10 @@ from app.nlp.matching.engine import calcular_matching
 from app.nlp.matching.jobs import agendar_recalculo_perfil_session
 from app.nlp.matching.schemas import EligibilityStatus, ProcurementProfile
 from app.nlp.matching.scoring import TaxonomyAssociation, WEIGHTS, calcular_score, classificar_score
+from app.nlp.profiles.builder import construir_perfil_semantico
+from app.nlp.embeddings.model import EmbeddingBatch
 from app.nlp.profiles.schemas import CompanyProfile
+from app.nlp.repositories.matching import enfileirar_batch_session, hash_payload
 
 
 NOW = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
@@ -40,6 +43,7 @@ def oportunidade(**updates) -> ProcurementProfile:
         "items": ["software"],
         "categories": ["software"],
         "accepted_company_sizes": ["ME", "EPP"],
+        "accepted_company_sizes_source": "PNCP_CRITERIO_OFICIAL",
         "territory_states": ["CE"],
         "territory_municipalities": None,
         "participation_form": "INDIVIDUAL",
@@ -72,10 +76,30 @@ class DeterministicScoringTests(TestCase):
         second = calcular_matching(empresa(), oportunidade(), **kwargs)
         self.assertEqual(first.model_dump(), second.model_dump())
         self.assertGreater(first.score, 75)
-        self.assertEqual(first.data_confidence, 90)
+        self.assertEqual(first.data_confidence, 100)
         self.assertEqual(first.taxonomy_version, "cnae-objeto-v2")
         self.assertTrue(first.evidence)
         self.assertEqual(first.processed_at, NOW)
+
+    def test_sinal_topk_semantico_participa_do_hibrido_e_fica_explicito(self) -> None:
+        result = calcular_matching(
+            empresa(), oportunidade(object="aquisição de plataforma"),
+            taxonomy_version="tax-v1", cnae_categories={}, semantic_score=0.91,
+            model_version="e5@sha", as_of=NOW,
+        )
+        self.assertEqual(result.semantic_relevance, 91)
+        self.assertEqual(result.model_version, "e5@sha")
+        self.assertIn("LEGAL_ELIGIBILITY_NOT_VERIFIED", result.warning_codes)
+        object_evidence = next(item for item in result.evidence if item.criterion == "object")
+        self.assertEqual(object_evidence.score, 0.91)
+        self.assertIn("Top-K", object_evidence.details)
+
+    def test_score_semantico_fora_da_escala_e_rejeitado(self) -> None:
+        with self.assertRaises(ValueError):
+            calcular_matching(
+                empresa(), oportunidade(), taxonomy_version="tax-v1",
+                cnae_categories={}, semantic_score=1.01, model_version="e5@sha", as_of=NOW,
+            )
 
     def test_dado_ausente_reduz_confianca_sem_tratar_criterio_como_erro(self) -> None:
         op = oportunidade(categories=[], object=None, items=[], territory_states=None)
@@ -92,7 +116,55 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(unknown.status, EligibilityStatus.NOT_CONFIRMED)
         self.assertEqual(rejected.status, EligibilityStatus.INELIGIBLE)
 
-    def test_gate_rejeita_prazo_porte_territorio_forma_e_suspensao(self) -> None:
+    def test_porte_sem_fonte_oficial_nao_decide_elegibilidade(self) -> None:
+        decision = avaliar_elegibilidade(
+            empresa(), oportunidade(accepted_company_sizes=["EPP"], accepted_company_sizes_source=None),
+            as_of=NOW,
+        )
+        self.assertNotIn("COMPANY_SIZE_NOT_ACCEPTED", decision.reason_codes)
+        self.assertIn("COMPANY_SIZE_UNCONFIRMED", decision.warning_codes)
+
+    def test_sede_nao_e_preferencia_geografica_automatica(self) -> None:
+        result = calcular_matching(
+            empresa(), oportunidade(territory_states=["SP"], territory_municipalities=None),
+            taxonomy_version="tax-v1", cnae_categories={}, as_of=NOW,
+        )
+        self.assertIsNone(result.preference_score)
+        self.assertNotIn("preference_region", {item.criterion for item in result.evidence})
+
+    def test_preferencia_geografica_explicita_fica_separada_do_score_de_relevancia(self) -> None:
+        result = calcular_matching(
+            empresa(interested_states=["CE"]), oportunidade(territory_states=["CE"]),
+            taxonomy_version="tax-v1", cnae_categories={}, as_of=NOW,
+        )
+        self.assertEqual(result.preference_score, 100)
+        self.assertEqual(result.preference_confidence, 50)
+        without_preference = calcular_matching(
+            empresa(), oportunidade(territory_states=["CE"]),
+            taxonomy_version="tax-v1", cnae_categories={}, as_of=NOW,
+        )
+        self.assertEqual(result.score, without_preference.score)
+        self.assertEqual(without_preference.preference_confidence, 0)
+        self.assertIn("preference_region", {item.criterion for item in result.evidence})
+
+    def test_builder_cria_um_vetor_por_cnae_e_sinaliza_descricao_ausente(self) -> None:
+        profile = empresa(cnaes=[
+            {"code": "6201501", "description": "software sob encomenda", "is_primary": True},
+            {"code": "6202300", "description": None, "is_primary": False},
+        ])
+        model = SimpleNamespace(model_version="e5@sha")
+        with patch(
+            "app.nlp.profiles.builder.gerar_embeddings_perfis",
+            return_value=EmbeddingBatch("e5@sha", "query", [[0.1] * 384, [0.2] * 384]),
+        ) as encode:
+            built = construir_perfil_semantico(
+                profile, model, descricoes_catalogo={"6202300": "software customizavel"}
+            )
+        self.assertEqual([item.codigo for item in built.consultas], ["6201501", "6202300"])
+        self.assertEqual(len(encode.call_args.args[1]), 2)
+        self.assertEqual(built.cnaes_sem_descricao, ())
+
+    def test_gate_rejeita_prazo_porte_e_suspensao_mas_nao_usa_territorio_como_gate(self) -> None:
         bad = oportunidade(
             deadline=NOW,
             accepted_company_sizes=["EPP"],
@@ -104,7 +176,6 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(decision.status, EligibilityStatus.INELIGIBLE)
         self.assertEqual(set(decision.reason_codes), {
             "OPPORTUNITY_SUSPENDED", "DEADLINE_EXPIRED", "COMPANY_SIZE_NOT_ACCEPTED",
-            "TERRITORY_NOT_ACCEPTED", "PARTICIPATION_FORM_NOT_ACCEPTED",
         })
 
     def test_gate_reconhece_estados_derivados_pncp_sem_flags_auxiliares(self) -> None:
@@ -139,7 +210,7 @@ class DeterministicScoringTests(TestCase):
         result = calcular_matching(
             empresa(categories=[]), op, taxonomy_version="tax-v1", cnae_categories={}, as_of=NOW
         )
-        self.assertEqual(result.compatibility_level.value, "MEDIUM")
+        self.assertEqual(result.compatibility_level.value, "LOW")
         self.assertIn("OBJECT_DATA_MISSING", result.warning_codes)
 
     def test_categoria_inferida_nao_duplica_criterio_cnae(self) -> None:
@@ -181,3 +252,31 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(job.job_type, "nlp_matching")
         self.assertEqual(first_dedupe, second_dedupe)
         self.assertIn("profile-1", job.scope_key)
+        self.assertIn("hybrid-matching-v2", job.scope_key)
+
+    def test_batch_async_guarda_snapshot_minimo_e_enfileira_job_deduplicavel(self) -> None:
+        session = MagicMock()
+        session.get.return_value = None
+        profile = empresa()
+        with patch("app.nlp.repositories.matching.agendar_job_session", return_value=(91, True)) as schedule:
+            batch, created = enfileirar_batch_session(
+                session, batch_id="batch-1", profiles=[profile],
+            )
+        self.assertTrue(created)
+        self.assertEqual(batch.status, "PENDING")
+        self.assertEqual(batch.payload_hash, hash_payload([profile]))
+        self.assertEqual(batch.profiles[0]["company_id"], str(profile.company_id))
+        self.assertEqual(schedule.call_args.args[1].job_type, "nlp_matching_batch")
+
+    def test_batch_completed_igual_nao_enfileira_job_repetido(self) -> None:
+        profile = empresa()
+        batch = SimpleNamespace(payload_hash=hash_payload([profile]), status="COMPLETED")
+        session = MagicMock()
+        session.get.return_value = batch
+        with patch("app.nlp.repositories.matching.agendar_job_session") as schedule:
+            same, created = enfileirar_batch_session(
+                session, batch_id="batch-1", profiles=[profile],
+            )
+        self.assertIs(same, batch)
+        self.assertFalse(created)
+        schedule.assert_not_called()

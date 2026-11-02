@@ -6,7 +6,7 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
@@ -17,7 +17,7 @@ from app.nlp.profiles.schemas import MatchingBatchRequest, SCHEMA_VERSION
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.nlp.cli")
-    parser.add_argument("command", choices=["validate-fixtures", "sync-corpus"])
+    parser.add_argument("command", choices=["validate-fixtures", "sync-corpus", "run-matching", "enqueue-matching", "matching-results", "matching-status"])
     parser.add_argument(
         "--fixtures",
         type=Path,
@@ -26,6 +26,10 @@ def main() -> int:
     )
     parser.add_argument("--page-size", type=int, default=200, help="Oportunidades por página na leitura do Analytics.")
     parser.add_argument("--dry-run", action="store_true", help="Calcula alterações do corpus sem persistir.")
+    parser.add_argument("--batch-id", help="UUID estável para repetição idempotente de run-matching.")
+    parser.add_argument("--company-id", help="UUID usado por matching-results.")
+    parser.add_argument("--k", type=int, default=20, help="Candidatos Top-K por perfil.")
+    parser.add_argument("--limit", type=int, default=100, help="Máximo de resultados consultados.")
     args = parser.parse_args()
 
     if args.command == "sync-corpus":
@@ -48,6 +52,71 @@ def main() -> int:
         resumo = asdict(resultado)
         resumo["dry_run"] = args.dry_run
         print(json.dumps(resumo, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "matching-results":
+        if not args.company_id:
+            parser.error("matching-results exige --company-id")
+        try:
+            company_id = str(UUID(args.company_id))
+        except ValueError:
+            parser.error("--company-id deve ser UUID")
+        if not 1 <= args.limit <= 500:
+            parser.error("--limit deve estar entre 1 e 500")
+        from app.nlp.matching.pipeline import consultar_resultados_empresa
+        print(json.dumps(consultar_resultados_empresa(company_id, limit=args.limit), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "matching-status":
+        if not args.batch_id:
+            parser.error("matching-status exige --batch-id")
+        from app.nlp.matching.pipeline import consultar_status_batch
+        try:
+            batch_id = str(UUID(args.batch_id))
+        except ValueError:
+            parser.error("--batch-id deve ser UUID")
+        status = consultar_status_batch(batch_id)
+        if status is None:
+            print(json.dumps({"error": "batch_not_found", "batch_id": batch_id}))
+            return 1
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command in {"run-matching", "enqueue-matching"}:
+        try:
+            companies = json.loads(args.fixtures.read_text(encoding="utf-8"))
+            batch = MatchingBatchRequest(
+                batch_id=uuid4(), schema_version=SCHEMA_VERSION, companies=companies
+            )
+        except (OSError, json.JSONDecodeError, ValidationError) as exc:
+            print(f"Fixtures inválidas ({type(exc).__name__}).", file=sys.stderr)
+            return 1
+        try:
+            batch_id = str(UUID(args.batch_id)) if args.batch_id else str(batch.batch_id)
+        except ValueError:
+            parser.error("--batch-id deve ser UUID")
+        if args.command == "enqueue-matching":
+            from app.core import orm
+            from app.nlp.repositories.matching import enfileirar_batch_session
+            with orm.main_session() as session:
+                queued, created = enfileirar_batch_session(
+                    session, batch_id=batch_id, profiles=batch.companies,
+                )
+            print(json.dumps({
+                "batch_id": queued.batch_id, "status": queued.status.lower(),
+                "created": created, "accepted_companies": queued.total_companies,
+            }, ensure_ascii=False, indent=2))
+            return 0
+        from app.nlp.embeddings.model import E5EmbeddingModel
+        from app.nlp.matching.pipeline import consultar_status_batch, executar_matching_local
+        results, created = executar_matching_local(
+            batch.companies, batch_id=batch_id, model=E5EmbeddingModel(), k=args.k,
+        )
+        status = consultar_status_batch(batch_id)
+        print(json.dumps({
+            "batch_id": batch_id, "created": created, "status": status,
+            "profiles": len(batch.companies), "results": [item.model_dump(mode="json") for item in results],
+        }, ensure_ascii=False, indent=2))
         return 0
 
     try:

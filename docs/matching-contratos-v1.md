@@ -147,3 +147,21 @@ segmentos, portes, localidades e quantidades de CNAE distintos. A CLI valida
 os contratos sem NestJS, credenciais, assinatura, Redis, banco ou chamadas ao
 PNCP; editais consumidos pelo motor devem vir da visão já normalizada do
 Pipeline.
+
+## Campos adicionados ao motor hibrido local
+
+O perfil aceita `interested_states`, `interested_municipalities` e
+`preferred_modality_codes` como preferencias opcionais explicitas. `location`
+continua representando a sede e nao e usado para inferir interesse geografico.
+O edital pode informar `accepted_company_sizes_source`; sem essa proveniencia,
+porte ausente/incompleto resulta em `NOT_CONFIRMED`, nunca em inelegibilidade.
+
+O resultado preserva `semantic_relevance`, `preference_score` e
+`model_version`, separados do score de relevancia e do gate. Sempre inclui
+`LEGAL_ELIGIBILITY_NOT_VERIFIED`. A persistencia local usa batches/resultados
+Analytics versionados; as rotas HTTP descritas neste documento continuam sendo
+propostas futuras.
+
+O resultado tambem pode retornar `preference_confidence` (cobertura dos
+criterios de preferencia comparaveis), sem penalizar score ou elegibilidade
+quando preferencias nao foram enviadas.

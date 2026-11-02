@@ -293,6 +293,48 @@ class NlpProcurementEmbedding(MainBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class NlpMatchingBatch(MainBase):
+    __tablename__ = "nlp_matching_batches"
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED')", name="ck_nlp_matching_batch_status"),
+        CheckConstraint("total_companies >= 0 AND processed_companies >= 0 AND failed_companies >= 0 AND processed_companies + failed_companies <= total_companies", name="ck_nlp_matching_batch_counts"),
+    )
+
+    batch_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    payload_hash: Mapped[str] = mapped_column(Text)
+    profiles: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'PENDING'"))
+    total_companies: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    processed_companies: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    failed_companies: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class NlpMatchingResult(MainBase):
+    __tablename__ = "nlp_matching_results"
+    __table_args__ = (
+        ForeignKeyConstraint(["batch_id"], ["nlp_matching_batches.batch_id"], ondelete="CASCADE"),
+        Index("idx_nlp_matching_results_company", "company_id", "processed_at"),
+        CheckConstraint("score >= 0 AND score <= 100", name="ck_nlp_matching_result_score"),
+        CheckConstraint("eligibility IN ('ELIGIBLE', 'INELIGIBLE', 'NOT_CONFIRMED')", name="ck_nlp_matching_result_eligibility"),
+    )
+
+    batch_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    company_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    profile_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    procurement_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    model_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    matching_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    taxonomy_version: Mapped[str] = mapped_column(Text, primary_key=True)
+    score: Mapped[float] = mapped_column(Float)
+    eligibility: Mapped[str] = mapped_column(Text)
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class PncpEnriquecimento(MainBase):
     """Detalhes opcionais, versionados e independentes da oportunidade básica."""
 

@@ -1,4 +1,4 @@
-"""Entry point do worker isolado de embeddings do Matching NLP."""
+"""Entry point do worker NLP de embeddings e batches de matching."""
 from __future__ import annotations
 
 import logging

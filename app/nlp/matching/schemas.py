@@ -6,9 +6,9 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.nlp.profiles.schemas import SCHEMA_VERSION
+from app.nlp.profiles.schemas import SCHEMA_VERSION, CompanySize
 
 
 class CompatibilityLevel(StrEnum):
@@ -59,10 +59,12 @@ class ProcurementProfile(BaseModel):
     items: list[str] = Field(default_factory=list, max_length=500)
     categories: list[str] = Field(default_factory=list, max_length=100)
     accepted_company_sizes: list[str] | None = Field(default=None, max_length=4)
+    accepted_company_sizes_source: str | None = Field(default=None, min_length=1, max_length=200)
     territory_states: list[str] | None = Field(default=None, max_length=27)
     territory_municipalities: list[str] | None = Field(default=None, max_length=5_600)
     participation_forms: list[str] | None = Field(default=None, max_length=30)
     participation_form: str | None = Field(default=None, max_length=80)
+    modality_code: str | None = Field(default=None, max_length=30)
     operational_requirements: dict[str, str | bool | int] = Field(default_factory=dict, max_length=50)
     status: str | None = Field(default=None, max_length=40)
     deadline: datetime | None = None
@@ -71,6 +73,14 @@ class ProcurementProfile(BaseModel):
     suspended: bool | None = None
     url: str | None = Field(default=None, max_length=2000)
     version: str = Field(min_length=1, max_length=100)
+
+    @field_validator("accepted_company_sizes")
+    @classmethod
+    def validar_portes_oficiais(cls, values: list[str] | None) -> list[str] | None:
+        valid = {item.value for item in CompanySize}
+        if values is not None and any(value not in valid for value in values):
+            raise ValueError("accepted_company_sizes contem porte desconhecido")
+        return values
 
 
 class ProcurementReference(BaseModel):
@@ -92,6 +102,11 @@ class MatchingResult(BaseModel):
     company_id: UUID
     edital: ProcurementReference
     score: float = Field(ge=0, le=100)
+    # Similaridade fornecida pelo retrieval Top-K, mantida separada do score
+    # híbrido para consumidores poderem distinguir relevância de elegibilidade.
+    semantic_relevance: float | None = Field(default=None, ge=0, le=100)
+    preference_score: float | None = Field(default=None, ge=0, le=100)
+    preference_confidence: float = Field(default=0, ge=0, le=100)
     data_confidence: float = Field(ge=0, le=100)
     eligibility: EligibilityStatus
     compatibility_level: CompatibilityLevel
@@ -103,8 +118,15 @@ class MatchingResult(BaseModel):
     schema_version: Literal["matching.v1"] = SCHEMA_VERSION
     matching_version: str = Field(min_length=1, max_length=100)
     taxonomy_version: str = Field(min_length=1, max_length=100)
+    model_version: str | None = Field(default=None, min_length=1, max_length=200)
     processing_state: BatchStatus
     processed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validar_versao_semantica(self) -> MatchingResult:
+        if self.semantic_relevance is not None and self.model_version is None:
+            raise ValueError("model_version e obrigatorio quando semantic_relevance esta presente")
+        return self
 
 
 class BatchAccepted(BaseModel):

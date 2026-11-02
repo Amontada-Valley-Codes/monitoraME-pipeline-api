@@ -1,64 +1,23 @@
-# Motor determinístico de matching
+# Hybrid matching engine
 
-`app.nlp.matching.engine.calcular_matching` recebe um snapshot `CompanyProfile`,
-uma `ProcurementProfile` normalizada, a revisão explícita da taxonomia CNAE-
-categoria e um instante opcional (`as_of`). Fixar `as_of` e as versões dos
-dados reproduz o mesmo resultado. A versão da regra é
-`deterministic-matching-v1`; cada resultado registra também `taxonomy_version`.
+`calcular_matching` usa `hybrid-matching-v2`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados.
 
-## Compatibilidade e confiança
+## Relevance score
 
-O score público é 0–100. Os pesos são categoria 30, objeto/descrição/itens 25,
-CNAE 20, região 15 e preferências operacionais 10. Cada critério disponível
-retorna 0–1. Critérios sem entrada não viram zero: o score é a média ponderada
-dos critérios conhecidos e `data_confidence` é a soma, em percentual, dos pesos
-com evidência disponível. Assim, ausência reduz a confiança, sem afirmar
-incompatibilidade.
+O score de relevancia (0-100) usa a media ponderada dos criterios disponiveis: categoria 40%, texto de objeto/itens 35% e associacao CNAE-categoria 25%. Criterios ausentes reduzem `data_confidence`, sem serem tratados como incompatibilidade. O texto combina Jaccard lexical (NFKC e casefold) com o score cosseno Top-K: usa o maior dos dois, e o sinal semantico recebido e limitado ao intervalo 0-1. `semantic_relevance` preserva esse sinal em 0-100. A formula e um baseline, nao uma calibracao empirica aprovada.
 
-Texto usa Jaccard de tokens após normalização Unicode NFKC e casefold; não usa
-embedding nem fonte externa. Categorias e CNAEs consultam o mapa versionado
-passado ao motor. Cada critério avaliado aparece em `evidence`; códigos de
-ausência ficam em `warning_codes`. Uma pontuação de 75 ou mais exige ao menos
-um critério de atividade disponível (categoria, objeto/itens ou CNAE). Sem essa
-evidência, o nível fica limitado a MEDIUM. Níveis: LOW 0–49, MEDIUM 50–74 e
-HIGH 75–100.
+Niveis: LOW 0-49, MEDIUM 50-74 e HIGH 75-100. HIGH exige evidencia de atividade (categoria, texto ou CNAE). Os pesos e cortes precisam de validacao humana antes de uso comercial.
 
-O critério categoria usa apenas categorias explicitamente informadas no
-perfil; não reutiliza as categorias inferidas dos CNAEs. O critério CNAE
-preserva tipo e confiança de cada associação versionada. Relações `CONDICIONAL`
-não pontuam enquanto o motor não tiver dados para avaliar sua condição e geram
-aviso quando a categoria da oportunidade depende delas.
+## Preferencias
 
-Este score é uma ordenação para revisão. Não comprova habilitação legal. A
-classificação lexical é deliberadamente simples e exige validação contra rótulos
-antes de ser usada como qualidade de ranking em produção.
+`preference_score` e `preference_confidence` ficam separados da relevancia e da elegibilidade. Os pesos sao regiao 50%, modalidade 25% e preferencias operacionais 25%, renormalizados sobre criterios comparaveis. `location` e a sede e nao implica interesse geografico. Regiao so e comparada se `interested_states` ou `interested_municipalities` vierem explicitamente configurados. Preferencias ausentes nao excluem oportunidades.
 
-## Gate de elegibilidade
+## Elegibilidade verificavel
 
-O gate roda antes da pontuação. Reprovação conhecida retorna `INELIGIBLE`, score
-zero e motivos explícitos. Ausência/ambiguidade retorna `NOT_CONFIRMED`; quando
-não houver reprovação e os campos do gate estiverem completos, retorna
-`ELIGIBLE`. Campos opcionais cobrem status aberto, prazo, porte aceito,
-território, forma de participação e invalidação. `PUBLICADA` não confirma por si
-só que a oportunidade está aberta. `INELIGIBLE` e `NOT_CONFIRMED` continuam
-sendo resultados pesquisáveis; consumidores podem aplicar filtros próprios.
+O gate avalia situacao e prazo. Porte so e comparado quando `accepted_company_sizes_source` informa a proveniencia; sem fonte, gera `COMPANY_SIZE_UNCONFIRMED` e nao reprova. Territorio e modalidade nao sao gates juridicos. O motor sempre inclui `LEGAL_ELIGIBILITY_NOT_VERIFIED`: `ELIGIBLE` quer dizer apenas que os campos verificaveis disponiveis nao apontaram impedimento; nao garante habilitacao legal.
 
-## Recálculo por alteração de perfil
+## Execucao local e persistencia
 
-`agendar_recalculo_perfil_session` agenda na fila PostgreSQL um job
-`nlp_matching`, deduplicado por empresa, `profile_version` e versão da regra.
-Deve ser chamado na transação que aceita uma nova versão do snapshot. A fila é
-idempotente para repetição da mesma versão. O worker consumidor e a persistência
-dos resultados continuam sendo responsabilidade da integração de batches, que
-ainda não possui handlers neste serviço.
+`python -m app.nlp.cli run-matching --fixtures tests/nlp/fixtures/companies.json --batch-id <uuid> --k 20` executa um batch imediatamente. Use `python -m app.nlp.cli enqueue-matching --fixtures tests/nlp/fixtures/companies.json --batch-id <uuid>` para gravar o snapshot e agendar trabalho na fila PostgreSQL; o worker `matching-nlp-worker` consome `nlp_matching_batch` junto aos jobs de embeddings e carrega o modelo uma vez. Mesmo `batch_id` e payload sao idempotentes; payload diferente com o mesmo id causa conflito. `python -m app.nlp.cli matching-status --batch-id <uuid>` consulta estado/contagens e `python -m app.nlp.cli matching-results --company-id <uuid>` lista resultados persistidos. Configure o modelo/cache e aplique as migrations antes da execucao.
 
-## Validação
-
-`tests/nlp/test_matching.py` cobre soma de pesos, limites 49/50/74/75/89/90,
-reprodutibilidade, evidências, redução de confiança, gates e chave idempotente.
-O diagnóstico realizado está em [`matching-validacao-amostra.md`](matching-validacao-amostra.md).
-O dataset PNCP assistido documentado em `nlp-validacao-embeddings.md` tem
-rótulos ainda pendentes de validação humana e não é ground truth para aprovar
-este motor lexical. Rever falsos positivos/negativos requer congelar e validar
-humanamente esses rótulos antes de interpretar métricas como avaliação do
-matching determinístico.
+Os resultados sao snapshots versionados e nao disparam notificacoes. O NestJS, endpoints HTTP e autenticacao de servico ficam para a etapa de integracao documentada.
