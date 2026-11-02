@@ -62,12 +62,29 @@ class MatchingContractTests(unittest.TestCase):
             eligibility="ELIGIBLE",
             compatibility_level=CompatibilityLevel.HIGH,
             taxonomy_version="cnae-objeto-v1",
+            model_version="e5@revision-sha",
+            semantic_relevance=81,
+            preference_score=75,
             profile_version="profile-2",
             matching_version="matching-1",
             processing_state=BatchStatus.COMPLETED,
         )
         self.assertEqual(result.company_id, company_id)
         self.assertEqual(result.schema_version, SCHEMA_VERSION)
+        self.assertEqual(result.model_version, "e5@revision-sha")
+
+    def test_score_semantico_exige_versao_do_modelo(self) -> None:
+        with self.assertRaises(ValidationError):
+            MatchingResult(
+                company_id=uuid4(),
+                edital=ProcurementReference(
+                    procurement_id="PNCP:123", external_id="123", version="v1",
+                ),
+                score=50, semantic_relevance=50, data_confidence=50,
+                eligibility="NOT_CONFIRMED", compatibility_level="MEDIUM",
+                profile_version="p1", matching_version="m1", taxonomy_version="t1",
+                processing_state=BatchStatus.COMPLETED,
+            )
 
     def test_saida_rejeita_versao_de_schema_desconhecida(self) -> None:
         with self.assertRaises(ValidationError):

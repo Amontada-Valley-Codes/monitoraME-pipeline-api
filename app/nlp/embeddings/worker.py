@@ -15,10 +15,11 @@ from sqlalchemy import select, not_, exists, func
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core import orm
-from app.core.models import IngestionJob, NlpProcurementEmbedding, NlpProcurementSegment
+from app.core.models import IngestionJob, NlpMatchingBatch, NlpProcurementEmbedding, NlpProcurementSegment
 from app.nlp.embeddings.generator import gerar_embeddings_segmentos
 from app.nlp.embeddings.model import E5EmbeddingModel
 from app.nlp.corpus import sincronizar_corpus
+from app.nlp.matching.pipeline import processar_batch_enfileirado
 from app.pncp.jobs import (
     NovoJob,
     agendar_job_session,
@@ -30,6 +31,7 @@ from app.pncp.jobs import (
 
 logger = logging.getLogger(__name__)
 JOB_TYPE = "nlp_embedding"
+MATCHING_JOB_TYPE = "nlp_matching_batch"
 JOB_ENTITY = "PROCUREMENT_SEGMENT"
 JOB_SOURCE = "PNCP"
 
@@ -155,9 +157,15 @@ def executar_worker(*, idle_seconds: float | None = None, stop_after: int | None
         try:
             with orm.main_session() as session:
                 recuperados = recuperar_leases_expirados_session(session, job_type=JOB_TYPE)
+                recuperados += recuperar_leases_expirados_session(session, job_type=MATCHING_JOB_TYPE)
                 job = reivindicar_proximo_job_session(
-                    session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
+                    session, worker_id=worker_id, lease_seconds=7200,
+                    job_type=MATCHING_JOB_TYPE,
                 )
+                if job is None:
+                    job = reivindicar_proximo_job_session(
+                        session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
+                    )
                 agendados = 0
                 if job is None:
                     agendados = agendar_embeddings_pendentes_session(
@@ -168,14 +176,19 @@ def executar_worker(*, idle_seconds: float | None = None, stop_after: int | None
                             session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
                         )
             if recuperados or agendados:
-                logger.info("Fila de embeddings atualizada", extra={"leases_recuperados": recuperados, "jobs_agendados": agendados})
+                logger.info("Fila NLP atualizada", extra={"leases_recuperados": recuperados, "jobs_agendados": agendados})
             if job is None:
                 time.sleep(idle_seconds)
                 continue
             try:
-                resultado = processar_job(job, model)
+                if job.job_type == MATCHING_JOB_TYPE:
+                    resultado, _ = processar_batch_enfileirado(job, model=model)
+                    detalhes = {"batch_id": job.scope_key, "results": len(resultado)}
+                else:
+                    resultado = processar_job(job, model)
+                    detalhes = {"resultado": resultado}
                 processados += 1
-                logger.info("Job de embedding concluido", extra={"job_id": job.id, "resultado": resultado, "attempt": job.attempts})
+                logger.info("Job NLP concluido", extra={"job_id": job.id, **detalhes, "attempt": job.attempts})
             except Exception as exc:
                 with orm.main_session() as session:
                     status = falhar_job_session(
@@ -183,9 +196,16 @@ def executar_worker(*, idle_seconds: float | None = None, stop_after: int | None
                         job=job,
                         erro=f"{type(exc).__name__}: {str(exc)[:500]}",
                         retryable=True,
-                        contexto={"component": "matching_nlp_embedding"},
+                        contexto={"component": "matching_nlp_worker", "job_type": job.job_type},
                     )
-                logger.exception("Falha em job de embedding", extra={"job_id": job.id, "status": status})
+                    if status is not None and job.job_type == MATCHING_JOB_TYPE:
+                        batch = session.get(NlpMatchingBatch, job.scope_key)
+                        if batch is not None:
+                            batch.status = "PENDING" if status == "RETRY_WAIT" else "FAILED"
+                            if status == "FAILED":
+                                batch.failed_companies = batch.total_companies - batch.processed_companies
+                            batch.updated_at = datetime.now(timezone.utc)
+                logger.exception("Falha em job NLP", extra={"job_id": job.id, "status": status, "job_type": job.job_type})
                 processados += 1
         except Exception:
             logger.exception("Falha no ciclo do worker de embeddings")

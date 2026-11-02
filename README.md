@@ -483,6 +483,29 @@ Nenhuma dessas rotas atualiza o cache cadastral ou consulta TCE-CE, IBGE ou Open
 
 ## Persistência
 
+### Matching NLP local
+
+O matching consulta somente oportunidades normalizadas e seus embeddings no
+PostgreSQL Analytics. A migration `0027_nlp_matching_results` adiciona batches
+e resultados versionados. Aplique as migrations antes de usar os comandos
+abaixo; o modelo E5 segue a revisao fixada em `NLP_EMBEDDING_REVISION`.
+
+```powershell
+.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m app.nlp.cli run-matching --fixtures tests/nlp/fixtures/companies.json --batch-id 11111111-1111-4111-8111-111111111111 --k 20
+.venv\Scripts\python.exe -m app.nlp.cli enqueue-matching --fixtures tests/nlp/fixtures/companies.json --batch-id 11111111-1111-4111-8111-111111111111
+.venv\Scripts\python.exe -m app.nlp.cli matching-status --batch-id 11111111-1111-4111-8111-111111111111
+.venv\Scripts\python.exe -m app.nlp.cli matching-results --company-id 5382d207-d756-5d52-909a-afed5c17f6cb
+```
+
+Escolha `run-matching` ou `enqueue-matching` para cada batch. O primeiro
+processa no CLI. O segundo persiste um snapshot minimo
+e agenda `nlp_matching_batch`; o servico existente `matching-nlp-worker`
+consome esse job junto aos embeddings. Repetir o mesmo `batch_id` e payload e
+idempotente; reutilizar o ID com outro payload causa conflito. Score e
+preferencias sao sinais de ordenacao/relevancia; `ELIGIBLE` nao e garantia de
+habilitacao legal. Endpoints HTTP e integracao NestJS continuam em fase futura.
+
 O banco principal mantém:
 
 - `ibge_municipios`, `tce_municipios`, `fornecedores_me` e

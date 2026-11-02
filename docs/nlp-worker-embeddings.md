@@ -1,10 +1,19 @@
-# Worker isolado de embeddings
+# Worker de embeddings e batches de matching
 
 O serviço `matching-nlp-worker` executa no Compose junto ao PostgreSQL do
 Pipeline, na rede privada padrão. Ele não tem rota HTTP, não consulta a API
 PNCP e não usa o banco do Backend. Instale os pesos do modelo no primeiro
 startup; portanto, o worker precisa de saída de rede para o Hugging Face quando
 o cache local ainda não contém a revisão configurada.
+
+O mesmo processo tambem consome batches `nlp_matching_batch` enfileirados pelo
+comando local `python -m app.nlp.cli enqueue-matching`. O snapshot minimo de
+perfis fica no batch Analytics; a inferencia e retrieval ocorrem fora da
+transacao de submissao. O job usa lease/token e, na transacao final, a conclusao
+do lease e os resultados sao persistidos juntos. Falha libera o lease para
+retry pela fila compartilhada. Nao consome o job legado `nlp_matching` de
+recalculo de perfil, que ainda depende do fluxo futuro de sincronizacao de
+perfis do Backend.
 
 ## Fluxo
 

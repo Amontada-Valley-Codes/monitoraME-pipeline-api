@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 SCHEMA_VERSION = "matching.v1"
@@ -47,6 +47,24 @@ class CompanyProfile(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=100)
     operational_preferences: dict[str, str | bool | int] = Field(default_factory=dict, max_length=50)
     participation_forms: list[str] | None = Field(default=None, max_length=30)
+    # Interesses explícitos; location representa sede e não implica preferência.
+    interested_states: list[str] | None = Field(default=None, max_length=27)
+    interested_municipalities: list[str] | None = Field(default=None, max_length=5_600)
+    preferred_modality_codes: list[str] | None = Field(default=None, max_length=30)
+
+    @field_validator("interested_states")
+    @classmethod
+    def validar_ufs_interesse(cls, values: list[str] | None) -> list[str] | None:
+        if values is not None and any(len(value) != 2 or not value.isalpha() or value != value.upper() for value in values):
+            raise ValueError("interested_states deve conter UFs de duas letras maiusculas")
+        return values
+
+    @field_validator("interested_municipalities")
+    @classmethod
+    def validar_municipios_interesse(cls, values: list[str] | None) -> list[str] | None:
+        if values is not None and any(len(value) != 7 or not value.isdigit() for value in values):
+            raise ValueError("interested_municipalities deve conter codigos IBGE de sete digitos")
+        return values
 
     @model_validator(mode="after")
     def validar_cnaes_primario(self) -> CompanyProfile:
