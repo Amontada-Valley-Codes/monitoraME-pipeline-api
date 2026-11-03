@@ -154,6 +154,50 @@ def coletar_amostra(args: argparse.Namespace) -> int:
     return 0 if external_ids else 2
 
 
+def coletar_amostra_abertas(args: argparse.Namespace) -> int:
+    """Busca manual e limitada pelo endpoint PNCP de propostas ainda abertas."""
+    cliente = ClientePncp()
+    external_ids: list[str] = []
+    vistos: set[str] = set()
+    paginas_lidas = 0
+    data_final = datetime.now(timezone.utc).date()
+    for pagina_numero in range(1, args.max_paginas + 1):
+        pagina = cliente.buscar_propostas_abertas(
+            data_final=data_final,
+            modalidade=args.modalidade,
+            pagina=pagina_numero,
+            tamanho_pagina=args.tamanho_pagina,
+        )
+        paginas_lidas += 1
+        for payload in pagina.itens:
+            external_id = payload.get("numeroControlePNCP")
+            if not isinstance(external_id, str) or not external_id.strip() or external_id in vistos:
+                continue
+            vistos.add(external_id)
+            with orm.main_session() as session:
+                salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(
+                    entity_type="CONTRATACAO", external_id=external_id, payload=payload,
+                    collected_at=datetime.now(timezone.utc),
+                    run_id=f"amostra-abertas:{data_final.isoformat()}:{args.modalidade or 'todas'}",
+                ))
+            external_ids.append(external_id)
+            if len(external_ids) >= args.limite:
+                break
+        if len(external_ids) >= args.limite or not pagina.itens or (
+            pagina.total_paginas is not None and pagina_numero >= pagina.total_paginas
+        ) or (
+            pagina.total_paginas is None and len(pagina.itens) < args.tamanho_pagina
+        ):
+            break
+    print({
+        "fluxo": "propostas-abertas", "limite": args.limite,
+        "persistidos": len(external_ids), "paginas_lidas": paginas_lidas,
+        "data_final": data_final.isoformat(), "modalidade": args.modalidade or "todas",
+        "cursor_avancado": False, "normalizacao_agendada": len(external_ids),
+    })
+    return 0 if external_ids else 2
+
+
 def agendar_enriquecimento(args: argparse.Namespace) -> int:
     agendados = {}
     with orm.main_session() as session:
@@ -318,6 +362,15 @@ def main() -> int:
     amostra.add_argument("--max-paginas", type=int, choices=range(1, 201), default=200,
         help="Limite de protecao; cada pagina aceita no maximo 50 registros")
     amostra.set_defaults(func=coletar_amostra)
+    amostra_abertas = comandos.add_parser(
+        "coletar-amostra-abertas",
+        help="Busca manualmente apenas contratações com recebimento de propostas aberto",
+    )
+    amostra_abertas.add_argument("--modalidade", type=int)
+    amostra_abertas.add_argument("--limite", type=int, choices=range(1, 201), default=20)
+    amostra_abertas.add_argument("--tamanho-pagina", type=int, choices=range(10, 51), default=20)
+    amostra_abertas.add_argument("--max-paginas", type=int, choices=range(1, 21), default=10)
+    amostra_abertas.set_defaults(func=coletar_amostra_abertas)
     enriquecer = comandos.add_parser("agendar-enriquecimento")
     alvo_enriquecimento = enriquecer.add_mutually_exclusive_group(required=True)
     alvo_enriquecimento.add_argument("--id", action="append")

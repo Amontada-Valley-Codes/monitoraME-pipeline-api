@@ -1,60 +1,70 @@
 # Worker de embeddings e batches de matching
 
-O serviço `matching-nlp-worker` executa no Compose junto ao PostgreSQL do
-Pipeline, na rede privada padrão. Ele não tem rota HTTP, não consulta a API
-PNCP e não usa o banco do Backend. Instale os pesos do modelo no primeiro
-startup; portanto, o worker precisa de saída de rede para o Hugging Face quando
-o cache local ainda não contém a revisão configurada.
+O serviço `matching-nlp-worker` usa PostgreSQL Analytics e o cache nomeado do
+modelo E5. Ele não consulta a API PNCP, não acessa o banco Backend e não possui
+endpoint HTTP. O processo só carrega os pesos quando encontra batch de empresa
+pronto para processamento.
 
-O mesmo processo tambem consome batches `nlp_matching_batch` enfileirados pelo
-comando local `python -m app.nlp.cli enqueue-matching`. O snapshot minimo de
-perfis fica no batch Analytics; a inferencia e retrieval ocorrem fora da
-transacao de submissao. O job usa lease/token e, na transacao final, a conclusao
-do lease e os resultados sao persistidos juntos. Falha libera o lease para
-retry pela fila compartilhada. Nao consome o job legado `nlp_matching` de
-recalculo de perfil, que ainda depende do fluxo futuro de sincronizacao de
-perfis do Backend.
+Sem batch pendente, o worker não sincroniza nem percorre o corpus e não agenda
+embeddings. Quando um batch existe, ele prepara o corpus se ainda não houver
+segmentos, agenda embeddings faltantes para o modelo ativo, processa esses
+jobs e então executa o matching. A normalização e o enriquecimento de itens
+sincronizam os segmentos textuais afetados com o corpus.
 
-## Fluxo
+## Idempotência e segurança de versões
 
-1. Normalização do edital e enriquecimento dos itens sincronizam os segmentos
-   textuais afetados em `nlp_procurement_segments` na mesma transação.
-   Se a tabela ainda estiver vazia, o primeiro startup prepara o corpus existente
-   em páginas de 200 oportunidades antes de começar a gerar vetores.
-2. O worker procura segmentos `READY` sem vetor para o `text_hash` e
-   `model_version` ativos e cria jobs `nlp_embedding` em `ingestion_jobs`.
-3. Jobs são reivindicados com `FOR UPDATE SKIP LOCKED`, lease e token. Uma
-   inferência por processo limita memória e concorrência.
-4. Antes de gravar, o worker relê o segmento. Se o texto mudou enquanto o
-   modelo processava, descarta o vetor antigo e conclui o job; o próximo ciclo
-   agenda o hash atual.
-5. O vetor é inserido por chave idempotente `(origem, edital, segmento,
-   text_hash, model_version)`. Reexecução do mesmo job não duplica registros.
+1. O batch armazena os perfis mínimos e um hash canônico do payload.
+2. Cada embedding é identificado por origem, edital, segmento, `text_hash` e
+   `model_version`; reexecução da mesma identidade não duplica vetores.
+3. O worker relê o segmento depois da inferência. Se o texto foi alterado,
+   descarta o vetor obsoleto e agenda o hash atual no próximo ciclo.
+4. Jobs usam `FOR UPDATE SKIP LOCKED`, lease e token. Expiração permite
+   recuperação sem que um worker antigo conclua o job de outro.
+5. Resultados mantêm versões de perfil, edital, modelo, taxonomia e matching.
 
-Os vetores ficam em `vector(384)` do pgvector como números normalizados de dimensão 384. A chave
-primária preserva vetores de hashes e versões anteriores, enquanto a FK ao
-segmento mantém a identidade de origem e remove vetores quando o segmento é
-removido. Consumidores devem sempre selecionar o vetor cujo `text_hash`
-corresponde ao segmento atual e cuja `model_version` está configurada.
+O E5 produz vetores L2-normalizados de dimensão 384, persistidos em
+`vector(384)` com pgvector. O cache do modelo fica em
+`matching_nlp_model_cache`, então o container pode ser removido ao terminar sem
+baixar os pesos novamente na execução seguinte.
 
-## Operação
+## Execução sob demanda
+
+O serviço tem o perfil Compose `matching` e não sobe no `up` padrão. Para
+executar um fixture diretamente, com Docker CLI no host da VPS:
 
 ```sh
-docker compose -f compose.production.yaml up -d --build matching-nlp-worker
-docker compose -f compose.production.yaml logs -f matching-nlp-worker
+batch_id=$(python -c 'import uuid; print(uuid.uuid4())')
+docker compose -f compose.production.yaml --profile matching run --rm \
+  --volume "$PWD/tests/nlp/fixtures:/fixtures:ro" \
+  matching-nlp-worker python -m app.nlp.cli enqueue-matching \
+  --fixtures /fixtures/companies-reais-teste.json --batch-id "$batch_id"
+docker compose -f compose.production.yaml --profile matching run --rm matching-nlp-worker
 ```
 
-`matching-nlp-worker` usa `DATABASE_URL` e `LOG_DATABASE_URL` do ambiente do
-Pipeline. O padrão é 2 GiB, 1,5 CPU, CPU-only, batch 1 e um processo. Ajuste os
-limites no `.env` da VPS conforme a memória disponível. Fixe
-`NLP_EMBEDDING_REVISION` em um SHA do repositório do modelo. O padrão é
-`fd1525a9fd15316a2d503bf26ab031a61d056e98`, a revisão usada na validação
-local. A revisão participa de `model_version`, de modo que uma atualização do
-modelo agenda vetores novos sem sobrescrever os anteriores.
+O segundo comando executa o `--drain` configurado no serviço e encerra após a
+fila ficar ociosa. Consulte `matching-status`/`matching-batch-results` com o
+mesmo ID. Não execute `docker` no shell `app@<container-id>`; esse shell é
+interno a um container. A orquestração Compose exige acesso Docker no host da
+VPS ou no painel de deploy.
 
-Falhas transitórias usam o retry exponencial/jitter da fila compartilhada.
-Tentativas esgotadas ficam `FAILED`; use o procedimento existente de replay
-operacional (`scripts/replay_pncp_jobs.py`) para reativar jobs selecionados.
-Jobs ativos são deduplicados por hash da identidade completa. O worker só
-recupera leases do tipo `nlp_embedding`, sem alterar leases de coleta,
+## Recursos e configuração
+
+O container é CPU-only, com batch size 1, limite configurável por
+`MATCHING_NLP_MEMORY_LIMIT` (padrão 2 GiB) e
+`MATCHING_NLP_CPUS` (padrão 1,5 CPU). O modelo e a revisão ficam fixados em
+`NLP_EMBEDDING_MODEL` e `NLP_EMBEDDING_REVISION`; a revisão compõe a identidade
+dos vetores. O cache precisa de saída de rede ao Hugging Face apenas na
+primeira execução ou quando a revisão ainda não estiver baixada.
+
+## Rede e limites de integração
+
+Em produção, o worker continua na rede interna padrão do Pipeline para acessar
+Analytics e também se associa a `monitorame_backend_internal`, com alias
+`matching-nlp`. Essa rede prepara comunicação entre stacks. Não existe ainda
+servidor HTTP nesse container; integração Backend via HTTP requer handlers e
+autenticação próprios.
+
+Falhas transitórias usam a política de retry da fila persistente. Tentativas
+esgotadas ficam `FAILED` para replay autorizado. O worker recupera leases dos
+tipos `nlp_embedding` e `nlp_matching_batch`, sem alterar leases de coleta,
 normalização ou enriquecimento.

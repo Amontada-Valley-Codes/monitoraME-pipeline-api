@@ -148,6 +148,14 @@ O servico tambem permanece na rede Docker `monitorame_backend_internal`, com o
 alias `pipeline-api`, para chamadas internas do backend em
 `http://pipeline-api:8000`.
 
+O Compose de produção inicia os workers de normalização e enriquecimento. A
+coleta PNCP de teste é manual: dentro do container Pipeline, use
+`pncp coletar-amostra-abertas --limite 20` para importar no máximo 20
+contratações que ainda recebem propostas. O comando grava RAW e agenda a
+normalização automaticamente; veja
+[preparação do teste NLP na VPS](docs/preparacao-teste-nlp-vps.md). O worker
+Matching fica fora do `up` padrão e é executado sob demanda.
+
 Por enquanto, o CORS aceita qualquer origem, e a API tambem aceita chamadas sem
 cabecalho `Origin`. O cabecalho `Origin` nao autentica clientes; mantenha o
 pipeline privado e autentique chamadas do backend caso precise restringir o
@@ -501,8 +509,8 @@ abaixo; o modelo E5 segue a revisao fixada em `NLP_EMBEDDING_REVISION`.
 
 Escolha `run-matching` ou `enqueue-matching` para cada batch. O primeiro
 processa no CLI. O segundo persiste um snapshot minimo
-e agenda `nlp_matching_batch`; o servico existente `matching-nlp-worker`
-consome esse job junto aos embeddings. Repetir o mesmo `batch_id` e payload e
+e agenda `nlp_matching_batch`; o container Matching sob demanda consome esse
+job junto aos embeddings. Repetir o mesmo `batch_id` e payload e
 idempotente; reutilizar o ID com outro payload causa conflito. Score e
 preferencias sao sinais de ordenacao/relevancia; `ELIGIBLE` nao e garantia de
 habilitacao legal. Endpoints HTTP e integracao NestJS continuam em fase futura.
@@ -646,16 +654,17 @@ fixtures sem Backend, autenticação ou Redis com:
 
 `tests/nlp/fixtures/companies.json` contém 150 perfis `matching.v1`; os
 primeiros 50 incluem preferências completas e o perfil de teste é
-`7ddf46af-1384-50e5-bade-99d4192c8bef`. Os dados são sintéticos. Após um reset
-do Docker, esta sequência coleta até 2.000 contratações no intervalo escolhido,
-normaliza e enriquece os registros e prepara o matching:
+`7ddf46af-1384-50e5-bade-99d4192c8bef`. Os dados são sintéticos. Para o teste
+controlado na VPS, use a consulta de propostas abertas com limite baixo descrita
+em [preparação do teste NLP na VPS](docs/preparacao-teste-nlp-vps.md). O exemplo
+local abaixo continua disponível para reproduzir um intervalo de publicações:
 
 ```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose build api matching-nlp-worker
 docker compose up -d postgres
 docker compose run --rm migrate
-docker compose up -d api matching-nlp-worker
+docker compose up -d api pncp-worker-normalizacao pncp-worker-enriquecimento
 
 $inicio = (Get-Date).AddDays(-14).ToString('yyyy-MM-dd')
 $fim = (Get-Date).AddDays(-8).ToString('yyyy-MM-dd')
@@ -664,8 +673,7 @@ docker compose run --rm api python scripts/pncp_operacao.py coletar-amostra `
 docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
 docker compose run --rm api python scripts/pncp_operacao.py agendar-enriquecimento `
   --todos-normalizados --limite 2000
-docker compose up -d pncp-worker-enriquecimento
-docker compose logs -f pncp-worker-enriquecimento
+docker compose logs -f pncp-worker-normalizacao pncp-worker-enriquecimento
 
 docker compose run --rm api python -m app.nlp.cli sync-corpus
 docker compose run --rm api python scripts/pncp_operacao.py status
@@ -684,11 +692,12 @@ intervalo/modalidade não tiver esse volume. O limite de `normalizar` conta jobs
 até três jobs por edital. Deixe o worker de enriquecimento drenar a fila; ele respeita
 rate limit e circuit breaker. Para uma execução manual curta, use
 `docker compose run --rm api python scripts/pncp_operacao.py enriquecer --limite 5`.
-`matching-nlp-worker` prepara os vetores faltantes
-e processa o batch de forma assíncrona. Antes de enfileirar o matching, confira
-`status` e aguarde os jobs `nlp_embedding` chegarem a `SUCCEEDED`; a primeira
-execução pode baixar o modelo E5. Acompanhe
-`docker compose logs -f matching-nlp-worker`.
+`matching-nlp-worker` é iniciado manualmente depois de enfileirar o batch. Ele
+prepara vetores faltantes e processa o matching; a primeira execução pode
+baixar o modelo E5. Acompanhe a saída de
+`docker compose --profile matching run --rm matching-nlp-worker`. O serviço não
+carrega o modelo nem percorre o corpus enquanto não há batch pendente e termina
+quando fica ocioso.
 
 Consulte o estado e os resultados do batch completo (paginados em blocos de até
 500) e, em separado, os editais compatíveis com a empresa de teste:
@@ -724,8 +733,8 @@ normalização atualiza o corpus no processo; depois sincronize o corpus e deixe
 o worker NLP criar embeddings faltantes antes de enviar um novo batch:
 
 ```powershell
-docker compose build api matching-nlp-worker
-docker compose up -d api matching-nlp-worker
+docker compose build api
+docker compose up -d api pncp-worker-normalizacao
 docker compose run --rm api python scripts/pncp_operacao.py reprocessar-normalizacao --limite 2000
 docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
 docker compose run --rm api python -m app.nlp.cli sync-corpus
@@ -746,12 +755,11 @@ Os resultados persistidos também podem ser explorados no Swagger da API em
 Ambas aceitam `limit` (até 500) e `offset`; a resposta inclui `total`, nível,
 score, data de processamento e o resultado completo com evidências. Quando não
 informar `batch_id`, a consulta poderá incluir snapshots de batches diferentes.
-O worker NLP gera embeddings pendentes antes de reivindicar batches de matching
-e só começa um batch quando não há segmentos READY sem vetor na revisão atual.
-O agendador não revarre o corpus enquanto houver jobs de embedding ativos. Para
-acelerar temporariamente uma fila grande, suba um worker adicional com
-`docker compose run -d --rm matching-nlp-worker`; ele compartilha o cache e a
-fila PostgreSQL e reivindica jobs com `SKIP LOCKED`.
+O worker NLP só agenda embeddings e carrega o modelo quando existe batch de
+empresa pronto. Em produção, execute-o sob demanda com
+`docker compose -f compose.production.yaml --profile matching run --rm
+matching-nlp-worker`; ele processa jobs com `SKIP LOCKED` e encerra quando fica
+ocioso. O cache de modelo e a fila PostgreSQL são persistentes.
 
 O adaptador inicial E5 e seu protocolo de validação estão em
 [docs/nlp-validacao-embeddings.md](docs/nlp-validacao-embeddings.md). A
@@ -765,10 +773,10 @@ atualizam o corpus; o worker agenda embeddings faltantes na tabela
 por origem, segmento, `text_hash` e `model_version`. Após a migration NLP-06,
 os vetores usam `pgvector vector(384)` e índice HNSW no PostgreSQL Analytics.
 
-Suba-o independentemente com `docker compose up -d --build matching-nlp-worker`
-(em produção, `docker compose -f compose.production.yaml up -d --build
-matching-nlp-worker`). O padrão limita a 1,5 CPU, 2 GiB, uma inferência por vez
-e batch size 1; ajuste `MATCHING_NLP_MEMORY_LIMIT` e `MATCHING_NLP_CPUS` à VPS.
+Execute-o sob demanda com `docker compose --profile matching run --rm
+matching-nlp-worker` (em produção, acrescente `-f compose.production.yaml`). O
+padrão limita a 1,5 CPU, 2 GiB, uma inferência por vez e batch size 1; ajuste
+`MATCHING_NLP_MEMORY_LIMIT` e `MATCHING_NLP_CPUS` à VPS.
 O padrão de `NLP_EMBEDDING_REVISION` é o SHA
 `fd1525a9fd15316a2d503bf26ab031a61d056e98`, usado na validação local. Fixe a
 mesma revisão nos ambientes para manter `model_version` reproduzível; trocar o

@@ -124,6 +124,15 @@ def contar_embeddings_faltantes_session(session: Any, *, model_version: str) -> 
     ) or 0)
 
 
+def existe_batch_matching_pronto_session(session: Any) -> bool:
+    """O modelo só trabalha quando há batch de empresa aguardando execução."""
+    return bool(session.scalar(select(exists().where(
+        IngestionJob.job_type == MATCHING_JOB_TYPE,
+        IngestionJob.status.in_(("PENDING", "RETRY_WAIT")),
+        IngestionJob.next_run_at <= datetime.now(timezone.utc),
+    ))))
+
+
 def processar_job(job: Any, model: E5EmbeddingModel) -> str:
     identidade = json.loads(job.scope_key)
     if not isinstance(identidade, dict) or set(identidade) != {
@@ -164,54 +173,72 @@ def processar_job(job: Any, model: E5EmbeddingModel) -> str:
     return status
 
 
-def executar_worker(*, idle_seconds: float | None = None, stop_after: int | None = None) -> None:
+def executar_worker(
+    *, idle_seconds: float | None = None, stop_after: int | None = None,
+    drain: bool = False, idle_exit_seconds: float = 5.0,
+) -> None:
     idle_seconds = idle_seconds if idle_seconds is not None else float(os.getenv("NLP_EMBEDDING_IDLE_SECONDS", "10"))
     model = E5EmbeddingModel(
         batch_size=1,
         device=os.getenv("NLP_EMBEDDING_DEVICE", "cpu"),
     )
-    with orm.main_session() as session:
-        segmentos_existentes = session.scalar(select(func.count()).select_from(NlpProcurementSegment)) or 0
-        if segmentos_existentes == 0:
-            resumo = sincronizar_corpus(session, page_size=200)
-            logger.info("Corpus NLP inicial preparado", extra={
-                "opportunities_scanned": resumo.opportunities_scanned,
-                "segments_created": resumo.segments_created,
-                "segments_without_text": resumo.segments_without_text,
-            })
-    logger.info("Carregando modelo de embeddings", extra={"model_version": model.model_version, "device": model.device})
-    model.load()
     worker_id = f"matching-nlp:{socket.gethostname()}:{uuid4().hex[:8]}"
     processados = 0
     embeddings_faltantes_anterior: int | None = None
+    modelo_carregado = False
+    ultimo_trabalho = time.monotonic()
     logger.info("Worker de embeddings iniciado", extra={"worker_id": worker_id, "model_version": model.model_version})
     while stop_after is None or processados < stop_after:
         try:
             with orm.main_session() as session:
                 recuperados = recuperar_leases_expirados_session(session, job_type=JOB_TYPE)
                 recuperados += recuperar_leases_expirados_session(session, job_type=MATCHING_JOB_TYPE)
-                agendados = agendar_embeddings_pendentes_session(
-                    session, model_version=model.model_version
-                )
-                job = reivindicar_proximo_job_session(
-                    session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
-                )
-                embeddings_faltantes = contar_embeddings_faltantes_session(
-                    session, model_version=model.model_version,
-                )
-                if job is None and embeddings_faltantes == 0:
-                    job = reivindicar_proximo_job_session(
-                        session, worker_id=worker_id, lease_seconds=7200,
-                        job_type=MATCHING_JOB_TYPE,
+                matching_pendente = existe_batch_matching_pronto_session(session)
+                agendados = 0
+                job = None
+                embeddings_faltantes = 0
+                if matching_pendente:
+                    segmentos_existentes = session.scalar(
+                        select(func.count()).select_from(NlpProcurementSegment)
+                    ) or 0
+                    if segmentos_existentes == 0:
+                        resumo = sincronizar_corpus(session, page_size=200)
+                        logger.info("Corpus NLP inicial preparado", extra={
+                            "opportunities_scanned": resumo.opportunities_scanned,
+                            "segments_created": resumo.segments_created,
+                            "segments_without_text": resumo.segments_without_text,
+                        })
+                    agendados = agendar_embeddings_pendentes_session(
+                        session, model_version=model.model_version
                     )
+                    job = reivindicar_proximo_job_session(
+                        session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
+                    )
+                    embeddings_faltantes = contar_embeddings_faltantes_session(
+                        session, model_version=model.model_version,
+                    )
+                    if job is None and embeddings_faltantes == 0:
+                        job = reivindicar_proximo_job_session(
+                            session, worker_id=worker_id, lease_seconds=7200,
+                            job_type=MATCHING_JOB_TYPE,
+                        )
             if recuperados or agendados:
                 logger.info("Fila NLP atualizada", extra={"leases_recuperados": recuperados, "jobs_agendados": agendados})
             if embeddings_faltantes and embeddings_faltantes != embeddings_faltantes_anterior:
                 logger.warning("Matching aguardando vetores completos", extra={"embeddings_faltantes": embeddings_faltantes})
             embeddings_faltantes_anterior = embeddings_faltantes
             if job is None:
+                if drain and time.monotonic() - ultimo_trabalho >= idle_exit_seconds:
+                    break
                 time.sleep(idle_seconds)
                 continue
+            ultimo_trabalho = time.monotonic()
+            if not modelo_carregado:
+                logger.info("Carregando modelo de embeddings sob demanda", extra={
+                    "model_version": model.model_version, "device": model.device,
+                })
+                model.load()
+                modelo_carregado = True
             try:
                 if job.job_type == MATCHING_JOB_TYPE:
                     resultado, _ = processar_batch_enfileirado(job, model=model)

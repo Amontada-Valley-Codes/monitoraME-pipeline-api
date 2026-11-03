@@ -71,7 +71,26 @@ services:
       retries: 5
       start_period: 10s
 
+  pncp-worker-normalizacao:
+    <<: *app-service
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "normalizacao"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  pncp-worker-enriquecimento:
+    <<: *app-service
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "enriquecimento"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   matching-nlp-worker:
+    profiles: ["matching"]
     <<: *app-service
     build:
       context: .
@@ -80,11 +99,11 @@ services:
         INSTALL_NLP: "1"
     image: ${MATCHING_NLP_IMAGE:-monitorame-matching-nlp:production}
     init: true
-    command: ["python", "scripts/matching_nlp_worker.py"]
+    command: ["python", "scripts/matching_nlp_worker.py", "--drain"]
     depends_on:
       migrate:
         condition: service_completed_successfully
-    restart: unless-stopped
+    restart: "no"
     mem_limit: ${MATCHING_NLP_MEMORY_LIMIT:-2g}
     cpus: ${MATCHING_NLP_CPUS:-1.50}
     volumes:
@@ -97,11 +116,17 @@ services:
       NLP_EMBEDDING_DEVICE: ${NLP_EMBEDDING_DEVICE:-cpu}
       NLP_EMBEDDING_REVISION: ${NLP_EMBEDDING_REVISION:-fd1525a9fd15316a2d503bf26ab031a61d056e98}
       NLP_EMBEDDING_BATCH_SIZE: "1"
-      NLP_EMBEDDING_IDLE_SECONDS: ${NLP_EMBEDDING_IDLE_SECONDS:-10}
+      NLP_EMBEDDING_IDLE_SECONDS: ${NLP_EMBEDDING_IDLE_SECONDS:-1}
+      NLP_WORKER_IDLE_EXIT_SECONDS: ${NLP_WORKER_IDLE_EXIT_SECONDS:-5}
       NLP_EMBEDDING_MAX_ATTEMPTS: ${NLP_EMBEDDING_MAX_ATTEMPTS:-5}
       HF_HOME: /opt/huggingface
       OMP_NUM_THREADS: "1"
       TOKENIZERS_PARALLELISM: "false"
+    networks:
+      default: {}
+      backend_internal:
+        aliases:
+          - matching-nlp
 
 volumes:
   matching_nlp_model_cache:
