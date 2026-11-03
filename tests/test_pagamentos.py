@@ -93,6 +93,19 @@ class PagamentosTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identificar a Camara"):
             p.conciliar_pagamentos([], [], ORGAOS[1:], codigo_municipio="004", exercicio=2025)
 
+    def test_classificacao_nao_trata_tipo_unidade_como_codigo_universal(self):
+        orgaos = [
+            {"codigo_orgao": "01", "nome_orgao": "Camara Municipal", "codigo_tipo_unidade": "03"},
+            {"codigo_orgao": "02", "nome_orgao": "Secretaria de Educacao", "codigo_tipo_unidade": "02"},
+        ]
+        es = [empenho(codigo_orgao="01"), empenho(codigo_orgao="02")]
+        ps = [pagamento(codigo_orgao="01"), pagamento(codigo_orgao="02")]
+        rows, audit = p.conciliar_pagamentos(es, ps, orgaos, codigo_municipio="004", exercicio=2025)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(audit["orgaos_camara"], ["01"])
+        self.assertEqual(audit["orgaos_executivo_municipal"], ["02"])
+        self.assertEqual(audit["classificacoes_orgaos"][0]["regra"], "NOME_ORGAO_NORMALIZADO")
+
     def test_documentos_nao_cnpj_preservam_total(self):
         for tipo, doc in [("2", "02530104000133"), ("1", "2530104000133"),
                           ("1", "02530104000134"), ("1", "02530104000133!")]:

@@ -73,6 +73,7 @@ def conciliar_pagamentos(
     cadastro: dict[str, dict] = {}
     camaras = set()
     executivo_municipal = set()
+    classificacoes_orgaos = []
     for orgao in orgaos:
         codigo = _texto(orgao, "codigo_orgao")
         if codigo in cadastro:
@@ -80,12 +81,23 @@ def conciliar_pagamentos(
         cadastro[codigo] = orgao
         nome = normalizar_texto(_texto(orgao, "nome_orgao"))
         tipo = _texto(orgao, "codigo_tipo_unidade")
-        if tipo == "02" or "CAMARA" in nome:
+        # codigo_tipo_unidade varia entre cadastros/anos. O nome e os dados
+        # vinculados identificam o Legislativo; o codigo do tipo e registrado
+        # como evidência, nunca tratado como regra universal.
+        eh_camara = any(token in nome for token in ("CAMARA", "LEGISLATIVO"))
+        classificacoes_orgaos.append({
+            "codigo_orgao": codigo,
+            "nome_orgao": orgao["nome_orgao"],
+            "codigo_tipo_unidade": tipo,
+            "classificacao": "CAMARA" if eh_camara else "EXECUTIVO_MUNICIPAL",
+            "regra": "NOME_ORGAO_NORMALIZADO",
+            "confianca": "ALTA" if eh_camara or any(
+                token in nome for token in ("PREFEITURA", "SECRETARIA", "GABINETE", "AUTARQUIA")
+            ) else "REVISAR",
+        })
+        if eh_camara:
             camaras.add(codigo)
         else:
-            # O cadastro de órgãos é retornado no escopo do município. Tipos
-            # diferentes de 02 representam a administração municipal; a
-            # Câmara é isolada pelo código oficial ou pelo nome normalizado.
             executivo_municipal.add(codigo)
     if not camaras:
         raise ValueError("Cadastro nao permite identificar a Camara; revisar orgaos.")
@@ -145,6 +157,7 @@ def conciliar_pagamentos(
         "orgaos_executivo_municipal": sorted(executivo_municipal),
         "orgaos_camara": sorted(camaras), "chaves_duplicadas": 0,
         "pagamentos_sem_empenho": 0,
+        "classificacoes_orgaos": classificacoes_orgaos,
     }
 
 
