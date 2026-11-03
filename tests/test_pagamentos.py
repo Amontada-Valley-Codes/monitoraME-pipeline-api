@@ -162,6 +162,24 @@ class PagamentosTest(unittest.TestCase):
         self.assertEqual(result["total_me_centavos"], 88188006)
         self.assertEqual(sum(result["controle_financeiro"]["por_categoria_centavos"].values()), 108328071)
 
+    def test_conferencia_portal_por_elemento_so_no_recorte_referenciado(self):
+        es, ps = [], []
+        for indice, (elemento, valor) in enumerate(p.REFERENCIA_PORTAL_ACARAU_2025.items()):
+            numero = f"{indice + 1:04d}"
+            es.append(empenho(numero_empenho=numero, codigo_elemento_despesa=f"3399{elemento}00"))
+            ps.append(pagamento(numero_empenho=numero, numero_nota_pagamento=numero,
+                                valor_nota_pagamento=f"{valor / 100:.2f}"))
+        coleta = {"codigo_municipio": "004", "exercicio": 2025, "referencia_final": "2026-09",
+                  "coleta_iniciada_em": "inicio", "coleta_concluida_em": "fim",
+                  "orgaos": ORGAOS, "empenhos": es, "pagamentos": ps}
+        resultado = p.consultar_pagamentos_prefeitura(
+            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
+            consultar_porte=False, coleta=coleta,
+        )
+        self.assertEqual(resultado["conferencia_portal"]["divergencia_centavos_por_elemento"],
+                         {elemento: 0 for elemento in p.REFERENCIA_PORTAL_ACARAU_2025})
+        self.assertEqual(resultado["controle_financeiro"]["total_centavos"], 13_531_152_944)
+
     @patch.object(p.tce, "buscar_documentos_exercicio")
     def test_coleta_ano_seguinte_exercicio_fixo_e_mes_vazio_nao_interrompe(self, buscar):
         buscar.side_effect = lambda endpoint, **kw: ORGAOS if endpoint == "orgaos" else []

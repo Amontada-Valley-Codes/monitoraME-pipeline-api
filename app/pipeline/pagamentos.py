@@ -22,6 +22,15 @@ CAMPOS_CHAVE = (
     "codigo_unidade_orcamentaria", "data_emissao_empenho", "numero_empenho",
 )
 CATEGORIAS = ("ME", "EPP", "DEMAIS", "SEM_CLASSIFICACAO", "NAO_CNPJ")
+REFERENCIA_PORTAL_ACARAU_2025 = {
+    "39": 6_631_844_119,
+    "30": 2_953_129_365,
+    "51": 3_132_409_295,
+    "52": 516_692_530,
+    "32": 187_701_200,
+    "40": 1_048_364,
+    "35": 108_328_071,
+}
 
 
 def _texto(registro: dict, campo: str) -> str:
@@ -287,6 +296,23 @@ def consultar_pagamentos_prefeitura(
         codigo_municipio=codigo_municipio.strip(), exercicio=exercicio,
     )
     classificacoes = classificar_fornecedores(elegiveis) if consultar_porte else {}
+    resumo = resumir_pagamentos(elegiveis, classificacoes)
+    conferencia_portal = None
+    if codigo_municipio.strip() == "004" and exercicio == 2025 and referencia_final == "2026-09":
+        valores = resumo["controle_financeiro"]["por_elemento_centavos"]
+        divergencias = {
+            elemento: valores.get(elemento, 0) - esperado
+            for elemento, esperado in REFERENCIA_PORTAL_ACARAU_2025.items()
+        }
+        conferencia_portal = {
+            "referencia": "TCE-CE Portal da Transparencia, aba Prefeitura, conferida em 2026-10-19",
+            "recorte_referencias_pagamentos": ["2025-01", "2026-09"],
+            "valores_esperados_centavos": REFERENCIA_PORTAL_ACARAU_2025,
+            "divergencia_centavos_por_elemento": divergencias,
+            "total_esperado_centavos": sum(REFERENCIA_PORTAL_ACARAU_2025.values()),
+            "total_apurado_centavos": resumo["controle_financeiro"]["total_centavos"],
+            "divergencia_total_centavos": resumo["controle_financeiro"]["total_centavos"] - sum(REFERENCIA_PORTAL_ACARAU_2025.values()),
+        }
     return {
         "fonte": "TCE-CE/SIM", "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "unidade_monetaria": "CENTAVOS", "administracao": "PREFEITURA",
@@ -298,5 +324,8 @@ def consultar_pagamentos_prefeitura(
         "criterio_me": {"porte_codigo": "01", "excluir_mei": False},
         "referencia_base_cadastral": None, "porte_historico_comprovado": False,
         "consulta_cadastral_executada": consultar_porte,
-        "auditoria": auditoria, **resumir_pagamentos(elegiveis, classificacoes),
+        "versao_regra_financeira": "tce-pagamentos-prefeitura.v1",
+        "fonte_referencia_financeira": "TCE-CE SIM e Portal da Transparencia",
+        "conferencia_portal": conferencia_portal,
+        "auditoria": auditoria, **resumo,
     }
