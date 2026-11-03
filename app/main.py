@@ -11,7 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
 from app.api.errors import obter_request_id, resposta_erro_validacao, usa_erro_padronizado
 from app.api import response_cache
-from app.core import database, log_database
+from app.core import database, log_database, orm
 from app.core.logging import (
     configurar_logging,
     desabilitar_persistencia_logs,
@@ -161,6 +161,12 @@ async def registrar_requisicao_http(request: Request, call_next):
     corpo_cache = b""
     cache_ativo = response_cache.rota_tem_cache(request)
     resposta_do_cache = False
+    medir_banco = request.headers.get("x-load-test", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    token_medicao_banco = orm.iniciar_medicao_banco() if medir_banco else None
     try:
         if cache_ativo:
             corpo_cache = await request.body()
@@ -244,7 +250,19 @@ async def registrar_requisicao_http(request: Request, call_next):
                 "duration_ms": round((perf_counter() - inicio) * 1000, 2),
             },
         )
+        if medir_banco:
+            medicao_banco = orm.obter_medicao_banco()
+            duracao_banco_ms = float(medicao_banco["duration_ms"])
+            response.headers["Server-Timing"] = (
+                f'db;dur={duracao_banco_ms:.3f};desc="PostgreSQL"'
+            )
+            response.headers["X-Database-Queries"] = str(
+                int(medicao_banco["queries"])
+            )
         return response
+    finally:
+        if token_medicao_banco is not None:
+            orm.finalizar_medicao_banco(token_medicao_banco)
 
 
 app.add_middleware(

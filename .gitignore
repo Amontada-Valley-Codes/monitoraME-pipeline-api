@@ -237,3 +237,6 @@ __marimo__/
 
 # Dataset local e relatórios do benchmark NLP
 .local/nlp/
+
+# Relatórios locais dos testes de carga dos indicadores
+.local/carga-indicadores/
