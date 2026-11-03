@@ -24,6 +24,8 @@ from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
 from app.pncp.ingestion import (
     ClientePncp,
+    MODALIDADES_PRIORITARIAS,
+    UFS_NORDESTE,
     agendar_backfill_anual,
     agendar_propostas_abertas,
     agendar_publicacao,
@@ -58,16 +60,17 @@ def coletar(args: argparse.Namespace) -> int:
         raise ValueError("Backfill anual disponível apenas para publicações.")
     fim = datetime.now(timezone.utc)
     inicio = fim - timedelta(days=args.dias)
-    modalidades = args.modalidade or [6]
+    modalidades = args.modalidade or list(MODALIDADES_PRIORITARIAS)
+    ufs = args.uf or list(UFS_NORDESTE)
     if args.fluxo == "publicacao":
         if args.ano is not None:
             if args.fluxo != "publicacao":
                 raise ValueError("backfill anual está disponível apenas para publicacao")
-            jobs = agendar_backfill_anual(ano=args.ano, modalidades=modalidades, tamanho_janela_dias=args.janela_dias, tamanho_pagina=args.tamanho_pagina)
+            jobs = agendar_backfill_anual(ano=args.ano, modalidades=modalidades, ufs=ufs, tamanho_janela_dias=args.janela_dias, tamanho_pagina=args.tamanho_pagina)
         else:
-            jobs = agendar_publicacao(inicio=inicio, fim=fim, modalidades=modalidades, tamanho_pagina=args.tamanho_pagina, prioridade=100)
+            jobs = agendar_publicacao(inicio=inicio, fim=fim, modalidades=modalidades, ufs=ufs, tamanho_pagina=args.tamanho_pagina, prioridade=100)
     else:
-        jobs = agendar_atualizacao(inicio=inicio, fim=fim, modalidades=modalidades)
+        jobs = agendar_atualizacao(inicio=inicio, fim=fim, modalidades=modalidades, ufs=ufs)
     ids = [agendar_job(job)[0] for job in jobs]
     worker = _worker_coleta(args.tamanho_pagina, "backfill" if args.ano is not None else "incremental")
     executados = sum(worker.executar_uma_vez() for _ in jobs)
@@ -78,7 +81,7 @@ def coletar(args: argparse.Namespace) -> int:
         ).mappings().all() if ids else []
     contagens = {linha["status"]: int(linha["total"]) for linha in estados}
     concluidos = contagens.get("SUCCEEDED", 0)
-    print({"fluxo": args.fluxo, "jobs": ids, "tentativas": executados, "estados": contagens, "modalidades": modalidades})
+    print({"fluxo": args.fluxo, "jobs": ids, "tentativas": executados, "estados": contagens, "ufs": ufs, "modalidades": modalidades})
     return 0 if not ids or concluidos == len(ids) else 2
 
 
@@ -339,6 +342,7 @@ def main() -> int:
     for comando in (coleta, atualizacao):
         comando.add_argument("--dias", type=int, default=1)
         comando.add_argument("--modalidade", type=int, action="append", default=[])
+        comando.add_argument("--uf", choices=UFS_NORDESTE, action="append", default=[])
         comando.add_argument("--tamanho-pagina", type=int, default=50)
         comando.add_argument("--ano", type=int, help="Agenda backfill de publicações do ano informado")
         comando.add_argument("--janela-dias", type=int, default=7)

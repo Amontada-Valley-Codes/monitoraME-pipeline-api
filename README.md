@@ -612,12 +612,16 @@ docker compose -p monitorame-pncp-test exec -T api \
   python scripts/replay_pncp_jobs.py --job-id 123
 ```
 
-O cliente PNCP limita `tamanhoPagina` a 50. Para agendar um backfill anual de
-publicações, indique o ano e as modalidades; o padrão divide a coleta em janelas
-semanais. Consulte cobertura e oportunidades por cada conceito de ano:
+O fluxo de publicação e atualização usa por padrão somente UFs do Nordeste
+(`AL`, `BA`, `CE`, `MA`, `PB`, `PE`, `PI`, `RN`, `SE`) e modalidades
+Concorrência/Pregão (`4`, `5`, `6`, `7`, `16`, `17`, `18`). Cada combinação UF e
+modalidade tem job e cursor próprios. É possível restringir ainda mais com
+`--uf` e `--modalidade` repetidos. O cliente PNCP limita `tamanhoPagina` a 50.
+Para agendar um backfill anual de publicações, indique o ano; o padrão divide a
+coleta em janelas semanais:
 
 ```bash
-docker compose exec api python scripts/pncp_operacao.py coletar-publicacao --ano 2026 --modalidade 6 --modalidade 8
+docker compose exec api python scripts/pncp_operacao.py coletar-publicacao --ano 2026
 GET /pncp/cobertura/2026
 GET /pncp/editais?ano_publicacao=2026
 GET /pncp/editais?ano_compra=2026
