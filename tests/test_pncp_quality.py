@@ -14,7 +14,7 @@ from app.pncp.quality import RULE_VERSION, avaliar_payload, consultar_qualidade_
 
 
 def raw(payload=None, **kwargs):
-    dados = {"numeroControlePNCP": "id-1", "orgaoEntidade": {"cnpj": "00394460000141"}, "unidadeOrgao": {"codigoIbge": "0123456"}, "objetoCompra": " Compra ", "valorTotalEstimado": "12345678901234567890.12", "valorTotalHomologado": "0.01", "orcamentoSigiloso": False, "orcamentoSigilosoCodigo": 1, "orcamentoSigilosoDescricao": "Sem sigilo", "dataAberturaProposta": "2026-10-21T10:00:00-03:00", "tipoInstrumentoConvocatorioCodigo": 1,  "dataPublicacaoPncp": "2026-10-21", "dataAtualizacao": "2026-10-21T09:00:00-03:00", "dataEncerramentoProposta": "2026-10-30T10:00:00-03:00", "modalidadeId": 6, "situacaoCompraId": 1}
+    dados = {"numeroControlePNCP": "id-1", "orgaoEntidade": {"cnpj": "00394460000141"}, "unidadeOrgao": {"codigoIbge": "0123456"}, "objetoCompra": " Compra ", "informacaoComplementar": "Informação complementar", "valorTotalEstimado": "12345678901234567890.12", "valorTotalHomologado": "0.01", "orcamentoSigiloso": False, "orcamentoSigilosoCodigo": 1, "orcamentoSigilosoDescricao": "Sem sigilo", "dataAberturaProposta": "2026-10-21T10:00:00-03:00", "tipoInstrumentoConvocatorioCodigo": 1,  "dataPublicacaoPncp": "2026-10-21", "dataAtualizacao": "2026-10-21T09:00:00-03:00", "dataEncerramentoProposta": "2026-10-30T10:00:00-03:00", "modalidadeId": 6, "situacaoCompraId": 1}
     if payload: dados.update(payload)
     if not payload or "dataAtualizacaoGlobal" not in payload:
         origem = kwargs.get("source_updated_at") or dados["dataAtualizacao"]
@@ -107,7 +107,7 @@ class QualidadePncpTest(unittest.TestCase):
         session = MagicMock()
         session.scalars.return_value.all.return_value = [evidencia]
         relatorio = consultar_qualidade_session(session, run_id="run-1", endpoint=evidencia.endpoint)
-        self.assertEqual(len(relatorio["metricas"]), 17)
+        self.assertEqual(len(relatorio["metricas"]), 18)
         excecao = relatorio["excecoes"][0]
         self.assertEqual(excecao["raw_id"], 1)
         self.assertTrue(excecao["evidencia_reprocessamento"])
