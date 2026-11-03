@@ -22,6 +22,8 @@ ENDPOINT_ATUALIZACAO = "/v1/contratacoes/atualizacao"
 ENDPOINT_PROPOSTAS_ABERTAS = "/v1/contratacoes/proposta"
 FONTE = "PNCP"
 TIPO = "CONTRATACAO"
+UFS_NORDESTE = ("AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE")
+MODALIDADES_PRIORITARIAS = (4, 5, 6, 7, 16, 17, 18)
 
 
 class PncpColetaError(RuntimeError):
@@ -74,12 +76,16 @@ class ClientePncp:
         self.session = session or requests.Session()
         self.protecao = protecao or ProtecaoPncp()
 
-    def buscar_publicacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
+    def buscar_publicacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int, uf: str | None = None) -> PaginaContratacoes:
         parametros = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade}
+        if uf is not None:
+            parametros["uf"] = uf
         return self._buscar(ENDPOINT_PUBLICACAO, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
-    def buscar_atualizacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int) -> PaginaContratacoes:
+    def buscar_atualizacoes(self, *, inicio: date, fim: date, modalidade: int, pagina: int, tamanho_pagina: int, uf: str | None = None) -> PaginaContratacoes:
         parametros = {"dataInicial": inicio.strftime("%Y%m%d"), "dataFinal": fim.strftime("%Y%m%d"), "codigoModalidadeContratacao": modalidade}
+        if uf is not None:
+            parametros["uf"] = uf
         return self._buscar(ENDPOINT_ATUALIZACAO, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
     def buscar_propostas_abertas(self, *, data_final: date, pagina: int, tamanho_pagina: int, modalidade: int | None = None) -> PaginaContratacoes:
@@ -154,21 +160,24 @@ class ClientePncp:
         return PaginaContratacoes(itens, total)
 
 
-def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], tamanho_pagina: int = 50, prioridade: int = 70) -> list[NovoJob]:
+def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] = UFS_NORDESTE, tamanho_pagina: int = 50, prioridade: int = 70) -> list[NovoJob]:
     if inicio.tzinfo is None or fim.tzinfo is None or fim < inicio:
         raise ValueError("janela com timezone e ordem valida e obrigatoria")
     if not 1 <= tamanho_pagina <= 50:
         raise ValueError("tamanho_pagina deve estar entre 1 e 50")
     jobs: list[NovoJob] = []
-    for modalidade in modalidades:
-        scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
-        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
+    if not ufs or any(uf not in UFS_NORDESTE for uf in ufs):
+        raise ValueError("ufs deve conter somente UFs do Nordeste")
+    for uf in ufs:
+        for modalidade in modalidades:
+            scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:uf:{uf}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
+            jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
     return jobs
 
 
-def agendar_backfill_anual(*, ano: int, modalidades: list[int], agora: datetime | None = None, tamanho_janela_dias: int = 7, tamanho_pagina: int = 50) -> list[NovoJob]:
+def agendar_backfill_anual(*, ano: int, modalidades: list[int], ufs: tuple[str, ...] | list[str] = UFS_NORDESTE, agora: datetime | None = None, tamanho_janela_dias: int = 7, tamanho_pagina: int = 50) -> list[NovoJob]:
     """Agenda o ano por janelas curtas para limitar páginas por execução."""
-    if ano < 2000 or tamanho_janela_dias < 1 or not modalidades or tamanho_pagina < 1 or tamanho_pagina > 50:
+    if ano < 2000 or tamanho_janela_dias < 1 or not modalidades or not ufs or any(uf not in UFS_NORDESTE for uf in ufs) or tamanho_pagina < 1 or tamanho_pagina > 50:
         raise ValueError("ano, janela e tamanho de página inválidos")
     atual = agora or datetime.now(timezone.utc)
     if atual.tzinfo is None:
@@ -181,9 +190,10 @@ def agendar_backfill_anual(*, ano: int, modalidades: list[int], agora: datetime 
     inicio = inicio_ano
     while inicio < fim_ano:
         fim = min(inicio + timedelta(days=tamanho_janela_dias) - timedelta(seconds=1), fim_ano)
-        for modalidade in modalidades:
-            scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
-            jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
+        for uf in ufs:
+            for modalidade in modalidades:
+                scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:uf:{uf}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
+                jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
         inicio = fim + timedelta(seconds=1)
     return jobs
 
@@ -241,12 +251,13 @@ def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pa
         raise ValueError("job nao representa uma janela de publicacao PNCP")
     try:
         modalidade = int(job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0])
+        uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None
     except (IndexError, ValueError) as exc:
         raise ValueError("scope_key de publicacao invalido") from exc
     pagina = job.page or 1
     total_registros = 0
     while True:
-        resultado = cliente.buscar_publicacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+        resultado = cliente.buscar_publicacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, uf=uf, pagina=pagina, tamanho_pagina=tamanho_pagina)
         # Vazia e valida somente encerra quando e a primeira pagina ou apos pagina conhecida.
         for item in resultado.itens:
             external_id = item.get("numeroControlePNCP")
@@ -259,13 +270,13 @@ def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pa
             if not resultado.itens and pagina < resultado.total_paginas:
                 raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP")
             if pagina >= resultado.total_paginas:
-                confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+                confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
                 return total_registros
         elif len(resultado.itens) < tamanho_pagina:
-            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
             return total_registros
         elif not resultado.itens:
-            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
             return total_registros
         pagina += 1
 

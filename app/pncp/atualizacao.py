@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core import orm
 from app.core.models import PncpContratacaoAtual, PncpCursor
-from app.pncp.ingestion import ClientePncp, PncpColetaError
+from app.pncp.ingestion import ClientePncp, PncpColetaError, UFS_NORDESTE
 from app.pncp.jobs import JobReivindicado, NovoJob
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
@@ -21,8 +21,8 @@ def _data(valor: Any) -> datetime | None:
     try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
     except ValueError: return None
 
-def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int]) -> list[NovoJob]:
-    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1) for m in modalidades]
+def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] = UFS_NORDESTE) -> list[NovoJob]:
+    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{uf}:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:uf:{uf}:modalidade:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1) for uf in ufs for m in modalidades]
 
 def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_hash: str, source_updated_at: datetime | None) -> str:
     external_id = str(item["numeroControlePNCP"])
@@ -34,9 +34,9 @@ def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_
 
 def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> dict[str, int]:
     if job.window_start is None or job.window_end is None: raise ValueError("janela obrigatoria")
-    modalidade = int(job.scope_key.rsplit(":", 1)[1]); pagina = job.page or 1; totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
+    modalidade = int(job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0]) if ":modalidade:" in job.scope_key else int(job.scope_key.rsplit(":", 1)[1]); uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None; pagina = job.page or 1; totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
     while True:
-        resposta = cliente.buscar_atualizacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
+        resposta = cliente.buscar_atualizacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, uf=uf, pagina=pagina, tamanho_pagina=tamanho_pagina)
         if not resposta.itens and resposta.total_paginas and pagina < resposta.total_paginas: raise PncpColetaError("pagina de atualizacao incompleta")
         for item in resposta.itens:
             if not isinstance(item.get("numeroControlePNCP"), str): raise PncpColetaError("atualizacao sem numeroControlePNCP")
@@ -48,5 +48,5 @@ def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_p
         if resposta.total_paginas is not None and pagina >= resposta.total_paginas: break
         if resposta.total_paginas is None and len(resposta.itens) < tamanho_pagina: break
         pagina += 1
-    confirmar_janela(ChaveCursor("PNCP", "CONTRATACAO", FLOW, f"modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+    confirmar_janela(ChaveCursor("PNCP", "CONTRATACAO", FLOW, f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
     return totais
