@@ -153,8 +153,13 @@ class OrmEngineFactoryTest(unittest.TestCase):
         self.sslmode_env_patch.stop()
         orm.dispose_engines()
 
+    @patch("app.core.orm._registrar_medicao_banco")
     @patch("app.core.orm.create_engine")
-    def test_main_engine_usa_database_url_sslmode_e_cache(self, create_engine) -> None:
+    def test_main_engine_usa_database_url_sslmode_e_cache(
+        self,
+        create_engine,
+        registrar_medicao,
+    ) -> None:
         engine = MagicMock()
         create_engine.return_value = engine
 
@@ -164,6 +169,7 @@ class OrmEngineFactoryTest(unittest.TestCase):
         self.assertIs(primeiro, engine)
         self.assertIs(segundo, engine)
         create_engine.assert_called_once()
+        registrar_medicao.assert_called_once_with(engine)
         args, kwargs = create_engine.call_args
         self.assertEqual(args[0], _url_psycopg(os.environ["DATABASE_URL"]))
         self.assertEqual(kwargs["pool_size"], 10)

@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
+from time import perf_counter
+from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -27,6 +30,80 @@ _main_engine: Engine | None = None
 _log_engine: Engine | None = None
 _main_session_factory: sessionmaker[Session] | None = None
 _log_session_factory: sessionmaker[Session] | None = None
+_medicao_banco_atual: ContextVar[dict[str, float | int] | None] = ContextVar(
+    "medicao_banco_atual",
+    default=None,
+)
+
+
+def iniciar_medicao_banco() -> Any:
+    """Inicia uma medicao opt-in das consultas no banco principal.
+
+    O dicionario e intencionalmente mutavel: o contexto da requisicao e copiado
+    pelo FastAPI para a thread que executa o endpoint sincrono, mas ambas as
+    threads continuam apontando para o mesmo acumulador.
+    """
+    return _medicao_banco_atual.set({"duration_ms": 0.0, "queries": 0})
+
+
+def obter_medicao_banco() -> dict[str, float | int]:
+    medicao = _medicao_banco_atual.get()
+    if medicao is None:
+        return {"duration_ms": 0.0, "queries": 0}
+    return dict(medicao)
+
+
+def finalizar_medicao_banco(token: Any) -> None:
+    _medicao_banco_atual.reset(token)
+
+
+def _iniciar_consulta_banco(
+    _conn: Any,
+    _cursor: Any,
+    _statement: str,
+    _parameters: Any,
+    context: Any,
+    _executemany: bool,
+) -> None:
+    if _medicao_banco_atual.get() is not None:
+        context._monitorame_inicio_consulta = perf_counter()
+
+
+def _concluir_consulta_banco(context: Any) -> None:
+    inicio = getattr(context, "_monitorame_inicio_consulta", None)
+    if inicio is None:
+        return
+    context._monitorame_inicio_consulta = None
+    medicao = _medicao_banco_atual.get()
+    if medicao is None:
+        return
+    medicao["duration_ms"] = float(medicao["duration_ms"]) + (
+        perf_counter() - inicio
+    ) * 1000
+    medicao["queries"] = int(medicao["queries"]) + 1
+
+
+def _finalizar_consulta_banco(
+    _conn: Any,
+    _cursor: Any,
+    _statement: str,
+    _parameters: Any,
+    context: Any,
+    _executemany: bool,
+) -> None:
+    _concluir_consulta_banco(context)
+
+
+def _finalizar_consulta_banco_com_erro(exception_context: Any) -> None:
+    context = exception_context.execution_context
+    if context is not None:
+        _concluir_consulta_banco(context)
+
+
+def _registrar_medicao_banco(engine: Engine) -> None:
+    event.listen(engine, "before_cursor_execute", _iniciar_consulta_banco)
+    event.listen(engine, "after_cursor_execute", _finalizar_consulta_banco)
+    event.listen(engine, "handle_error", _finalizar_consulta_banco_com_erro)
 
 
 def _psycopg_database_url(database_url: str) -> str:
@@ -79,6 +156,7 @@ def get_main_engine() -> Engine:
 
     if _main_engine is None:
         _main_engine = _engine(main_database_url(), main_connect_args())
+        _registrar_medicao_banco(_main_engine)
     return _main_engine
 
 
@@ -185,10 +263,12 @@ __all__ = [
     "dispose_engines",
     "dispose_log_engine",
     "dispose_main_engine",
+    "finalizar_medicao_banco",
     "get_log_engine",
     "get_log_session_factory",
     "get_main_engine",
     "get_main_session_factory",
+    "iniciar_medicao_banco",
     "log_connect_args",
     "log_database_url",
     "log_session",
@@ -197,4 +277,5 @@ __all__ = [
     "main_session",
     "new_log_session",
     "new_main_session",
+    "obter_medicao_banco",
 ]

@@ -373,6 +373,10 @@ Todos os valores monetários são inteiros em centavos e os percentuais usam a
 escala de `0` a `100`. Competências ausentes aparecem explicitamente na
 cobertura e não são convertidas em meses com valor zero.
 
+O teste concorrente desse motor usa múltiplos municípios, mede média, p95, p99,
+throughput, erros, tempo SQL, CPU e memória, e gera relatórios JSON e Markdown.
+Consulte [o procedimento de teste de carga](docs/carga-indicadores.md).
+
 Competências publicadas são reutilizadas enquanto estiverem dentro da política
 de atualização: uma hora para o mês atual, 24 horas para os três meses
 anteriores e sete dias para os meses mais antigos. Quando uma publicação
