@@ -1,4 +1,4 @@
-name: monitorame
+name: monitorame-pipeline-api
 
 x-app-service: &app-service
   build:
