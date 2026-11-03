@@ -11,6 +11,7 @@ import pandas as pd
 from app.core import database
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline import analitico, empenhos
+from app.pipeline import tce_observability
 from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor, extrair_cnpjs_distintos
 from app.pipeline.persistence import tce_despesas as persistence
 
@@ -197,17 +198,14 @@ def consultar_analise_territorial(
     )
     competencias_publicadas = [item for item in competencias_solicitadas if item in publicacoes]
     competencias_ausentes = [item for item in competencias_solicitadas if item not in publicacoes]
-    if not competencias_publicadas:
-        raise empenhos.EmpenhoRequestError(
-            "TERRITORIAL_DATA_NOT_AVAILABLE",
-            "O municipio nao possui competencias publicadas no periodo solicitado.",
-            [{"field": "filters", "reason": "no_published_competence"}],
+    registros = (
+        persistence.listar_empenhos_liquidos_publicados(
+            codigo_municipio_tce=municipality_tce_code,
+            data_inicial=inicio,
+            data_final=fim,
         )
-
-    registros = persistence.listar_empenhos_liquidos_publicados(
-        codigo_municipio_tce=municipality_tce_code,
-        data_inicial=inicio,
-        data_final=fim,
+        if competencias_publicadas
+        else []
     )
     base_tce = pd.DataFrame(registros)
     cnpjs = extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor")) if not base_tce.empty else []
@@ -288,8 +286,30 @@ def consultar_analise_territorial(
 
     com_cache = int(base["cnpj_fornecedor"].isin(cnpjs_cache).sum()) if not base.empty else 0
     valor_conhecido = liquido - desconhecida
-    return {
+    publicacoes_metadados = [
+        {
+            "codigo_municipio_tce": municipality_tce_code,
+            "competencia": competencia,
+            "publicado_em": publicado_em,
+        }
+        for competencia, publicado_em in publicacoes.items()
+    ]
+    falhas = persistence.listar_falhas_competencias(
+        codigo_municipio_tce=municipality_tce_code,
+        competencias=competencias_solicitadas,
+    )
+    metadados_carga = tce_observability.construir_metadados_carga(
+        data_inicial=inicio,
+        data_final=fim,
+        competencias_solicitadas=competencias_solicitadas,
+        publicacoes=publicacoes_metadados,
+        falhas=falhas,
+        registros=registros,
+        municipios_no_escopo=1,
+    )
+    resposta = {
         "fonte": "TCE-CE",
+        **metadados_carga,
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
         "unidade_monetaria": "CENTAVOS",
@@ -351,6 +371,9 @@ def consultar_analise_territorial(
             "escopo_elementos": list(NATUREZAS_DESPESA_MONITORADAS),
         },
     }
+    if not metadados_carga["data_available"] or base.empty:
+        resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
+    return resposta
 
 
 __all__ = ["consultar_analise_territorial"]

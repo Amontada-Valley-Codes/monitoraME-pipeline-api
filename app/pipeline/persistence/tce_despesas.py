@@ -341,6 +341,62 @@ def listar_publicacoes_competencias(
     return {str(competencia): publicado_em for competencia, publicado_em in registros}
 
 
+def listar_falhas_competencias(
+    *,
+    competencias: Iterable[str],
+    codigo_municipio_tce: str | None = None,
+    uf: str | None = None,
+) -> list[dict[str, Any]]:
+    """Retorna somente instantes/status de falhas, sem expor mensagens do fornecedor."""
+    competencias_unicas = tuple(dict.fromkeys(str(item) for item in competencias))
+    if not competencias_unicas:
+        return []
+    database.init_db()
+    consulta = (
+        select(
+            TceDespesaIngestionRun.codigo_municipio_tce,
+            TceDespesaIngestionRun.competencia,
+            func.max(TceDespesaIngestionRun.finalizado_em).label("finalizado_em"),
+        )
+        .where(
+            TceDespesaIngestionRun.status == STATUS_REJEITADO,
+            TceDespesaIngestionRun.competencia.in_(competencias_unicas),
+        )
+        .group_by(
+            TceDespesaIngestionRun.codigo_municipio_tce,
+            TceDespesaIngestionRun.competencia,
+        )
+    )
+    if codigo_municipio_tce is not None:
+        consulta = consulta.where(
+            TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce
+        )
+    if uf is not None:
+        consulta = (
+            consulta.join(
+                TceMunicipio,
+                TceMunicipio.codigo_municipio_tce
+                == TceDespesaIngestionRun.codigo_municipio_tce,
+            )
+            .join(
+                IbgeMunicipio,
+                IbgeMunicipio.codigo_municipio
+                == TceMunicipio.codigo_municipio_ibge,
+            )
+            .where(IbgeMunicipio.uf == uf.upper())
+        )
+    with orm.main_session() as session:
+        registros = session.execute(consulta).mappings().all()
+    return [
+        {
+            "codigo_municipio_tce": str(item["codigo_municipio_tce"]),
+            "competencia": str(item["competencia"]),
+            "finalizado_em": item["finalizado_em"],
+        }
+        for item in registros
+    ]
+
+
 def listar_empenhos_liquidos_publicados(
     *,
     codigo_municipio_tce: str | None,

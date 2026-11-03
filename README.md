@@ -378,12 +378,21 @@ O teste concorrente desse motor usa múltiplos municípios, mede média, p95, p9
 throughput, erros, tempo SQL, CPU e memória, e gera relatórios JSON e Markdown.
 Consulte [o procedimento de teste de carga](docs/carga-indicadores.md).
 
-Competências publicadas são reutilizadas enquanto estiverem dentro da política
-de atualização: uma hora para o mês atual, 24 horas para os três meses
-anteriores e sete dias para os meses mais antigos. Quando uma publicação
-vencida não pode ser atualizada, sua última versão continua no cálculo e a
-competência aparece em `competencias_desatualizadas`. Competências sem qualquer
-publicação continuam aparecendo em `competencias_ausentes`.
+As rotas analíticas de overview, comparação, indicadores e análise territorial
+são somente leitura: usam o último lote `PUBLICADO` e cadastros já armazenados,
+sem iniciar ingestão nem consultar fontes externas. Se uma tentativa posterior
+falhar, o lote publicado anterior permanece disponível e a resposta sinaliza
+`is_stale` e `stale_reason`. A atualização das competências deve ocorrer pelo
+processo de carga, separado da leitura analítica.
+
+Essas respostas incluem `data_available`, `data_as_of`,
+`last_successful_load_at`, `is_stale`, `stale_reason` e `quality`. O objeto
+`quality` informa municípios com dados/no escopo, despesas de origem
+desconhecida, cobertura da classificação histórica de porte, período parcial,
+competências ausentes e alertas legíveis sem expor documentos ou nomes de
+fornecedores. Um lote publicado sem empenhos representa ausência conhecida de
+movimento: valores monetários são zero e taxas sem denominador são `null`.
+Município/competência sem publicação não é tratado como valor zero.
 
 ### Overview estadual de ME
 
