@@ -160,24 +160,25 @@ class ClientePncp:
         return PaginaContratacoes(itens, total)
 
 
-def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] = UFS_NORDESTE, tamanho_pagina: int = 50, prioridade: int = 70) -> list[NovoJob]:
+def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None, tamanho_pagina: int = 50, prioridade: int = 70) -> list[NovoJob]:
     if inicio.tzinfo is None or fim.tzinfo is None or fim < inicio:
         raise ValueError("janela com timezone e ordem valida e obrigatoria")
     if not 1 <= tamanho_pagina <= 50:
         raise ValueError("tamanho_pagina deve estar entre 1 e 50")
     jobs: list[NovoJob] = []
-    if not ufs or any(uf not in UFS_NORDESTE for uf in ufs):
+    if ufs is not None and (not ufs or any(uf not in UFS_NORDESTE for uf in ufs)):
         raise ValueError("ufs deve conter somente UFs do Nordeste")
-    for uf in ufs:
+    for uf in (ufs or (None,)):
         for modalidade in modalidades:
-            scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:uf:{uf}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
+            uf_scope = f":uf:{uf}" if uf is not None else ""
+            scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
             jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
     return jobs
 
 
-def agendar_backfill_anual(*, ano: int, modalidades: list[int], ufs: tuple[str, ...] | list[str] = UFS_NORDESTE, agora: datetime | None = None, tamanho_janela_dias: int = 7, tamanho_pagina: int = 50) -> list[NovoJob]:
+def agendar_backfill_anual(*, ano: int, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None, agora: datetime | None = None, tamanho_janela_dias: int = 7, tamanho_pagina: int = 50) -> list[NovoJob]:
     """Agenda o ano por janelas curtas para limitar páginas por execução."""
-    if ano < 2000 or tamanho_janela_dias < 1 or not modalidades or not ufs or any(uf not in UFS_NORDESTE for uf in ufs) or tamanho_pagina < 1 or tamanho_pagina > 50:
+    if ano < 2000 or tamanho_janela_dias < 1 or not modalidades or (ufs is not None and (not ufs or any(uf not in UFS_NORDESTE for uf in ufs))) or tamanho_pagina < 1 or tamanho_pagina > 50:
         raise ValueError("ano, janela e tamanho de página inválidos")
     atual = agora or datetime.now(timezone.utc)
     if atual.tzinfo is None:
@@ -190,9 +191,10 @@ def agendar_backfill_anual(*, ano: int, modalidades: list[int], ufs: tuple[str, 
     inicio = inicio_ano
     while inicio < fim_ano:
         fim = min(inicio + timedelta(days=tamanho_janela_dias) - timedelta(seconds=1), fim_ano)
-        for uf in ufs:
+        for uf in (ufs or (None,)):
             for modalidade in modalidades:
-                scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}:uf:{uf}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
+                uf_scope = f":uf:{uf}" if uf is not None else ""
+                scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
                 jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
         inicio = fim + timedelta(seconds=1)
     return jobs
@@ -270,13 +272,16 @@ def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pa
             if not resultado.itens and pagina < resultado.total_paginas:
                 raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP")
             if pagina >= resultado.total_paginas:
-                confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+                escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
+                confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))
                 return total_registros
         elif len(resultado.itens) < tamanho_pagina:
-            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+            escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
+            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))
             return total_registros
         elif not resultado.itens:
-            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+            escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
+            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))
             return total_registros
         pagina += 1
 

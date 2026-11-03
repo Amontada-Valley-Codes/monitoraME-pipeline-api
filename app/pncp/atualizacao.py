@@ -21,8 +21,8 @@ def _data(valor: Any) -> datetime | None:
     try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
     except ValueError: return None
 
-def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] = UFS_NORDESTE) -> list[NovoJob]:
-    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{uf}:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:uf:{uf}:modalidade:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1) for uf in ufs for m in modalidades]
+def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None) -> list[NovoJob]:
+    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{uf}:{m}" if uf else f"atualizacao:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:uf:{uf}:modalidade:{m}" if uf else f"atualizacao:{inicio.date()}:{fim.date()}:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1) for uf in (ufs or (None,)) for m in modalidades]
 
 def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_hash: str, source_updated_at: datetime | None) -> str:
     external_id = str(item["numeroControlePNCP"])
@@ -48,5 +48,6 @@ def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_p
         if resposta.total_paginas is not None and pagina >= resposta.total_paginas: break
         if resposta.total_paginas is None and len(resposta.itens) < tamanho_pagina: break
         pagina += 1
-    confirmar_janela(ChaveCursor("PNCP", "CONTRATACAO", FLOW, f"uf:{uf or 'todas'}:modalidade:{modalidade}"), final=job.window_end, run_id=str(job.id))
+    escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
+    confirmar_janela(ChaveCursor("PNCP", "CONTRATACAO", FLOW, escopo_cursor), final=job.window_end, run_id=str(job.id))
     return totais
