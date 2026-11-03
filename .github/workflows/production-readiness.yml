@@ -90,7 +90,7 @@ jobs:
           rm -f .env
 
       - name: Build production Docker image
-        run: docker build --pull -t monitorame-pipeline-api:ci .
+        run: docker build --pull -t pipeline-api:ci .
 
   deploy:
     name: Deploy production
@@ -153,9 +153,9 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            "cd /docker/monitorame-pipeline-api && test -s .env && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml config -q && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml up -d --build && bash -s" <<'REMOTE'
+            "cd /docker/monitorame-pipeline-api && test -s .env && export API_IMAGE=pipeline-api:${GITHUB_SHA} MIGRATION_IMAGE=pipeline-migrate:${GITHUB_SHA} PNCP_NORMALIZATION_IMAGE=pncp-worker-normalizacao:${GITHUB_SHA} PNCP_ENRICHMENT_IMAGE=pncp-worker-enriquecimento:${GITHUB_SHA} MATCHING_NLP_IMAGE=matching-nlp-worker:${GITHUB_SHA} && docker compose -f compose.production.yaml config -q && docker compose -f compose.production.yaml up -d --build && bash -s" <<'REMOTE'
           set -euo pipefail
-          container_id="$(APP_IMAGE=monitorame-pipeline-api:production docker compose -f compose.production.yaml ps -q api)"
+          container_id="$(docker compose -f compose.production.yaml ps -q api)"
           if [ -z "$container_id" ]; then
             echo "API container was not created." >&2
             exit 1

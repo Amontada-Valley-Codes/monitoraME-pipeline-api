@@ -224,15 +224,16 @@ históricos precisam ser preservados.
 Para construir apenas a imagem:
 
 ```bash
-docker build -t monitorame-pipeline-api:local .
+docker build -t pipeline-api:local .
+docker build -t pipeline-migrate:local .
 ```
 
-A imagem executa a API por padrão e aceita o comando `migrate` para aplicar os
-dois ambientes Alembic:
+A imagem `pipeline-api` executa a API por padrão. A imagem
+`pipeline-migrate` aplica os dois ambientes Alembic:
 
 ```bash
-docker run --rm --env-file .env monitorame-pipeline-api:local migrate
-docker run --rm --env-file .env -p 8000:8000 monitorame-pipeline-api:local
+docker run --rm --env-file .env pipeline-migrate:local
+docker run --rm --env-file .env -p 8000:8000 pipeline-api:local
 ```
 
 Para publicar em um registry, defina um nome versionado, construa e envie:

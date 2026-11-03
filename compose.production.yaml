@@ -4,7 +4,6 @@ x-app-service: &app-service
   build:
     context: .
     dockerfile: Dockerfile
-  image: ${APP_IMAGE:-monitorame-pipeline-api:production}
   env_file:
     - .env
   environment:
@@ -33,6 +32,7 @@ services:
 
   migrate:
     <<: *app-service
+    image: ${MIGRATION_IMAGE:-pipeline-migrate:production}
     command: ["migrate"]
     depends_on:
       postgres:
@@ -41,6 +41,7 @@ services:
 
   api:
     <<: *app-service
+    image: ${API_IMAGE:-pipeline-api:production}
     init: true
     depends_on:
       migrate:
@@ -73,6 +74,7 @@ services:
 
   pncp-worker-normalizacao:
     <<: *app-service
+    image: ${PNCP_NORMALIZATION_IMAGE:-pncp-worker-normalizacao:production}
     init: true
     command: ["python", "scripts/pncp_worker.py", "normalizacao"]
     depends_on:
@@ -82,6 +84,7 @@ services:
 
   pncp-worker-enriquecimento:
     <<: *app-service
+    image: ${PNCP_ENRICHMENT_IMAGE:-pncp-worker-enriquecimento:production}
     init: true
     command: ["python", "scripts/pncp_worker.py", "enriquecimento"]
     depends_on:
@@ -96,7 +99,7 @@ services:
       dockerfile: Dockerfile
       args:
         INSTALL_NLP: "1"
-    image: ${MATCHING_NLP_IMAGE:-monitorame-matching-nlp:production}
+    image: ${MATCHING_NLP_IMAGE:-matching-nlp-worker:production}
     init: true
     command: ["python", "scripts/matching_nlp_worker.py"]
     depends_on:
