@@ -63,6 +63,8 @@ class OrmMetadataTest(unittest.TestCase):
             "tce_despesa_ingestion_runs",
             "tce_empenhos",
             "tce_anulacoes_empenhos",
+            "tce_pagamento_ingestion_runs",
+            "tce_pagamentos",
         }
 
         self.assertEqual(set(orm.MainBase.metadata.tables), esperado)
