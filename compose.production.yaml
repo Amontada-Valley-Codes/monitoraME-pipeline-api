@@ -82,6 +82,16 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  pncp-worker-coleta:
+    <<: *app-service
+    image: ${PNCP_COLLECTION_IMAGE:-pncp-worker-coleta:production}
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "coleta"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   pncp-worker-enriquecimento:
     <<: *app-service
     image: ${PNCP_ENRICHMENT_IMAGE:-pncp-worker-enriquecimento:production}

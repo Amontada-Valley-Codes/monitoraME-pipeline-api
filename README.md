@@ -580,19 +580,19 @@ A migration `0003_remove_pncp` exclui as antigas tabelas do módulo de oportunid
 O contrato RAW, a política inicial de retenção e as garantias de idempotência
 estão em [docs/pncp-raw.md](docs/pncp-raw.md).
 
-Para coletar contratações que ainda recebem propostas, sem limitar pela data de
-publicação do edital, use o endpoint PNCP de propostas abertas:
+Na VPS, execute a CLI pelo container `api`. Para coletar oportunidades pelos
+fluxos persistentes de publicação ou atualização e processar a fila, use:
 
 ```bash
-pncp coletar-propostas-abertas --tamanho-pagina 50
-pncp normalizar --limite 100
-pncp status
+docker compose -f compose.production.yaml exec api pncp coletar-publicacao --dias 1
+docker compose -f compose.production.yaml exec api pncp status
+docker compose -f compose.production.yaml logs -f pncp-worker-coleta pncp-worker-normalizacao
 ```
 
-Sem `--modalidade`, a consulta inclui todas as modalidades. Para filtrar, repita
-`--modalidade`, por exemplo `--modalidade 6 --modalidade 8`. A coleta percorre
-todas as páginas retornadas pelo PNCP, salva cada resposta em RAW e agenda a
-normalização. `--tamanho-pagina` aceita no máximo 50.
+Para um backfill, substitua `--dias 1` por `--ano 2026`; para atualizações,
+use `coletar-atualizacao` no lugar de `coletar-publicacao`. Os workers de coleta
+e normalização processam os jobs persistidos. `pncp coletar-amostra-abertas` é
+uma operação manual limitada e não substitui esses fluxos.
 
 Para executar uma coleta de fumaça do PNCP no ambiente Compose isolado, use
 `docker compose -p monitorame-pncp-test`. O nome passado em `-p` é uma opção

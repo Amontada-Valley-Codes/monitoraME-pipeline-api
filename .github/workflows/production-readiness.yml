@@ -153,7 +153,7 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            "cd /docker/monitorame-pipeline-api && test -s .env && export API_IMAGE=pipeline-api:${GITHUB_SHA} MIGRATION_IMAGE=pipeline-migrate:${GITHUB_SHA} PNCP_NORMALIZATION_IMAGE=pncp-worker-normalizacao:${GITHUB_SHA} PNCP_ENRICHMENT_IMAGE=pncp-worker-enriquecimento:${GITHUB_SHA} MATCHING_NLP_IMAGE=matching-nlp-worker:${GITHUB_SHA} && docker compose -f compose.production.yaml config -q && docker compose -f compose.production.yaml up -d --build && bash -s" <<'REMOTE'
+            "cd /docker/monitorame-pipeline-api && test -s .env && export API_IMAGE=pipeline-api:${GITHUB_SHA} MIGRATION_IMAGE=pipeline-migrate:${GITHUB_SHA} PNCP_COLLECTION_IMAGE=pncp-worker-coleta:${GITHUB_SHA} PNCP_NORMALIZATION_IMAGE=pncp-worker-normalizacao:${GITHUB_SHA} PNCP_ENRICHMENT_IMAGE=pncp-worker-enriquecimento:${GITHUB_SHA} MATCHING_NLP_IMAGE=matching-nlp-worker:${GITHUB_SHA} && docker compose -f compose.production.yaml config -q && docker compose -f compose.production.yaml up -d --build && bash -s" <<'REMOTE'
           set -euo pipefail
           container_id="$(docker compose -f compose.production.yaml ps -q api)"
           if [ -z "$container_id" ]; then
