@@ -18,7 +18,7 @@ GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&refere
 
 Use o prefixo de montagem da API da aplicacao antes de `/pipeline`. O exercicio e o ano do orcamento; a referencia final e o ultimo mes da documentacao consultada, nao a data limite de emissao do pagamento. O inicio e janeiro do exercicio e o termino precisa cobrir pelo menos dezembro desse ano.
 
-O endpoint consulta as fontes externas em cada chamada. A execucao integral pode demorar varios minutos; nao usa o snapshot de empenhos nem publica dados em bancos. A coleta bruta pode ser preservada pelo comando de auditoria. Nao foi implementado cache persistente de pagamentos ou de portes para este fluxo.
+O endpoint consulta as fontes externas em cada chamada. A execucao integral pode demorar varios minutos; nao usa os snapshots versionados de empenhos. A coleta bruta pode ser preservada pelo comando de auditoria. A ingestao incremental mensal de notas de pagamento e documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md), mas esta rota ainda nao consome os snapshots persistidos nem persiste portes.
 
 - `total_me_centavos`, `me_por_elemento_centavos` e `fornecedores_me`: valores para o recorte publico ME.
 - `controle_financeiro`: totais antes do porte, por elemento e por categoria exclusiva (ME, EPP, Demais, sem classificacao e documento nao CNPJ).
