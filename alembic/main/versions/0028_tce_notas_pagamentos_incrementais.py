@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0028_tce_notas_pagamentos_incrementais"
+revision = "0028_tce_pagamentos_incrementais"
 down_revision = "0027_nlp_matching_results"
 branch_labels = None
 depends_on = None
