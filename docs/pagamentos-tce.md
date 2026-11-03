@@ -31,7 +31,7 @@ ME significa porte cadastral `01`, sem exclusao adicional de MEI. Nome empresari
 
 ## Regras financeiras
 
-O cadastro `orgaos` identifica a Camara por tipo `02` ou nome contendo Camara, sem fixar um numero universal. Orgao ausente do cadastro ou impossibilidade de identificar a Camara impedem a conciliacao.
+O cadastro `orgaos`, consultado no escopo do municipio, identifica a Camara por tipo `02` ou nome contendo Camara, sem fixar um numero universal. Os demais codigos cadastrados sao identificados como orgaos do Executivo municipal. A conciliacao exige ao menos um orgao de cada grupo e rejeita qualquer pagamento cujo orgao nao esteja no cadastro. A auditoria retorna os codigos identificados em `orgaos_executivo_municipal` e `orgaos_camara`.
 
 Coletam-se os doze meses de empenhos e todos os meses de pagamentos ate a referencia final. Cada mes reinicia a paginacao em zero; falhas HTTP, respostas sem uma lista valida de `elements` e itens malformados nao encerram meses como vazios. O exercicio orcamentario permanece fixo, inclusive em referencias posteriores.
 
@@ -39,7 +39,7 @@ O relacionamento usa municipio, exercicio, orgao, unidade orcamentaria, data de 
 
 Qualquer chave repetida, mesmo aparentemente identica, interrompe o calculo com a chave na mensagem. Pagamentos sem empenho e estados de estorno diferentes de `0` e `1` tambem impedem a soma. Nao se escolhe arbitrariamente uma versao conflitante.
 
-Somam-se centavos de `valor_nota_pagamento`, nunca o valor empenhado. Excluem-se a Camara, o estado de estorno `1` e elementos fora de `39`, `30`, `51`, `52`, `32`, `40`, `35`. O elemento corresponde as posicoes cinco e seis do codigo de oito digitos.
+Somam-se centavos de `valor_nota_pagamento`, nunca o valor empenhado. Consideram-se os orgaos do Executivo municipal e excluem-se pagamentos da Camara, do estado de estorno `1` e de elementos fora de `39`, `30`, `51`, `52`, `32`, `40`, `35`. O elemento corresponde as posicoes cinco e seis do codigo de oito digitos.
 
 ## Auditoria real de Acarau/2025
 
