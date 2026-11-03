@@ -13,6 +13,7 @@ O corpus atual produz segmentos vinculados pela chave `source` +
 | Tipo | Origem | Identidade do segmento |
 |---|---|---|
 | `OBJECT` | `pncp_oportunidades.objeto` | `object` |
+| `COMPLEMENTARY` | `dados_semanticos.informacao_complementar`, quando preenchido | `complementary:informacao_complementar` |
 | `COMPLEMENTARY` | `dados_semanticos.orcamento_sigiloso_descricao`, quando preenchido | `complementary:orcamento_sigiloso_descricao` |
 | `ITEM` | `pncp_itens.descricao` | `item:{numero_item}` |
 | `LOT` | descrições dos itens associados ao mesmo `numero_lote` | `lot:{numero_lote}` |
@@ -62,3 +63,14 @@ autenticação, assinatura ou conectividade com o PNCP.
 
 Esta etapa prepara e persiste texto; geração de embeddings, matching e leitura
 de documentos/anexos continuam fora deste comando.
+
+Para registros já normalizados sob `pncp-semantica-1`, a versão nova não
+preenche o campo retroativamente sozinha. Agende reprocessamento dos RAW atuais
+e drene a fila `normalize`; isso atualiza a visão, o corpus e cria os embeddings
+faltantes:
+
+```powershell
+docker compose run --rm api python scripts/pncp_operacao.py reprocessar-normalizacao --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
+docker compose run --rm api python -m app.nlp.cli sync-corpus
+```

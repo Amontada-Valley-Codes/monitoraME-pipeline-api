@@ -49,6 +49,10 @@ OPENAPI_TAGS = [
         "description": "Consulta somente leitura às oportunidades normalizadas e persistidas localmente.",
     },
     {
+        "name": "Compatibilidade NLP",
+        "description": "Consulta somente leitura dos resultados persistidos de compatibilidade entre empresas e editais.",
+    },
+    {
         "name": "Contratos TCE-CE",
         "description": "Consulta e processamento de contratos publicados pelo TCE-CE.",
     },

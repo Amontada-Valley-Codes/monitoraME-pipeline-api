@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 from typing import Sequence
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -143,6 +143,58 @@ def listar_resultados_session(
         .limit(limit)
     )
     return [row.result for row in rows]
+
+
+def listar_resultados_filtrados_session(
+    session: Session,
+    *,
+    company_id: str | None = None,
+    compatibility_level: str | None = None,
+    batch_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    """Consulta snapshots de compatibilidade com filtros para auditoria local."""
+    if not 1 <= limit <= 500:
+        raise ValueError("limit deve estar entre 1 e 500")
+    if offset < 0:
+        raise ValueError("offset deve ser maior ou igual a zero")
+    filtros = []
+    if company_id is not None:
+        filtros.append(NlpMatchingResult.company_id == company_id)
+    if compatibility_level is not None:
+        filtros.append(
+            NlpMatchingResult.result["compatibility_level"].as_string() == compatibility_level
+        )
+    if batch_id is not None:
+        filtros.append(NlpMatchingResult.batch_id == batch_id)
+
+    total = int(session.scalar(
+        select(func.count()).select_from(NlpMatchingResult).where(*filtros)
+    ) or 0)
+    rows = session.scalars(
+        select(NlpMatchingResult)
+        .where(*filtros)
+        .order_by(
+            NlpMatchingResult.processed_at.desc(),
+            NlpMatchingResult.score.desc(),
+            NlpMatchingResult.company_id,
+            NlpMatchingResult.external_id,
+        )
+        .limit(limit)
+        .offset(offset)
+    )
+    return ([
+        {
+            "batch_id": row.batch_id,
+            "company_id": row.company_id,
+            "compatibility_level": row.result["compatibility_level"],
+            "score": row.score,
+            "processed_at": row.processed_at,
+            "result": row.result,
+        }
+        for row in rows
+    ], total)
 
 
 def listar_resultados_batch_session(

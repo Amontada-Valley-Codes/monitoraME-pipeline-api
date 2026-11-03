@@ -239,7 +239,7 @@ Esperado: `200 OK` com página `MatchingResultsPage`:
       ],
       "profile_version": "profile-2026-11-01T10:30:00Z",
       "schema_version": "matching.v1",
-      "matching_version": "hybrid-matching-v2",
+      "matching_version": "hybrid-matching-v4",
       "taxonomy_version": "taxonomy-v1",
       "model_version": "e5@revision-sha",
       "processing_state": "completed",

@@ -642,11 +642,116 @@ fixtures sem Backend, autenticação ou Redis com:
 .venv\Scripts\python.exe -m app.nlp.cli validate-fixtures
 ```
 
+### Smoke test PNCP + matching com empresas simuladas
+
+`tests/nlp/fixtures/companies.json` contém 150 perfis `matching.v1`; os
+primeiros 50 incluem preferências completas e o perfil de teste é
+`7ddf46af-1384-50e5-bade-99d4192c8bef`. Os dados são sintéticos. Após um reset
+do Docker, esta sequência coleta até 2.000 contratações no intervalo escolhido,
+normaliza e enriquece os registros e prepara o matching:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose build api matching-nlp-worker
+docker compose up -d postgres
+docker compose run --rm migrate
+docker compose up -d api matching-nlp-worker
+
+$inicio = (Get-Date).AddDays(-14).ToString('yyyy-MM-dd')
+$fim = (Get-Date).AddDays(-8).ToString('yyyy-MM-dd')
+docker compose run --rm api python scripts/pncp_operacao.py coletar-amostra `
+  --data-inicial $inicio --data-final $fim --modalidade 6 --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py agendar-enriquecimento `
+  --todos-normalizados --limite 2000
+docker compose up -d pncp-worker-enriquecimento
+docker compose logs -f pncp-worker-enriquecimento
+
+docker compose run --rm api python -m app.nlp.cli sync-corpus
+docker compose run --rm api python scripts/pncp_operacao.py status
+$fixturesPath = (Resolve-Path 'tests/nlp/fixtures').Path
+docker compose run --rm --volume "${fixturesPath}:/fixtures:ro" api `
+  python -m app.nlp.cli validate-fixtures --fixtures /fixtures/companies.json
+$batchId = [guid]::NewGuid().ToString()
+docker compose run --rm --volume "${fixturesPath}:/fixtures:ro" api `
+  python -m app.nlp.cli enqueue-matching --fixtures /fixtures/companies.json `
+  --batch-id $batchId
+```
+
+A coleta é limitada a 2.000 IDs distintos e não avança cursor; pode retornar menos se o
+intervalo/modalidade não tiver esse volume. O limite de `normalizar` conta jobs RAW;
+`agendar-enriquecimento --limite 2000` seleciona até 2.000 oportunidades, criando
+até três jobs por edital. Deixe o worker de enriquecimento drenar a fila; ele respeita
+rate limit e circuit breaker. Para uma execução manual curta, use
+`docker compose run --rm api python scripts/pncp_operacao.py enriquecer --limite 5`.
+`matching-nlp-worker` prepara os vetores faltantes
+e processa o batch de forma assíncrona. Antes de enfileirar o matching, confira
+`status` e aguarde os jobs `nlp_embedding` chegarem a `SUCCEEDED`; a primeira
+execução pode baixar o modelo E5. Acompanhe
+`docker compose logs -f matching-nlp-worker`.
+
+Consulte o estado e os resultados do batch completo (paginados em blocos de até
+500) e, em separado, os editais compatíveis com a empresa de teste:
+
+```powershell
+docker compose run --rm api python -m app.nlp.cli matching-status `
+  --batch-id $batchId
+docker compose run --rm api python -m app.nlp.cli matching-batch-results `
+  --batch-id $batchId --limit 500
+docker compose run --rm api python -m app.nlp.cli matching-results `
+  --company-id 7ddf46af-1384-50e5-bade-99d4192c8bef --limit 500 --compatible-only
+```
+
+Se `matching-batch-results` retornar `next_cursor`, repita o comando com
+`--cursor <valor>` para buscar a próxima página. Para ver todos os resultados
+ranqueados da empresa, remova `--compatible-only`. Esse filtro conserva níveis
+`MEDIUM` e `HIGH`; elegibilidade é um campo separado e pode ficar
+`NOT_CONFIRMED` quando faltam dados da fonte. Nenhum desses sinais confirma
+habilitação jurídica. Os resultados são da classificação híbrida/semântica; não
+são textos gerados por um modelo generativo. Consulte
+[docs/pncp-validacao-local.md](docs/pncp-validacao-local.md) para os detalhes da
+coleta de amostra e do enriquecimento.
+
 Para preparar o corpus semântico a partir das contratações e itens normalizados
 no PostgreSQL Analytics, consulte [docs/nlp-corpus-pncp.md](docs/nlp-corpus-pncp.md).
 O comando `python -m app.nlp.cli sync-corpus --dry-run` calcula o delta sem
 persistir; sem `--dry-run`, grava segmentos versionados e hashes em
 `nlp_procurement_segments`. O processo não consulta a API PNCP.
+
+Após atualizar a regra de normalização, reprocese os RAW atuais para carregar
+`informacaoComplementar` das oportunidades já armazenadas. O worker de
+normalização atualiza o corpus no processo; depois sincronize o corpus e deixe
+o worker NLP criar embeddings faltantes antes de enviar um novo batch:
+
+```powershell
+docker compose build api matching-nlp-worker
+docker compose up -d api matching-nlp-worker
+docker compose run --rm api python scripts/pncp_operacao.py reprocessar-normalizacao --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
+docker compose run --rm api python -m app.nlp.cli sync-corpus
+```
+
+`retrieval_segment.score` e a similaridade cosseno usada para recuperar texto;
+ela não equivale ao score final de compatibilidade. O campo `informacaoComplementar`
+agora recebe um peso próprio no matching (`hybrid-matching-v4`).
+
+Os resultados persistidos também podem ser explorados no Swagger da API em
+`http://127.0.0.1:8000/docs`, grupo **Compatibilidade NLP**:
+
+- `GET /matching/results`: filtra opcionalmente por `company_id`, `compatibility_level`
+  (`LOW`, `MEDIUM`, `HIGH`) e `batch_id`.
+- `GET /matching/companies/{company_id}/results`: lista resultados da empresa,
+  com os mesmos filtros de nível e batch.
+
+Ambas aceitam `limit` (até 500) e `offset`; a resposta inclui `total`, nível,
+score, data de processamento e o resultado completo com evidências. Quando não
+informar `batch_id`, a consulta poderá incluir snapshots de batches diferentes.
+O worker NLP gera embeddings pendentes antes de reivindicar batches de matching
+e só começa um batch quando não há segmentos READY sem vetor na revisão atual.
+O agendador não revarre o corpus enquanto houver jobs de embedding ativos. Para
+acelerar temporariamente uma fila grande, suba um worker adicional com
+`docker compose run -d --rm matching-nlp-worker`; ele compartilha o cache e a
+fila PostgreSQL e reivindica jobs com `SKIP LOCKED`.
 
 O adaptador inicial E5 e seu protocolo de validação estão em
 [docs/nlp-validacao-embeddings.md](docs/nlp-validacao-embeddings.md). A

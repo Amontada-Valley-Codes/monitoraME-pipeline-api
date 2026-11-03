@@ -18,7 +18,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
@@ -31,7 +31,7 @@ from app.pncp.ingestion import (
     coletar_publicacao,
 )
 from app.pncp.jobs import WorkerPncp, agendar_job, replay_jobs
-from app.pncp.normalization import normalizar_job
+from app.pncp.normalization import agendar_reprocessamento_regra_session, normalizar_job
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.enrichment import ClienteEnriquecimentoPncp, agendar_enriquecimento_session, enriquecer_job
 from app.core.models import PncpOportunidade
@@ -102,46 +102,106 @@ def normalizar(args: argparse.Namespace) -> int:
     return 0
 
 
+def reprocessar_normalizacao(args: argparse.Namespace) -> int:
+    with orm.main_session() as session:
+        resultado = agendar_reprocessamento_regra_session(session, limite=args.limite)
+    print(resultado)
+    return 0
+
+
 def coletar_amostra(args: argparse.Namespace) -> int:
-    """Persiste no maximo N registros da primeira pagina, sem avancar cursor."""
+    """Persiste no maximo N registros paginados, sem avancar cursor."""
+    inicio = args.data_inicial or args.data
+    fim = args.data_final or args.data
+    if inicio is None or fim is None or fim < inicio:
+        raise ValueError("informe --data ou um intervalo valido com --data-inicial e --data-final")
     cliente = ClientePncp()
-    pagina = cliente.buscar_publicacoes(inicio=args.data, fim=args.data, modalidade=args.modalidade,
-        pagina=1, tamanho_pagina=max(args.limite, 10))
-    external_ids = []
-    for payload in pagina.itens[:args.limite]:
-        external_id = payload.get("numeroControlePNCP")
-        if not isinstance(external_id, str) or not external_id.strip():
-            continue
-        with orm.main_session() as session:
-            persistido = salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(
-                entity_type="CONTRATACAO", external_id=external_id, payload=payload,
-                collected_at=datetime.now(timezone.utc), run_id=f"amostra:{args.data.isoformat()}:{args.modalidade}"))
-        external_ids.append({"external_id": external_id, "raw_id": persistido.raw_record_id, "job_id": persistido.job_id})
-    print({"data": args.data.isoformat(), "modalidade": args.modalidade, "limite": args.limite,
-        "persistidos": len(external_ids), "total_paginas_fonte": pagina.total_paginas, "cursor_avancado": False, "editais": external_ids})
+    external_ids: list[str] = []
+    vistos: set[str] = set()
+    paginas_lidas = 0
+    for numero_pagina in range(1, args.max_paginas + 1):
+        pagina = cliente.buscar_publicacoes(
+            inicio=inicio, fim=fim, modalidade=args.modalidade,
+            pagina=numero_pagina, tamanho_pagina=args.tamanho_pagina,
+        )
+        paginas_lidas += 1
+        if not pagina.itens and pagina.total_paginas is not None and numero_pagina < pagina.total_paginas:
+            raise RuntimeError("pagina vazia antes do fim informado pelo PNCP; a amostra pode ser repetida")
+        for payload in pagina.itens:
+            external_id = payload.get("numeroControlePNCP")
+            if not isinstance(external_id, str) or not external_id.strip():
+                continue
+            if external_id in vistos:
+                continue
+            vistos.add(external_id)
+            with orm.main_session() as session:
+                salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(
+                    entity_type="CONTRATACAO", external_id=external_id, payload=payload,
+                    collected_at=datetime.now(timezone.utc),
+                    run_id=f"amostra:{inicio.isoformat()}:{fim.isoformat()}:{args.modalidade}"))
+            external_ids.append(external_id)
+            if len(external_ids) >= args.limite:
+                break
+        if len(external_ids) >= args.limite or not pagina.itens or (
+            pagina.total_paginas is None and len(pagina.itens) < args.tamanho_pagina
+        ) or (
+            pagina.total_paginas is not None and numero_pagina >= pagina.total_paginas
+        ):
+            break
+    print({"data_inicial": inicio.isoformat(), "data_final": fim.isoformat(), "modalidade": args.modalidade,
+        "limite": args.limite, "persistidos": len(external_ids), "paginas_lidas": paginas_lidas,
+        "cursor_avancado": False})
     return 0 if external_ids else 2
 
 
 def agendar_enriquecimento(args: argparse.Namespace) -> int:
     agendados = {}
     with orm.main_session() as session:
-        for external_id in args.id:
+        external_ids = args.id
+        if args.todos_normalizados:
+            external_ids = list(session.scalars(
+                select(PncpOportunidade.external_id)
+                .order_by(PncpOportunidade.external_id)
+                .limit(args.limite)
+            ))
+        for external_id in external_ids:
             oportunidade = session.get(PncpOportunidade, {"source": "PNCP", "external_id": external_id})
             if oportunidade is None:
                 agendados[external_id] = "NAO_ENCONTRADO"
                 continue
             agendados[external_id] = agendar_enriquecimento_session(session,
                 oportunidade=oportunidade, motivo="validacao_local")
-    print({"editais": agendados})
-    return 0 if all(valor != "NAO_ENCONTRADO" for valor in agendados.values()) else 2
+    resultados = [resultado for resultado in agendados.values() if isinstance(resultado, list)]
+    jobs_agendados = [job for resultado in resultados for job in resultado]
+    jobs_novos = sum(int(criado) for _, criado in jobs_agendados)
+    nao_encontrados = sum(valor == "NAO_ENCONTRADO" for valor in agendados.values())
+    print({
+        "editais": len(agendados), "jobs_avaliados": len(jobs_agendados),
+        "jobs_novos": jobs_novos, "nao_encontrados": nao_encontrados,
+    })
+    return 0 if nao_encontrados == 0 else 2
 
 
 def executar_enriquecimento(args: argparse.Namespace) -> int:
     cliente = ClienteEnriquecimentoPncp()
     worker = WorkerPncp("pncp-operacao-enriquecimento",
         lambda job: enriquecer_job(job, cliente), job_type="enrich")
-    executados = sum(worker.executar_uma_vez() for _ in range(args.limite))
-    print({"executados": executados, "limite": args.limite})
+    executados = 0
+    pausa_circuito = None
+    for _ in range(args.limite):
+        metricas = cliente.protecao.metricas()
+        aberto_ate = metricas.get("open_until")
+        if (
+            metricas.get("circuit_state") == "OPEN"
+            and aberto_ate is not None
+            and aberto_ate > datetime.now(timezone.utc)
+        ):
+            pausa_circuito = aberto_ate.isoformat()
+            break
+        if not worker.executar_uma_vez():
+            break
+        executados += 1
+    print({"executados": executados, "limite": args.limite, "circuito_aberto_ate": pausa_circuito})
     return 0
 
 
@@ -245,13 +305,24 @@ def main() -> int:
     normalizador = comandos.add_parser("normalizar")
     normalizador.add_argument("--limite", type=int, default=100)
     normalizador.set_defaults(func=normalizar)
+    reprocessador = comandos.add_parser("reprocessar-normalizacao", help="Reprocessa RAW atual com regra semantica antiga")
+    reprocessador.add_argument("--limite", type=int, default=2000)
+    reprocessador.set_defaults(func=reprocessar_normalizacao)
     amostra = comandos.add_parser("coletar-amostra", help="Importa poucos editais sem avançar cursor")
-    amostra.add_argument("--data", type=date.fromisoformat, required=True)
+    amostra.add_argument("--data", type=date.fromisoformat, help="Data única (atalho para inicio/fim)")
+    amostra.add_argument("--data-inicial", type=date.fromisoformat)
+    amostra.add_argument("--data-final", type=date.fromisoformat)
     amostra.add_argument("--modalidade", type=int, default=6)
-    amostra.add_argument("--limite", type=int, choices=range(1, 51), default=3)
+    amostra.add_argument("--limite", type=int, choices=range(1, 2001), default=3)
+    amostra.add_argument("--tamanho-pagina", type=int, choices=range(10, 51), default=50)
+    amostra.add_argument("--max-paginas", type=int, choices=range(1, 201), default=200,
+        help="Limite de protecao; cada pagina aceita no maximo 50 registros")
     amostra.set_defaults(func=coletar_amostra)
     enriquecer = comandos.add_parser("agendar-enriquecimento")
-    enriquecer.add_argument("--id", action="append", required=True)
+    alvo_enriquecimento = enriquecer.add_mutually_exclusive_group(required=True)
+    alvo_enriquecimento.add_argument("--id", action="append")
+    alvo_enriquecimento.add_argument("--todos-normalizados", action="store_true")
+    enriquecer.add_argument("--limite", type=int, default=2000)
     enriquecer.set_defaults(func=agendar_enriquecimento)
     enriquecer_run = comandos.add_parser("enriquecer")
     enriquecer_run.add_argument("--limite", type=int, default=10)
