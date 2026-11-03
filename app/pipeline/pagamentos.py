@@ -116,6 +116,7 @@ def conciliar_pagamentos(
     vistos = set()
     elegiveis = []
     excluidos = defaultdict(int)
+    anomalias = []
     for pagamento in pagamentos:
         chave = _chave(pagamento)
         chave_pagamento = (*chave, _texto(pagamento, "numero_sub_empenho"),
@@ -127,19 +128,26 @@ def conciliar_pagamentos(
             raise ValueError(f"Pagamento sem empenho correspondente: {chave_pagamento}.")
         if chave[2] not in cadastro:
             raise ValueError(f"Orgao ausente do cadastro: {chave[2]}.")
-        estado = _texto(pagamento, "estado_de_estornado")
-        if estado not in {"0", "1"}:
-            raise ValueError(f"Estado de estorno desconhecido: {estado}.")
+        estado_informado = pagamento.get("estado_de_estornado")
+        estado = "" if estado_informado is None else str(estado_informado).strip()
         valor = valor_para_centavos(pagamento.get("valor_nota_pagamento"), "valor_nota_pagamento")
         empenho = indice[chave]
         natureza = _texto(empenho, "codigo_elemento_despesa")
         if not re.fullmatch(r"[0-9]{8}", natureza):
             raise ValueError(f"Codigo de natureza invalido: {natureza}.")
         elemento = natureza[4:6]
-        motivo = ("camara" if chave[2] in camaras else "estornado" if estado == "1"
+        motivo = ("camara" if chave[2] in camaras else "estado_estorno_desconhecido" if estado not in {"0", "1"}
+                  else "estornado" if estado == "1"
                   else "fora_naturezas" if elemento not in NATUREZAS_DESPESA_MONITORADAS else None)
         if motivo:
             excluidos[motivo] += 1
+            if motivo == "estado_estorno_desconhecido":
+                anomalias.append({
+                    "codigo": "ESTADO_ESTORNO_DESCONHECIDO",
+                    "chave_pagamento": list(chave_pagamento),
+                    "estado_de_estornado": estado or None,
+                    "valor_centavos": valor,
+                })
             continue
         elegiveis.append({
             "chave_pagamento": list(chave_pagamento), "elemento": elemento,
@@ -158,6 +166,7 @@ def conciliar_pagamentos(
         "orgaos_camara": sorted(camaras), "chaves_duplicadas": 0,
         "pagamentos_sem_empenho": 0,
         "classificacoes_orgaos": classificacoes_orgaos,
+        "anomalias": anomalias,
     }
 
 

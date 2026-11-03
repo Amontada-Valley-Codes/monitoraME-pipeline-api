@@ -82,12 +82,19 @@ class PagamentosTest(unittest.TestCase):
             ([empenho(), empenho()], [pagamento()], "empenho duplicada"),
             ([empenho()], [pagamento(), pagamento()], "pagamento duplicada"),
             ([empenho()], [pagamento(codigo_orgao="99")], "sem empenho"),
-            ([empenho()], [pagamento(estado_de_estornado=None)], "obrigatorio"),
-            ([empenho()], [pagamento(estado_de_estornado=2)], "desconhecido"),
             ([empenho(codigo_municipio="005")], [], "fora do recorte"),
         ]:
             with self.subTest(erro=erro), self.assertRaisesRegex(ValueError, erro):
                 conciliar(es, ps)
+
+    def test_estado_estorno_desconhecido_e_preservado_e_excluido_do_total(self):
+        rows, audit = conciliar([empenho()], [pagamento(estado_de_estornado=2)])
+        self.assertEqual(rows, [])
+        self.assertEqual(audit["excluidos"], {"estado_estorno_desconhecido": 1})
+        self.assertEqual(audit["anomalias"][0]["estado_de_estornado"], "2")
+        rows, audit = conciliar([empenho()], [pagamento(estado_de_estornado=None)])
+        self.assertEqual(rows, [])
+        self.assertIsNone(audit["anomalias"][0]["estado_de_estornado"])
 
     def test_cadastro_de_orgaos_incompleto_rejeitado(self):
         with self.assertRaisesRegex(ValueError, "identificar a Camara"):

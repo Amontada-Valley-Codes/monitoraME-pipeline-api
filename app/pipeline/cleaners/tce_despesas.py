@@ -289,9 +289,11 @@ def mapear_nota_pagamento(
     chave_pagamento = "|".join(
         (chave_empenho, numero_sub_empenho, numero_nota),
     )
-    estado_estorno = _texto(registro.get("estado_de_estornado"), "estado_de_estornado")
-    if estado_estorno not in {"0", "1"}:
-        raise ContratoDespesaTceInvalido("Estado de estorno desconhecido na nota de pagamento.")
+    # Estados não reconhecidos e ausentes ficam no snapshot para auditoria;
+    # a camada analítica os exclui do total até que seu significado seja validado.
+    estado_estorno = _texto(
+        registro.get("estado_de_estornado"), "estado_de_estornado", obrigatorio=False,
+    ) or ""
     valor = valor_para_centavos(registro.get("valor_nota_pagamento"), "valor_nota_pagamento")
     if valor < 0:
         raise ContratoDespesaTceInvalido("Valor de nota de pagamento não pode ser negativo.")
