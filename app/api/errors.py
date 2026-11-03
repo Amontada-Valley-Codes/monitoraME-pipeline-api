@@ -74,7 +74,7 @@ def resposta_erro_validacao(
             "field": ".".join(localizacao) or "body",
             "reason": str(item.get("type", "invalid_value")),
         }
-        if "input" in item:
+        if "input" in item and not request.url.path.startswith("/internal/matching/"):
             detalhe["value"] = item["input"]
         details.append(detalhe)
 

@@ -4,8 +4,9 @@
 
 Executar uma coleta pequena e manual de contratações que ainda recebem
 propostas, normalizar RAW automaticamente, enriquecer em paralelo sob o limite
-global do PNCP e executar matching num container NLP sob demanda. A coleta não
-é iniciada por cron ou por uma chamada de usuário.
+global do PNCP e processar batches enviados à API pelo Backend. A coleta PNCP
+não é iniciada por cron ou por uma chamada de usuário; o modelo NLP só carrega
+os pesos enquanto há trabalho de matching.
 
 ## Coleta manual, limitada e somente de oportunidades abertas
 
@@ -76,40 +77,22 @@ O worker não agenda novos editais por conta própria. Ele só processa jobs
 
 ## Container NLP e rede Docker
 
-O serviço `matching-nlp-worker` permanece no mesmo Compose e conecta-se à rede
-privada padrão do Pipeline para acessar o PostgreSQL Analytics. Em produção,
-ele também se associa à rede externa `monitorame_backend_internal`, com alias
-DNS `matching-nlp`. Isso prepara a conectividade entre stacks Docker. O processo
-atual é um worker, sem servidor HTTP; o alias de rede não significa que exista
-endpoint de matching ou integração Backend ativa.
+O serviço `api` publica `/internal/matching/batches` e as rotas de status e
+resultados na rede `monitorame_backend_internal`, com DNS `pipeline-api`. O
+Backend deve enviar `Authorization: Bearer <token>`; configure o mesmo segredo
+forte em `MATCHING_INTERNAL_API_TOKEN` nos dois serviços. A API persiste o
+batch/job e retorna `202`; `matching-nlp-worker`, ativo no Compose, percebe o
+job e processa. O worker conecta ao PostgreSQL Analytics pela rede padrão e
+também está associado à rede interna compartilhada.
 
-O perfil Compose `matching` impede que o worker seja iniciado pelo `up` padrão.
-Ao executar, ele só carrega os pesos quando existe batch de empresa pronto; se
-não houver batch, não varre oportunidades, não agenda embeddings e não carrega
-o modelo. `--drain` faz o processo terminar após a fila ficar ociosa, liberando
-CPU e memória do container. O cache de pesos permanece no volume nomeado para
-evitar novo download em cada execução.
+Sem batch pronto, o worker não percorre o corpus nem carrega os pesos. Depois
+do processamento, descarrega os pesos após `NLP_MODEL_IDLE_UNLOAD_SECONDS` (60
+segundos por padrão), mantendo apenas o cache no volume. O processo leve
+continua ativo e verifica a fila a cada cinco segundos para receber o próximo
+batch sem precisar iniciar Docker de dentro do Pipeline.
 
-Para executar um matching com fixtures já disponíveis no host, primeiro
-enfileire o batch e depois execute o worker de drenagem. Um operador com Docker
-CLI executa no diretório do Compose:
-
-```sh
-batch_id=$(python -c 'import uuid; print(uuid.uuid4())')
-docker compose -f compose.production.yaml --profile matching run --rm \
-  --volume "$PWD/tests/nlp/fixtures:/fixtures:ro" \
-  matching-nlp-worker python -m app.nlp.cli enqueue-matching \
-  --fixtures /fixtures/companies-reais-teste.json --batch-id "$batch_id"
-docker compose -f compose.production.yaml --profile matching run --rm \
-  matching-nlp-worker
-docker compose -f compose.production.yaml --profile matching run --rm \
-  matching-nlp-worker python -m app.nlp.cli matching-status --batch-id "$batch_id"
-```
-
-O primeiro comando persiste o snapshot e job no Analytics; o segundo gera os
-embeddings faltantes e processa o batch; o terceiro consulta o status. Use o
-fixture de oito perfis para limitar o primeiro ensaio. Não execute `docker` de
-dentro do shell `app@<container-id>`.
+O shell `app@<container-id>` não tem Docker CLI, por desenho. Use `pncp` nesse
+shell para a coleta limitada; use o host da VPS/painel para operações Compose.
 
 ## Implantação e verificação operacional
 

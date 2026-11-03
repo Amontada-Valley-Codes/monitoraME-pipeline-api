@@ -1,22 +1,27 @@
 # Integração do Backend com o Matching NLP (`matching.v1`)
 
-Este documento orienta a integração futura do Backend NestJS com o serviço NLP
-do Pipeline: dados de entrada, processamento do lote, formato das respostas e
-associação das recomendações às empresas. É um contrato de integração, não uma
-declaração de que as rotas HTTP já estejam disponíveis.
+Este documento descreve o contrato HTTP `matching.v1` entre o Backend NestJS e
+o serviço NLP do Pipeline: submissão de perfis, consulta do batch e paginação
+dos resultados.
 
 ## Estado atual
 
-Os schemas, o motor local, a persistência versionada e a fila/worker de matching
-existem no Pipeline. A execução pode ser feita localmente pela CLI. As rotas
-`/internal/matching/batches` descritas abaixo ainda não têm handlers HTTP,
-autenticação de serviço ou contrato OpenAPI implementado. Antes de integrar o
-NestJS, as equipes devem confirmar esses pontos e congelar os códigos HTTP e a
-política operacional.
+Os endpoints `POST /internal/matching/batches`, `GET
+/internal/matching/batches/{batch_id}` e `GET
+/internal/matching/batches/{batch_id}/results` estão implementados no Pipeline
+e descritos no OpenAPI. Exigem `Authorization: Bearer <token>` com o mesmo
+segredo configurado em `MATCHING_INTERNAL_API_TOKEN` no Pipeline e no Backend.
+Se o segredo não estiver configurado, os endpoints internos respondem `503`.
 
 O serviço recebe snapshots mínimos de empresa e consulta oportunidades já
 normalizadas no Pipeline/Analytics. Ele não consulta o banco do Backend nem o
 PNCP durante o matching.
+
+Em produção, o Backend chama a API interna do Pipeline pelo DNS
+`http://pipeline-api:8000`, na rede Docker privada compartilhada. O segredo
+Bearer deve ser gerado fora do repositório (por exemplo, `openssl rand -hex
+32`) e configurado como `MATCHING_INTERNAL_API_TOKEN` nos ambientes dos dois
+serviços. Não publique esse segredo em logs, fixtures ou arquivos versionados.
 
 ## Fluxo recomendado
 
@@ -134,9 +139,21 @@ no perfil nem no catálogo versionado são omitidos das consultas e reportados
 como ausência de dado; portanto, o Backend deve fornecer descrições confiáveis
 ou garantir que o Pipeline tenha catálogo correspondente.
 
-## Respostas HTTP previstas
+## Endpoints HTTP
 
-As rotas são propostas e precisam ser implementadas antes de uso HTTP.
+Todas as rotas abaixo exigem o cabeçalho `Authorization: Bearer <token>`.
+Exemplo de submissão usando um arquivo local de payload:
+
+```sh
+curl --fail-with-body -X POST \
+  "http://pipeline-api:8000/internal/matching/batches" \
+  -H "Authorization: Bearer ${MATCHING_INTERNAL_API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data-binary @matching-batch.json
+```
+
+As rotas de consulta operacional já existentes em `/matching/results` e
+`/matching/companies/{company_id}/results` usam o mesmo token.
 
 ### Aceitação: `POST /internal/matching/batches`
 
@@ -150,23 +167,30 @@ Esperado: `202 Accepted` com `BatchAccepted`:
 }
 ```
 
-Um reenvio idêntico com o mesmo `batch_id` deve ser tratado idempotentemente.
-Mesmo ID com conteúdo diferente retorna `409 Conflict`. Outros status previstos:
+Um reenvio idêntico com o mesmo `batch_id` é idempotente. Mesmo ID com conteúdo
+diferente retorna `409 Conflict`. Status implementados:
 
 | HTTP | Significado |
 |---|---|
-| `413` | Corpo acima do limite operacional. |
-| `422` | JSON/schema/campo inválido. |
-| `503` | Lote não pôde ser registrado duravelmente; pode-se repetir com o mesmo `batch_id`. |
+| `401` | Token Bearer ausente ou inválido. |
+| `409` | O UUID do batch já está associado a outro payload. |
+| `422` | JSON ou schema do perfil inválido; o erro não ecoa valores enviados. |
+| `503` | Token interno não configurado ou banco indisponível; repetir o POST com o mesmo `batch_id`. |
 
-Erro estruturado previsto (sem ecoar o payload):
+`202` informa que o batch foi registrado; o campo `status` pode refletir o
+estado atual caso seja um reenvio idempotente de um batch que já avançou.
+
+Erro de validação (sem ecoar o payload):
 
 ```json
 {
   "error": {
-    "code": "INVALID_PROFILE",
-    "message": "O perfil contém um campo inválido.",
-    "field": "companies[0].cnaes[0].code"
+    "code": "INVALID_REQUEST",
+    "message": "A requisicao possui campos invalidos.",
+    "details": [
+      {"field": "companies.0.cnaes.0.code", "reason": "string_pattern_mismatch"}
+    ],
+    "request_id": "req_..."
   }
 }
 ```
@@ -257,6 +281,18 @@ lista `results` vazia pode significar que ainda não existem resultados ou que
 o lote terminou sem matches; interpretar junto com `status`. Cursor inválido
 retorna `400`; lote desconhecido, `404`.
 
+Exemplos de consulta autenticada:
+
+```sh
+curl --fail-with-body \
+  "http://pipeline-api:8000/internal/matching/batches/${BATCH_ID}" \
+  -H "Authorization: Bearer ${MATCHING_INTERNAL_API_TOKEN}"
+
+curl --fail-with-body \
+  "http://pipeline-api:8000/internal/matching/batches/${BATCH_ID}/results?limit=100" \
+  -H "Authorization: Bearer ${MATCHING_INTERNAL_API_TOKEN}"
+```
+
 ## Como interpretar e persistir os resultados
 
 - `score`: relevância híbrida de 0 a 100, para ordenar recomendações. Não é
@@ -316,8 +352,8 @@ empresa em lotes menores, cada resposta continua vinculada pelo `company_id`;
 
 ## Segurança, repetição e operação
 
-- Expor as rotas apenas em rede privada e exigir autenticação serviço a serviço
-  quando forem implementadas.
+- Manter a API na rede privada Docker e configurar um token Bearer forte e
+  compartilhado em `MATCHING_INTERNAL_API_TOKEN` no Backend e no Pipeline.
 - Definir timeout, retries limitados e limites do corpo. Repetir POST com mesmo
   `batch_id` e payload idêntico; não gerar IDs novos após timeout de resultado
   incerto.
@@ -327,11 +363,10 @@ empresa em lotes menores, cada resposta continua vinculada pelo `company_id`;
 - Não enviar notificações, aprovar participação nem determinar conformidade
   legal automaticamente a partir deste serviço.
 
-## Pontos a fechar antes da integração HTTP
+## Pontos operacionais para a integração
 
-- Implementação e publicação dos handlers, OpenAPI, autenticação e autorização
-  serviço a serviço.
-- Política de timeout/retry, limites do corpo e tratamento idempotente do POST.
+- Configuração/rotação do token em ambos os serviços e política de timeout/retry
+  do Backend.
 - Paginação estável, retenção dos batches/resultados e política de reprocessamento.
 - Chave de upsert/histórico acordada entre Backend e Pipeline.
 - Responsável pelo agendamento de batches e critério de atualização do perfil.

@@ -50,7 +50,11 @@ OPENAPI_TAGS = [
     },
     {
         "name": "Compatibilidade NLP",
-        "description": "Consulta somente leitura dos resultados persistidos de compatibilidade entre empresas e editais.",
+        "description": "Consulta autenticada de resultados persistidos de compatibilidade entre empresas e editais.",
+    },
+    {
+        "name": "Matching interno",
+        "description": "Submissão autenticada de batches de matching e consulta de status/resultados para serviços internos.",
     },
     {
         "name": "Contratos TCE-CE",
@@ -150,7 +154,10 @@ async def validation_exception_handler(
     request: Request,
     error: RequestValidationError,
 ) -> JSONResponse:
-    if usa_erro_padronizado(request.url.path):
+    if (
+        usa_erro_padronizado(request.url.path)
+        or request.url.path.startswith("/internal/matching/")
+    ):
         return resposta_erro_validacao(request, error)
     return await request_validation_exception_handler(request, error)
 

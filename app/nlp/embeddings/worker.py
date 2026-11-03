@@ -187,12 +187,16 @@ def executar_worker(
     embeddings_faltantes_anterior: int | None = None
     modelo_carregado = False
     ultimo_trabalho = time.monotonic()
+    ultimo_recovery = 0.0
     logger.info("Worker de embeddings iniciado", extra={"worker_id": worker_id, "model_version": model.model_version})
     while stop_after is None or processados < stop_after:
         try:
             with orm.main_session() as session:
-                recuperados = recuperar_leases_expirados_session(session, job_type=JOB_TYPE)
-                recuperados += recuperar_leases_expirados_session(session, job_type=MATCHING_JOB_TYPE)
+                recuperados = 0
+                if time.monotonic() - ultimo_recovery >= 30:
+                    recuperados = recuperar_leases_expirados_session(session, job_type=JOB_TYPE)
+                    recuperados += recuperar_leases_expirados_session(session, job_type=MATCHING_JOB_TYPE)
+                    ultimo_recovery = time.monotonic()
                 matching_pendente = existe_batch_matching_pronto_session(session)
                 agendados = 0
                 job = None
@@ -228,18 +232,30 @@ def executar_worker(
                 logger.warning("Matching aguardando vetores completos", extra={"embeddings_faltantes": embeddings_faltantes})
             embeddings_faltantes_anterior = embeddings_faltantes
             if job is None:
+                unload_after = float(os.getenv("NLP_MODEL_IDLE_UNLOAD_SECONDS", "60"))
+                if (
+                    modelo_carregado
+                    and unload_after > 0
+                    and time.monotonic() - ultimo_trabalho >= unload_after
+                ):
+                    model.unload()
+                    modelo_carregado = False
+                    logger.info("Modelo de embeddings liberado por ociosidade", extra={
+                        "model_version": model.model_version,
+                        "idle_seconds": unload_after,
+                    })
                 if drain and time.monotonic() - ultimo_trabalho >= idle_exit_seconds:
                     break
                 time.sleep(idle_seconds)
                 continue
             ultimo_trabalho = time.monotonic()
-            if not modelo_carregado:
-                logger.info("Carregando modelo de embeddings sob demanda", extra={
-                    "model_version": model.model_version, "device": model.device,
-                })
-                model.load()
-                modelo_carregado = True
             try:
+                if not modelo_carregado:
+                    logger.info("Carregando modelo de embeddings sob demanda", extra={
+                        "model_version": model.model_version, "device": model.device,
+                    })
+                    model.load()
+                    modelo_carregado = True
                 if job.job_type == MATCHING_JOB_TYPE:
                     resultado, _ = processar_batch_enfileirado(job, model=model)
                     detalhes = {"batch_id": job.scope_key, "results": len(resultado)}

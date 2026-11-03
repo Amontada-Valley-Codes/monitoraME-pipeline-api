@@ -27,25 +27,20 @@ O E5 produz vetores L2-normalizados de dimensão 384, persistidos em
 `matching_nlp_model_cache`, então o container pode ser removido ao terminar sem
 baixar os pesos novamente na execução seguinte.
 
-## Execução sob demanda
+## Execução automática e memória ociosa
 
-O serviço tem o perfil Compose `matching` e não sobe no `up` padrão. Para
-executar um fixture diretamente, com Docker CLI no host da VPS:
+O serviço fica ativo junto ao Compose para consumir jobs criados pelos
+endpoints HTTP ou pela CLI. Sem batches prontos, não percorre o corpus, não
+agenda embeddings e não carrega os pesos do modelo. Quando o batch é processado,
+o worker libera o modelo após `NLP_MODEL_IDLE_UNLOAD_SECONDS` (padrão 60
+segundos); o cache de arquivos continua no volume. O processo leve permanece
+rodando e verifica a fila a cada `NLP_EMBEDDING_IDLE_SECONDS` segundos
+(padrão 5), permitindo que o Backend submeta trabalho sem iniciar Docker.
 
-```sh
-batch_id=$(python -c 'import uuid; print(uuid.uuid4())')
-docker compose -f compose.production.yaml --profile matching run --rm \
-  --volume "$PWD/tests/nlp/fixtures:/fixtures:ro" \
-  matching-nlp-worker python -m app.nlp.cli enqueue-matching \
-  --fixtures /fixtures/companies-reais-teste.json --batch-id "$batch_id"
-docker compose -f compose.production.yaml --profile matching run --rm matching-nlp-worker
-```
-
-O segundo comando executa o `--drain` configurado no serviço e encerra após a
-fila ficar ociosa. Consulte `matching-status`/`matching-batch-results` com o
-mesmo ID. Não execute `docker` no shell `app@<container-id>`; esse shell é
-interno a um container. A orquestração Compose exige acesso Docker no host da
-VPS ou no painel de deploy.
+No Compose de produção, suba o worker com `docker compose -f
+compose.production.yaml up -d matching-nlp-worker`. Para executar `docker`, use
+o host da VPS ou o painel de deploy, não um shell `app@<container-id>` dentro
+do container.
 
 ## Recursos e configuração
 
@@ -58,11 +53,11 @@ primeira execução ou quando a revisão ainda não estiver baixada.
 
 ## Rede e limites de integração
 
-Em produção, o worker continua na rede interna padrão do Pipeline para acessar
-Analytics e também se associa a `monitorame_backend_internal`, com alias
-`matching-nlp`. Essa rede prepara comunicação entre stacks. Não existe ainda
-servidor HTTP nesse container; integração Backend via HTTP requer handlers e
-autenticação próprios.
+Em produção, a API do Pipeline publica os endpoints autenticados de matching
+em `http://pipeline-api:8000/internal/matching/...` pela rede
+`monitorame_backend_internal`. O worker NLP também usa essa rede e a rede
+padrão do Pipeline para acessar Analytics; ele não recebe chamadas HTTP. O
+Backend usa um token Bearer compartilhado em `MATCHING_INTERNAL_API_TOKEN`.
 
 Falhas transitórias usam a política de retry da fila persistente. Tentativas
 esgotadas ficam `FAILED` para replay autorizado. O worker recupera leases dos

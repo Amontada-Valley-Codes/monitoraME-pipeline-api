@@ -6,25 +6,19 @@ Este documento descreve como o Pipeline recebe um snapshot de empresa,
 recupera oportunidades PNCP normalizadas, calcula o matching e persiste
 resultados.
 
-Os schemas, o processamento local, a fila interna e a persistência existem. O
-processamento é operado pela CLI e pelo worker. Não há handlers HTTP para
-`POST/GET /internal/matching/batches`, autenticação serviço a serviço ou
-OpenAPI implementados neste serviço; portanto, não há integração HTTP ativa
-com o Backend descrita aqui.
+Os endpoints autenticados de batch estão implementados na API FastAPI. A API
+valida o snapshot, registra batch e job no Analytics e responde sem executar
+inferência na requisição. O worker NLP em container separado consome o job,
+calcula e persiste os resultados. O Backend consulta status e resultados pelos
+endpoints do mesmo contrato `matching.v1`.
 
 ## Visão ponta a ponta
 
 ```text
 Consumidor do Pipeline
-  └─ snapshot mínimo: matching.v1 + batch_id + empresas
-       └─ validação Pydantic e deduplicação de batch
-            └─ job persistente PostgreSQL (enqueue) ou execução CLI local
-                 └─ embedding query por CNAE com E5
-                      └─ Top-K no Analytics/pgvector sobre corpus PNCP pronto
-                           └─ filtros de status + carga de dados normalizados
-                                └─ elegibilidade + score híbrido + evidências
-                                     └─ resultado versionado no banco principal
-                                          └─ consulta local dos resultados persistidos
+Backend -> POST batch autenticado -> API Pipeline -> PostgreSQL Analytics/job
+                                         worker NLP -> embeddings + Top-K
+Backend <- GET status/resultados <- API Pipeline <- resultados versionados
 ```
 
 O Matching não consulta o banco do Backend, não chama a API PNCP, não lê RAW
@@ -189,9 +183,11 @@ modelo e horário de processamento. `semantic_relevance` é o sinal calibrado
 exibido de 0 a 100; evidências de recuperação registram a similaridade bruta e
 trechos usados.
 
-Os resultados podem ser consultados pelas funções locais e comandos CLI. A
-camada de repositório oferece paginação por cursor; o status apresentado vem do
-estado persistido do batch. Esses mecanismos não constituem endpoints HTTP.
+Os resultados podem ser consultados pela CLI e pelos endpoints autenticados
+`GET /internal/matching/batches/{batch_id}` e
+`GET /internal/matching/batches/{batch_id}/results`. A paginação por cursor é
+estável por score, empresa e identificador externo; o status apresentado vem
+do estado persistido do batch.
 
 O consumidor deve associar cada resultado ao `company_id`, validar o vínculo
 da empresa antes de disponibilizá-lo e preservar versões e evidências.
@@ -201,10 +197,10 @@ resultados entre tenants.
 
 ## Limites e decisões ainda necessárias
 
-- Implementar handlers HTTP, autenticação serviço a serviço, autorização,
-  limites do corpo e OpenAPI para permitir integração direta via HTTP.
-- Definir política de retries/timeouts, retenção, reprocessamento, distribuição
-  e sincronização de perfil para consumidores integrados.
+- Configurar e rotacionar `MATCHING_INTERNAL_API_TOKEN` no Backend e no Pipeline;
+  manter a API acessível somente pela rede interna.
+- Definir no Backend timeouts/retries, retenção, reprocessamento, distribuição
+  e sincronização de perfil.
 - Validar operacionalmente migrations no banco principal e Analytics,
   disponibilidade do pgvector/model cache e execução do worker no ambiente
   alvo. Este documento descreve o código/configuração, não atesta ambiente

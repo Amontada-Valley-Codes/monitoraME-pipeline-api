@@ -434,8 +434,7 @@ def main() -> int:
     parser.add_argument("--prepare-from-db", action="store_true", help="Exporta amostra de segmentos armazenados")
     parser.add_argument(
         "--companies", type=Path,
-        default=Path(__file__).resolve().parents[1] / "tests" / "nlp" / "fixtures" / "companies.json",
-        help="companies.json; padrão tests/nlp/fixtures/companies.json",
+        help="Arquivo JSON explícito de perfis para preparar a amostra do benchmark.",
     )
     parser.add_argument("--limit", type=int, default=25, help="Quantidade máxima de editais amostrados")
     parser.add_argument("--companies-limit", type=int, default=10, help="Perfis iniciais de companies.json")
@@ -444,6 +443,8 @@ def main() -> int:
     if args.prepare_from_db:
         if not args.sample_output:
             parser.error("--prepare-from-db requer --sample-output")
+        if not args.companies:
+            parser.error("--prepare-from-db requer --companies explícito; não há fixture padrão")
         try:
             sample = _preparar_amostra_banco(args.companies, args.limit, args.companies_limit)
             args.sample_output.parent.mkdir(parents=True, exist_ok=True)
