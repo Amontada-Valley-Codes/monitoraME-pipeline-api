@@ -825,7 +825,7 @@ Publicações versionadas, importação dos dados reais e contrato das rotas: [h
 
 ### Pagamentos da Prefeitura e Microempresas
 
-Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador identifica os órgãos do Executivo municipal, exclui a Câmara e os estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos líquidos. Consulte [regras, auditoria e reprodução](docs/pagamentos-tce.md).
+Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. A ingestao incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras, auditoria e reproducao do overview](docs/pagamentos-tce.md).
 
 ### Qualidade semantica PNCP
 

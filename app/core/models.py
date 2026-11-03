@@ -668,6 +668,62 @@ class TceAnulacaoEmpenho(MainBase):
     lote: Mapped[TceDespesaIngestionRun] = relationship(back_populates="anulacoes")
 
 
+class TcePagamentoIngestionRun(MainBase):
+    __tablename__ = "tce_pagamento_ingestion_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('EM_VALIDACAO', 'PUBLICADO', 'SUBSTITUIDO', 'REJEITADO')",
+            name="ck_tce_pagamento_runs_status",
+        ),
+        CheckConstraint("quantidade_pagamentos >= 0", name="ck_tce_pagamento_runs_qtd"),
+        CheckConstraint("exercicio_orcamento > 0 AND exercicio_orcamento % 100 = 0", name="ck_tce_pagamento_runs_exercicio"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    codigo_municipio_tce: Mapped[str] = mapped_column(Text)
+    exercicio_orcamento: Mapped[int] = mapped_column(Integer)
+    competencia: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    iniciado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finalizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    publicado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    substituido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expira_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quantidade_pagamentos: Mapped[int] = mapped_column(Integer, default=0)
+    problemas: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    erro: Mapped[str | None] = mapped_column(Text)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+    pagamentos: Mapped[list[TcePagamento]] = relationship(back_populates="lote", cascade="all, delete-orphan")
+
+
+class TcePagamento(MainBase):
+    __tablename__ = "tce_pagamentos"
+    __table_args__ = (
+        UniqueConstraint("run_id", "chave_pagamento", name="uq_tce_pagamentos_run_chave"),
+        CheckConstraint("valor_nota_pagamento_centavos >= 0", name="ck_tce_pagamentos_valor_nao_negativo"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tce_pagamento_ingestion_runs.id", ondelete="CASCADE"))
+    chave_pagamento: Mapped[str] = mapped_column(Text)
+    chave_empenho: Mapped[str] = mapped_column(Text)
+    codigo_orgao: Mapped[str] = mapped_column(Text)
+    codigo_unidade_orcamentaria: Mapped[str] = mapped_column(Text)
+    data_emissao_empenho: Mapped[date] = mapped_column(Date)
+    numero_empenho: Mapped[str] = mapped_column(Text)
+    numero_sub_empenho: Mapped[str] = mapped_column(Text)
+    numero_nota_pagamento: Mapped[str] = mapped_column(Text)
+    data_nota_pagamento: Mapped[date] = mapped_column(Date)
+    data_referencia_doc: Mapped[int] = mapped_column(Integer)
+    estado_de_estornado: Mapped[str] = mapped_column(Text)
+    valor_nota_pagamento_centavos: Mapped[int] = mapped_column(BigInteger)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+    lote: Mapped[TcePagamentoIngestionRun] = relationship(back_populates="pagamentos")
+
+
 Index("idx_ibge_municipios_uf_nome", IbgeMunicipio.uf, IbgeMunicipio.nome)
 Index("idx_fornecedores_cache_expira_em", FornecedorCache.expira_em)
 Index("idx_raw_pncp_records_entidade_identificador", RawPncpRecord.source, RawPncpRecord.entity_type, RawPncpRecord.external_id)
@@ -718,6 +774,20 @@ Index(
 )
 Index("idx_tce_anulacoes_run", TceAnulacaoEmpenho.run_id)
 Index("idx_tce_anulacoes_chave_empenho", TceAnulacaoEmpenho.chave_empenho)
+Index(
+    "uq_tce_pagamento_run_publicado_competencia",
+    TcePagamentoIngestionRun.codigo_municipio_tce,
+    TcePagamentoIngestionRun.exercicio_orcamento,
+    TcePagamentoIngestionRun.competencia,
+    unique=True,
+    postgresql_where=text("status = 'PUBLICADO'"),
+)
+Index(
+    "idx_tce_pagamento_runs_status_expiracao",
+    TcePagamentoIngestionRun.status,
+    TcePagamentoIngestionRun.expira_em,
+)
+Index("idx_tce_pagamentos_run", TcePagamento.run_id)
 
 
 __all__ = [
@@ -749,6 +819,8 @@ __all__ = [
     "TceDespesaIngestionRun",
     "TceEmpenho",
     "TceMunicipio",
+    "TcePagamento",
+    "TcePagamentoIngestionRun",
 ]
 
 # Registra as tabelas de observacoes mensais no metadata Alembic.

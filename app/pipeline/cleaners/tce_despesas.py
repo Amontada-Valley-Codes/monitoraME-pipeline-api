@@ -22,6 +22,7 @@ from app.utils import (
 FONTE_TCE_CE = "TCE-CE"
 TIPO_REGISTRO_EMPENHO = "EMPENHO"
 TIPO_REGISTRO_ANULACAO = "ANULACAO_EMPENHO"
+TIPO_REGISTRO_PAGAMENTO = "PAGAMENTO"
 CENTAVOS = Decimal("0.01")
 
 
@@ -256,11 +257,91 @@ def mapear_notas_anulacoes_empenhos(registros: list[dict[str, Any]]) -> list[dic
     return [mapear_nota_anulacao_empenho(registro) for registro in registros]
 
 
+def mapear_nota_pagamento(
+    registro: dict[str, Any],
+    *,
+    codigo_municipio_tce: str,
+    exercicio_orcamento: int,
+    competencia: str,
+) -> dict[str, Any]:
+    """Normaliza nota de pagamento sem vincular mês documental ao orçamento."""
+    municipio = _texto(registro.get("codigo_municipio"), "codigo_municipio")
+    exercicio = _inteiro(registro.get("exercicio_orcamento"), "exercicio_orcamento")
+    referencia = _inteiro(registro.get("data_referencia_doc"), "data_referencia_doc")
+    esperada_referencia = int(competencia.replace("-", ""))
+    if municipio != codigo_municipio_tce:
+        raise ContratoDespesaTceInvalido("Nota de pagamento pertence a outro município.")
+    if exercicio != exercicio_orcamento * 100:
+        raise ContratoDespesaTceInvalido("Nota de pagamento pertence a outro exercício orçamentário.")
+    if referencia != esperada_referencia:
+        raise ContratoDespesaTceInvalido("Nota de pagamento pertence a outra competência documental.")
+
+    orgao = _texto(registro.get("codigo_orgao"), "codigo_orgao")
+    unidade = _texto(registro.get("codigo_unidade_orcamentaria"), "codigo_unidade_orcamentaria")
+    numero_empenho = _texto(registro.get("numero_empenho"), "numero_empenho")
+    numero_sub_empenho = _texto(registro.get("numero_sub_empenho"), "numero_sub_empenho")
+    numero_nota = _texto(registro.get("numero_nota_pagamento"), "numero_nota_pagamento")
+    data_empenho = _data_civil(registro.get("data_emissao_empenho"), "data_emissao_empenho")
+    data_pagamento = _data_civil(registro.get("data_nota_pagamento"), "data_nota_pagamento")
+    chave_empenho = _chave_empenho(
+        municipio, exercicio, orgao, unidade, data_empenho, numero_empenho,
+    )
+    chave_pagamento = "|".join(
+        (chave_empenho, numero_sub_empenho, numero_nota),
+    )
+    estado_estorno = _texto(registro.get("estado_de_estornado"), "estado_de_estornado")
+    if estado_estorno not in {"0", "1"}:
+        raise ContratoDespesaTceInvalido("Estado de estorno desconhecido na nota de pagamento.")
+    valor = valor_para_centavos(registro.get("valor_nota_pagamento"), "valor_nota_pagamento")
+    if valor < 0:
+        raise ContratoDespesaTceInvalido("Valor de nota de pagamento não pode ser negativo.")
+
+    return {
+        "tipo_registro": TIPO_REGISTRO_PAGAMENTO,
+        "codigo_municipio_tce": municipio,
+        "exercicio_orcamento": exercicio,
+        "competencia": competencia,
+        "codigo_orgao": orgao,
+        "codigo_unidade_orcamentaria": unidade,
+        "data_emissao_empenho": data_empenho,
+        "numero_empenho": numero_empenho,
+        "chave_empenho": chave_empenho,
+        "numero_sub_empenho": numero_sub_empenho,
+        "numero_nota_pagamento": numero_nota,
+        "chave_pagamento": chave_pagamento,
+        "data_nota_pagamento": data_pagamento,
+        "data_referencia_doc": referencia,
+        "estado_de_estornado": estado_estorno,
+        "valor_nota_pagamento_centavos": valor,
+        "payload_bruto": dict(registro),
+    }
+
+
+def mapear_notas_pagamentos(
+    registros: list[dict[str, Any]],
+    *,
+    codigo_municipio_tce: str,
+    exercicio_orcamento: int,
+    competencia: str,
+) -> list[dict[str, Any]]:
+    return [
+        mapear_nota_pagamento(
+            registro,
+            codigo_municipio_tce=codigo_municipio_tce,
+            exercicio_orcamento=exercicio_orcamento,
+            competencia=competencia,
+        )
+        for registro in registros
+    ]
+
+
 __all__ = [
     "ContratoDespesaTceInvalido",
     "mapear_nota_anulacao_empenho",
     "mapear_nota_empenho",
     "mapear_notas_anulacoes_empenhos",
     "mapear_notas_empenhos",
+    "mapear_nota_pagamento",
+    "mapear_notas_pagamentos",
     "valor_para_centavos",
 ]
