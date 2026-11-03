@@ -105,9 +105,11 @@ class AnaliseTerritorialTest(unittest.TestCase):
     @patch("app.pipeline.territorial.database.listar_fornecedores_cache")
     @patch("app.pipeline.territorial.persistence.listar_empenhos_liquidos_publicados")
     @patch("app.pipeline.territorial.persistence.listar_publicacoes_competencias")
+    @patch("app.pipeline.territorial.persistence.listar_falhas_competencias", return_value=[])
+    @patch("app.pipeline.tce_observability.portes_historicos.raizes_classificadas_por_competencia", return_value={})
     @patch("app.pipeline.empenhos.database.localizar_municipio_tce")
     def test_calcula_fluxos_concentracao_e_cobertura(
-        self, localizar, listar_publicacoes, listar_empenhos, listar_cache
+        self, localizar, _raizes, _falhas, listar_publicacoes, listar_empenhos, listar_cache
     ) -> None:
         localizar.return_value = {
             "codigo_municipio_tce": "057",
@@ -157,16 +159,18 @@ class AnaliseTerritorialTest(unittest.TestCase):
         self.assertEqual(resultado["evolucao_mensal"][0]["retencao_local_percentual"], 45.0)
 
     @patch("app.pipeline.territorial.persistence.listar_publicacoes_competencias", return_value={})
+    @patch("app.pipeline.territorial.persistence.listar_falhas_competencias", return_value=[])
     @patch("app.pipeline.empenhos.database.localizar_municipio_tce")
-    def test_rejeita_periodo_sem_competencia_publicada(self, localizar, _publicacoes) -> None:
+    def test_municipio_sem_publicacao_retorna_indisponibilidade_sem_taxas(
+        self, localizar, _falhas, _publicacoes
+    ) -> None:
         localizar.return_value = {
             "codigo_municipio_tce": "057",
             "codigo_municipio_ibge": "2304400",
             "nome": "Fortaleza",
             "uf": "CE",
         }
-        with self.assertRaises(empenhos.EmpenhoRequestError) as contexto:
-            territorial.consultar_analise_territorial(
+        resultado = territorial.consultar_analise_territorial(
                 start_date="2025-01-01",
                 end_date="2025-01-31",
                 uf="CE",
@@ -176,7 +180,11 @@ class AnaliseTerritorialTest(unittest.TestCase):
                 expense_element_codes=[],
                 ranking_limit=10,
             )
-        self.assertEqual(contexto.exception.code, "TERRITORIAL_DATA_NOT_AVAILABLE")
+        self.assertFalse(resultado["data_available"])
+        self.assertEqual(resultado["resumo_financeiro"]["valor_final_centavos"], 0)
+        self.assertIsNone(
+            resultado["indicadores_territoriais"]["retencao_local_percentual"]
+        )
 
     def test_validacao_da_rota_usa_envelope_padronizado(self) -> None:
         request = Request({

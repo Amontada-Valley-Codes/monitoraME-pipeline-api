@@ -136,10 +136,14 @@ class ComparacaoTceTest(unittest.TestCase):
     @patch("app.pipeline.comparisons.database.listar_fornecedores_cache")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_publicacoes_competencias")
+    @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
+    @patch("app.pipeline.comparisons.tce_observability.portes_historicos.raizes_classificadas_por_competencia", return_value={})
     @patch("app.pipeline.comparisons.database.localizar_municipio_tce_por_ibge")
     def test_compara_overviews_usando_somente_o_banco(
         self,
         localizar_municipio,
+        _raizes_historicas,
+        _falhas,
         listar_publicacoes,
         listar_empenhos,
         listar_cache,
@@ -202,10 +206,12 @@ class ComparacaoTceTest(unittest.TestCase):
 
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_publicacoes_competencias")
+    @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
     @patch("app.pipeline.comparisons.database.localizar_municipio_tce_por_ibge")
     def test_competencia_publicada_sem_movimento_e_valida_e_retorna_zero(
         self,
         localizar_municipio,
+        _falhas,
         listar_publicacoes,
         listar_empenhos,
     ) -> None:

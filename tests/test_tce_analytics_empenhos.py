@@ -324,27 +324,51 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
         "app.pipeline.analisys.database.localizar_municipio_tce",
         return_value={"codigo_municipio_tce": "010", "nome": "Amontada"},
     )
-    @patch("app.pipeline.analisys.fornecedores.obter_fornecedores_com_cache")
     @patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch(
         "app.pipeline.analisys.tce_despesas_persistence.listar_publicacoes_competencias",
-        return_value={},
+        return_value={"2025-01": datetime(2025, 2, 1, tzinfo=timezone.utc)},
     )
+    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
+    @patch("app.pipeline.tce_observability.portes_historicos.raizes_classificadas_por_competencia", return_value={})
+    @patch("app.pipeline.analisys.database.listar_fornecedores_cache")
     @patch("app.pipeline.analisys.tce_despesas_pipeline.executar_ingestao_competencia_tce")
     def test_indicadores_e_porte_mensal_usam_empenhos_liquidos(
         self,
         executar_ingestao,
+        listar_cache,
+        _raizes_historicas,
+        _falhas,
         listar_publicacoes,
         listar_empenhos,
-        coletar_fornecedores,
         localizar_municipio,
     ) -> None:
-        executar_ingestao.return_value = _publicado()
         listar_empenhos.return_value = [
             _empenho("E1", "2025-01-10", "30", 1_000_000, 200_000, "11444777000161", "ME"),
             _empenho("E2", "2025-01-20", "39", 2_000_000, 500_000, "98765432000111", "EPP"),
         ]
-        coletar_fornecedores.return_value = FORNECEDORES_LIMPOS
+        listar_cache.return_value = {
+            "11444777000161": {
+                "dados_normalizados": {
+                    "cnpj": "11444777000161",
+                    "porte_padronizado": "ME",
+                    "municipio_sede": "AMONTADA",
+                    "uf_sede": "CE",
+                    "optante_mei": False,
+                    "mei_discriminado": True,
+                }
+            },
+            "98765432000111": {
+                "dados_normalizados": {
+                    "cnpj": "98765432000111",
+                    "porte_padronizado": "EPP",
+                    "municipio_sede": "FORTALEZA",
+                    "uf_sede": "CE",
+                    "optante_mei": False,
+                    "mei_discriminado": True,
+                }
+            },
+        }
 
         indicadores = analisys.consultar_tce_indicadores_analiticos(
             data_inicial="2025-01-01",
@@ -373,17 +397,20 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
         self.assertEqual(linha_me["quantidade_empenhos"], 1)
         self.assertEqual(linha_me["valor_porte"], 8_000.0)
         self.assertNotIn("total_contratos", linha_me)
+        executar_ingestao.assert_not_called()
 
 
 class ResolverMunicipioTceTest(unittest.TestCase):
-    @patch("app.pipeline.analisys.fornecedores.obter_fornecedores_com_cache")
     @patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch("app.pipeline.analisys.tce_despesas_persistence.listar_publicacoes_competencias_estado")
+    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
+    @patch("app.pipeline.analisys.database.listar_municipios_ibge", return_value=[])
     def test_overview_sem_municipio_consolida_ceara_somente_com_banco_local(
         self,
+        _listar_municipios,
+        _falhas,
         listar_publicacoes,
         listar_empenhos,
-        obter_fornecedores,
     ) -> None:
         listar_publicacoes.return_value = [
             {
@@ -426,7 +453,6 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             data_final=date(2025, 1, 31),
             uf="CE",
         )
-        obter_fornecedores.assert_not_called()
 
     @patch("app.pipeline.analisys.tce.buscar_municipios")
     @patch("app.pipeline.analisys.database.salvar_municipios_tce")
@@ -471,7 +497,7 @@ class ResolverMunicipioTceTest(unittest.TestCase):
         buscar_municipios.assert_called_once_with()
         salvar_municipios.assert_called_once_with(buscar_municipios.return_value, "CE")
 
-    @patch("app.pipeline.analisys.montar_base_analitica_tce")
+    @patch("app.pipeline.analisys.montar_base_analitica_tce_somente_banco")
     def test_overview_preserva_metadados_e_aplica_escopo_me_mei(
         self,
         montar_base,
@@ -499,6 +525,8 @@ class ResolverMunicipioTceTest(unittest.TestCase):
                 "fonte": "TCE-CE",
                 "competencias_publicadas": ["2025-01"],
                 "competencias_ausentes": [],
+                "data_available": True,
+                "totais": {"despesas": 2},
             },
         )
 
@@ -513,7 +541,6 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             "2025-01-01",
             "2025-01-31",
             codigo_municipio="010",
-            throttle_fornecedores=0,
         )
         self.assertEqual(resultado["competencias_publicadas"], ["2025-01"])
         self.assertEqual(resultado["escopo"]["portes_considerados"], ["ME", "MEI"])

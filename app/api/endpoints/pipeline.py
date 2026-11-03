@@ -122,13 +122,14 @@ def tce_contratos(
     tags=["Indicadores TCE-CE"],
     summary="Calcula participação por porte empresarial por mês",
     description=(
-        "Atualiza as competências solicitadas e calcula quantidade, valor final "
-        "das despesas e percentual mensal por porte empresarial."
+        "Calcula quantidade, valor final das despesas e percentual mensal por porte "
+        "empresarial usando somente competências publicadas no banco local."
     ),
     response_description=(
         "Objeto com `dados`, uma série mensal por porte contendo quantidade, valor "
         "líquido empenhado e percentual; inclui `totais`, competências processadas, "
-        "parâmetros e `limite_resposta`. Valores monetários usam centavos."
+        "parâmetros, `limite_resposta` e metadados comuns de disponibilidade, "
+        "defasagem e qualidade. Valores monetários usam centavos."
     ),
 )
 def tce_kpi_portes_por_mes(
@@ -171,7 +172,8 @@ def tce_kpi_portes_por_mes(
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
-        "e destino geográfico dos recursos, além de escopo, parâmetros e cobertura das competências."
+        "e destino geográfico dos recursos, além de escopo, parâmetros, cobertura das "
+        "competências e metadados de qualidade/defasagem."
     ),
 )
 def tce_overview(
@@ -208,7 +210,8 @@ def tce_overview(
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
-        "e destino geográfico para o município; também retorna o filtro aplicado, escopo e competências."
+        "e destino geográfico para o município; também retorna filtro aplicado, escopo, "
+        "competências e metadados de qualidade/defasagem."
     ),
 )
 def tce_overview_municipal(
@@ -595,7 +598,8 @@ def tce_fornecedor_empenhos(
     ),
     response_description=(
         "Objeto com município, cobertura, resumo financeiro em centavos, indicadores de "
-        "retenção, destino dos recursos, portes, elementos, evolução mensal, concentração, ranking e metodologia."
+        "retenção, destino dos recursos, portes, elementos, evolução mensal, concentração, "
+        "ranking, metodologia e metadados de qualidade/defasagem."
     ),
     response_model=None,
 )
@@ -637,13 +641,13 @@ def tce_analise_territorial(
     tags=["Indicadores TCE-CE"],
     summary="Calcula indicadores analiticos principais do TCE-CE",
     description=(
-        "Atualiza as competências solicitadas e calcula os indicadores sobre "
-        "empenhos líquidos publicados do TCE-CE. "
-        "O municipio comprador e resolvido automaticamente pelo codigo interno do TCE-CE."
+        "Calcula indicadores sobre empenhos líquidos publicados do TCE-CE usando "
+        "somente o banco local. O municipio comprador e resolvido pelo cadastro local."
     ),
     response_description=(
         "Objeto com `indicadores`, tabelas dos indicadores analíticos solicitados, `totais` "
-        "por tabela, competências processadas, parâmetros, base de cálculo e `limite_resposta`."
+        "por tabela, competências processadas, parâmetros, base de cálculo, `limite_resposta` "
+        "e metadados comuns de disponibilidade, defasagem e qualidade."
     ),
 )
 def tce_analitico_indicadores(

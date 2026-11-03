@@ -18,6 +18,71 @@ Os exemplos abaixo mostram a estrutura de sucesso das rotas registradas. Valores
 
 ## TCE-CE
 
+### Metadados comuns de carga analítica
+
+As respostas de overview estadual/municipal, KPI mensal por porte, indicadores
+analíticos, comparação e análise territorial compartilham estes campos:
+
+```json
+{
+  "data_available": true,
+  "data_as_of": "2025-01-31",
+  "last_successful_load_at": "2025-02-05T12:30:00+00:00",
+  "is_stale": true,
+  "stale_reason": ["LATEST_LOAD_FAILED"],
+  "quality": {
+    "municipalities_with_data": 1,
+    "municipalities_in_scope": 1,
+    "unknown_origin": {
+      "expenses": 2,
+      "value_centavos": 125000,
+      "percent": 20.0
+    },
+    "historical_size_classification_coverage": {
+      "classified_expenses": 8,
+      "expenses_in_scope": 10,
+      "classification_unit": "CNPJ_BASICO",
+      "reference": "EXACT_MONTHLY_COMPETENCE",
+      "percent": 80.0
+    },
+    "partial_period": false,
+    "missing_competencies": [],
+    "competencies_with_incomplete_municipal_coverage": [],
+    "alerts": [
+      {
+        "code": "LATEST_LOAD_FAILED",
+        "message": "A carga mais recente falhou; os valores preservam o último snapshot publicado."
+      }
+    ]
+  }
+}
+```
+
+`data_as_of` é o último dia coberto por uma competência publicada no recorte.
+`last_successful_load_at` é a publicação mais recente nesse escopo. `stale_reason`
+é uma lista de códigos estáveis (`LATEST_LOAD_FAILED`, `SNAPSHOT_EXPIRED` e/ou
+`PUBLICATION_TIMESTAMP_MISSING`);
+ausência de publicação é informada separadamente por `data_available` e por um
+alerta de qualidade. `is_stale` representa falha mais recente ou publicação
+fora da janela de atualização esperada. `quality.partial_period` é verdadeiro
+quando há competências ausentes ou as datas de início/fim não cobrem meses
+completos, ou há competências com menos municípios publicados que o catálogo
+local do estado. A cobertura histórica compara a raiz de CNPJ (`CNPJ_BASICO`)
+com um retrato publicado para a competência exata; o histórico mensal é uma
+amostra e não comprova vigência diária ou cobertura integral dos fornecedores.
+Os alertas têm códigos e mensagens seguros para exibição, sem documentos ou
+dados pessoais.
+
+O TTL usado para o alerta `SNAPSHOT_EXPIRED` é de uma hora para a competência
+do mês atual, 24 horas para os três meses anteriores e sete dias para as
+competências históricas.
+
+Quando não existe lote publicado, `data_available` é `false`, os valores
+monetários retornados são zero e taxas/percentuais são `null`; isso não afirma
+que o gasto foi zero. Uma competência publicada sem empenhos é dado disponível
+com movimento monetário conhecido igual a zero, mas percentuais sem denominador
+também são `null`.
+
 ### `GET /pipeline/tce/contratos`
 
 ```json
