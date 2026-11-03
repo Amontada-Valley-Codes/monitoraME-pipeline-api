@@ -17,7 +17,7 @@ from app.nlp.profiles.schemas import MatchingBatchRequest, SCHEMA_VERSION
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.nlp.cli")
-    parser.add_argument("command", choices=["validate-fixtures", "sync-corpus", "run-matching", "enqueue-matching", "matching-results", "matching-status"])
+    parser.add_argument("command", choices=["validate-fixtures", "sync-corpus", "run-matching", "enqueue-matching", "matching-results", "matching-status", "matching-batch-results"])
     parser.add_argument(
         "--fixtures",
         type=Path,
@@ -28,8 +28,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Calcula alterações do corpus sem persistir.")
     parser.add_argument("--batch-id", help="UUID estável para repetição idempotente de run-matching.")
     parser.add_argument("--company-id", help="UUID usado por matching-results.")
+    parser.add_argument("--eligible-only", action="store_true", help="Filtra matching-results para eligibility=ELIGIBLE.")
+    parser.add_argument("--compatible-only", action="store_true", help="Filtra matching-results para compatibility_level MEDIUM ou HIGH.")
     parser.add_argument("--k", type=int, default=20, help="Candidatos Top-K por perfil.")
     parser.add_argument("--limit", type=int, default=100, help="Máximo de resultados consultados.")
+    parser.add_argument("--cursor", help="Cursor opaco para paginação de resultados do batch.")
     args = parser.parse_args()
 
     if args.command == "sync-corpus":
@@ -64,7 +67,12 @@ def main() -> int:
         if not 1 <= args.limit <= 500:
             parser.error("--limit deve estar entre 1 e 500")
         from app.nlp.matching.pipeline import consultar_resultados_empresa
-        print(json.dumps(consultar_resultados_empresa(company_id, limit=args.limit), ensure_ascii=False, indent=2))
+        results = consultar_resultados_empresa(company_id, limit=args.limit)
+        if args.eligible_only:
+            results = [item for item in results if item.get("eligibility") == "ELIGIBLE"]
+        if args.compatible_only:
+            results = [item for item in results if item.get("compatibility_level") in {"MEDIUM", "HIGH"}]
+        print(json.dumps(results, ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "matching-status":
@@ -82,6 +90,26 @@ def main() -> int:
         print(json.dumps(status, ensure_ascii=False, indent=2))
         return 0
 
+    if args.command == "matching-batch-results":
+        if not args.batch_id:
+            parser.error("matching-batch-results exige --batch-id")
+        try:
+            batch_id = str(UUID(args.batch_id))
+        except ValueError:
+            parser.error("--batch-id deve ser UUID")
+        if not 1 <= args.limit <= 500:
+            parser.error("--limit deve estar entre 1 e 500")
+        from app.nlp.matching.pipeline import consultar_resultados_batch
+        try:
+            page = consultar_resultados_batch(batch_id, limit=args.limit, cursor=args.cursor)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if page is None:
+            print(json.dumps({"error": "batch_not_found", "batch_id": batch_id}))
+            return 1
+        print(json.dumps(page, ensure_ascii=False, indent=2))
+        return 0
+
     if args.command in {"run-matching", "enqueue-matching"}:
         try:
             companies = json.loads(args.fixtures.read_text(encoding="utf-8"))
@@ -96,7 +124,6 @@ def main() -> int:
         except ValueError:
             parser.error("--batch-id deve ser UUID")
         if args.command == "enqueue-matching":
-            from app.core import orm
             from app.nlp.repositories.matching import enfileirar_batch_session
             with orm.main_session() as session:
                 queued, created = enfileirar_batch_session(

@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import base64
 import json
 from datetime import datetime, timezone
 from typing import Sequence
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -85,7 +86,9 @@ def preparar_batch_reexecucao_session(session: Session, *, batch_id: str) -> Non
     batch = session.get(NlpMatchingBatch, batch_id)
     if batch is None:
         raise ValueError("batch não registrado")
-    session.execute(delete(NlpMatchingResult).where(NlpMatchingResult.batch_id == batch_id))
+    # Preserve prior snapshots. The result primary key includes all input/model
+    # versions, so replaying the same snapshot is an idempotent upsert while a
+    # newer profile/procurement version remains independently queryable.
     batch.status = "RUNNING"
     batch.processed_companies = 0
     batch.failed_companies = 0
@@ -142,13 +145,92 @@ def listar_resultados_session(
     return [row.result for row in rows]
 
 
-def listar_resultados_batch_session(session: Session, *, batch_id: str) -> list[dict[str, object]]:
+def listar_resultados_filtrados_session(
+    session: Session,
+    *,
+    company_id: str | None = None,
+    compatibility_level: str | None = None,
+    batch_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    """Consulta snapshots de compatibilidade com filtros para auditoria local."""
+    if not 1 <= limit <= 500:
+        raise ValueError("limit deve estar entre 1 e 500")
+    if offset < 0:
+        raise ValueError("offset deve ser maior ou igual a zero")
+    filtros = []
+    if company_id is not None:
+        filtros.append(NlpMatchingResult.company_id == company_id)
+    if compatibility_level is not None:
+        filtros.append(
+            NlpMatchingResult.result["compatibility_level"].as_string() == compatibility_level
+        )
+    if batch_id is not None:
+        filtros.append(NlpMatchingResult.batch_id == batch_id)
+
+    total = int(session.scalar(
+        select(func.count()).select_from(NlpMatchingResult).where(*filtros)
+    ) or 0)
     rows = session.scalars(
         select(NlpMatchingResult)
-        .where(NlpMatchingResult.batch_id == batch_id)
-        .order_by(NlpMatchingResult.company_id, NlpMatchingResult.score.desc(), NlpMatchingResult.external_id)
+        .where(*filtros)
+        .order_by(
+            NlpMatchingResult.processed_at.desc(),
+            NlpMatchingResult.score.desc(),
+            NlpMatchingResult.company_id,
+            NlpMatchingResult.external_id,
+        )
+        .limit(limit)
+        .offset(offset)
     )
-    return [row.result for row in rows]
+    return ([
+        {
+            "batch_id": row.batch_id,
+            "company_id": row.company_id,
+            "compatibility_level": row.result["compatibility_level"],
+            "score": row.score,
+            "processed_at": row.processed_at,
+            "result": row.result,
+        }
+        for row in rows
+    ], total)
+
+
+def listar_resultados_batch_session(
+    session: Session, *, batch_id: str, limit: int = 100, cursor: str | None = None,
+) -> tuple[list[dict[str, object]], str | None]:
+    if not 1 <= limit <= 500:
+        raise ValueError("limit deve estar entre 1 e 500")
+    statement = select(NlpMatchingResult).where(NlpMatchingResult.batch_id == batch_id)
+    if cursor:
+        try:
+            raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+            company, score, external = json.loads(raw)
+            score = float(score)
+            if not isinstance(company, str) or not isinstance(external, str):
+                raise ValueError
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("cursor invalido") from exc
+        statement = statement.where(or_(
+            NlpMatchingResult.score < score,
+            and_(NlpMatchingResult.score == score, NlpMatchingResult.company_id > company),
+            and_(NlpMatchingResult.score == score, NlpMatchingResult.company_id == company,
+                 NlpMatchingResult.external_id > external),
+        ))
+    rows = list(session.scalars(statement.order_by(
+        NlpMatchingResult.score.desc(), NlpMatchingResult.company_id,
+        NlpMatchingResult.external_id,
+    ).limit(limit + 1)))
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = None
+    if has_more and rows:
+        last = rows[-1]
+        next_cursor = base64.urlsafe_b64encode(json.dumps(
+            [last.company_id, last.score, last.external_id], separators=(",", ":")
+        ).encode()).decode().rstrip("=")
+    return [row.result for row in rows], next_cursor
 
 
 def marcar_batch_falha_session(session: Session, *, batch_id: str, payload_hash: str) -> None:

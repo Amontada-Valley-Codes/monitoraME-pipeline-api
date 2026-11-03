@@ -50,11 +50,11 @@ class ComposeSetupTest(unittest.TestCase):
         env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 
         self.assertIn(
-            "DATABASE_URL=postgresql://monitorame:monitorame@localhost:5432/monitorame\n",
+            "DATABASE_URL=postgresql://monitorame:monitorame@localhost:15432/monitorame\n",
             env_example,
         )
         self.assertIn(
-            "LOG_DATABASE_URL=postgresql://monitorame:monitorame@localhost:5432/monitorame\n",
+            "LOG_DATABASE_URL=postgresql://monitorame:monitorame@localhost:15432/monitorame\n",
             env_example,
         )
         self.assertIn("DATABASE_SSLMODE=disable", env_example)

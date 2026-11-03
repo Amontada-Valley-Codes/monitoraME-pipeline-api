@@ -13,11 +13,11 @@ from app.nlp.matching.schemas import (
     ProcurementProfile,
     ProcurementReference,
 )
-from app.nlp.matching.scoring import TaxonomyAssociation, calcular_score, classificar_score
+from app.nlp.matching.scoring import TaxonomyAssociation, calcular_score, calibrar_relevancia_semantica, classificar_score
 from app.nlp.profiles.schemas import CompanyProfile
 
 
-MATCHING_VERSION = "hybrid-matching-v2"
+MATCHING_VERSION = "hybrid-matching-v4"
 
 
 def calcular_matching(
@@ -27,6 +27,9 @@ def calcular_matching(
     taxonomy_version: str,
     cnae_categories: dict[str, list[TaxonomyAssociation]],
     semantic_score: float | None = None,
+    semantic_object_score: float | None = None,
+    semantic_complementary_score: float | None = None,
+    semantic_items_score: float | None = None,
     model_version: str | None = None,
     retrieval_evidence: list[dict[str, object]] | None = None,
     additional_warnings: list[str] | None = None,
@@ -45,7 +48,7 @@ def calcular_matching(
     # Gate duro ocorre antes do cálculo dos critérios de compatibilidade.
     if eligibility.status == EligibilityStatus.INELIGIBLE:
         score = 0.0
-        semantic_relevance = semantic_score * 100 if semantic_score is not None else None
+        semantic_relevance = calibrar_relevancia_semantica(semantic_score)
         preference_score = None
         preference_confidence = 0.0
         confidence = 0.0
@@ -60,19 +63,23 @@ def calcular_matching(
             taxonomy_version=taxonomy_version,
             cnae_categories=cnae_categories,
             semantic_score=semantic_score,
+            semantic_object_score=semantic_object_score,
+            semantic_complementary_score=semantic_complementary_score,
+            semantic_items_score=semantic_items_score,
         )
         score = breakdown.score
         preference_score = breakdown.preference_score
         preference_confidence = breakdown.preference_confidence
-        semantic_relevance = semantic_score * 100 if semantic_score is not None else None
+        semantic_relevance = calibrar_relevancia_semantica(semantic_score)
         confidence = breakdown.data_confidence
         evidence = [*eligibility.evidence, *breakdown.evidence]
         evidence.extend(
             MatchingEvidence(
                 criterion="retrieval_segment",
-                score=max(0.0, min(1.0, float(item.get("score", 0.0)))),
+                score=(calibrar_relevancia_semantica(max(0.0, min(1.0, float(item.get("score", 0.0))))) or 0.0) / 100,
                 details=(
-                    f"CNAE {item.get('cnae')} ({str(item.get('cnae_description') or 'descrição indisponível')[:180]}); "
+                    f"Raw cosine={float(item.get('score', 0.0)):.4f}; displayed score is calibrated evidence, not compatibility. "
+                    f"Similaridade cosseno de recuperação (não é o score final); CNAE {item.get('cnae')} ({str(item.get('cnae_description') or 'descrição indisponível')[:180]}); "
                     f"segmento {item.get('segment_type')} "
                     f"({item.get('segment_key')}); evidência: {str(item.get('snippet') or 'texto não carregado')[:220]}"
                 ),

@@ -62,7 +62,7 @@ def _executar_matching_local(
             if existing.payload_hash != payload_hash:
                 raise ValueError("batch_id já existe associado a outro payload")
             if existing.status == "COMPLETED":
-                previous = listar_resultados_batch_session(session, batch_id=batch_id)
+                previous, _ = listar_resultados_batch_session(session, batch_id=batch_id)
                 return [MatchingResult.model_validate(item) for item in previous], False
         else:
             registrar_batch_session(session, batch_id=batch_id, profiles=profiles)
@@ -182,7 +182,9 @@ def _executar_matching_local(
                 procurement = ProcurementProfile(
                     procurement_id=f"{candidate.source}:{candidate.procurement_id}",
                     source=candidate.source, external_id=candidate.procurement_id,
-                    object=opportunity.objeto, items=items_by_opportunity.get(key, []), categories=[],
+                    object=opportunity.objeto,
+                    complementary_text=(opportunity.dados_semanticos or {}).get("informacao_complementar"),
+                    items=items_by_opportunity.get(key, []), categories=[],
                     modality_code=str(modality_code) if modality_code is not None else None,
                     status=status, deadline=opportunity.prazo_proposta_final,
                     revoked=True if "REVOG" in status_upper or "REVOG" in official_upper else (False if opportunity.official_status is not None else None),
@@ -194,6 +196,9 @@ def _executar_matching_local(
                     profile, procurement, taxonomy_version=taxonomy_version,
                     cnae_categories=associations,
                     semantic_score=max(0.0, min(1.0, candidate.score)),
+                    semantic_object_score=max((float(s["score"]) for s in candidate.segments if s["segment_type"] == "OBJECT"), default=0.0),
+                    semantic_complementary_score=max((float(s["score"]) for s in candidate.segments if s["segment_type"] == "COMPLEMENTARY" and s["segment_key"] == "complementary:informacao_complementar"), default=0.0),
+                    semantic_items_score=max((float(s["score"]) for s in candidate.segments if s["segment_type"] in {"ITEM", "LOT"}), default=0.0),
                     model_version=semantic_profile.model_version, as_of=instant,
                     retrieval_evidence=evidence_segments,
                     additional_warnings=(
@@ -223,6 +228,25 @@ def consultar_resultados_empresa(company_id: str, *, limit: int = 100) -> list[d
 def consultar_status_batch(batch_id: str) -> dict[str, object] | None:
     with orm.main_session() as session:
         return consultar_batch_session(session, batch_id=batch_id)
+
+
+def consultar_resultados_batch(
+    batch_id: str, *, limit: int = 100, cursor: str | None = None,
+) -> dict[str, object] | None:
+    with orm.main_session() as session:
+        status = consultar_batch_session(session, batch_id=batch_id)
+        if status is None:
+            return None
+        results, next_cursor = listar_resultados_batch_session(
+            session, batch_id=batch_id, limit=limit, cursor=cursor,
+        )
+        return {
+            "batch_id": batch_id,
+            "schema_version": "matching.v1",
+            "status": status["status"],
+            "results": results,
+            "next_cursor": next_cursor,
+        }
 
 
 def processar_batch_enfileirado(job: Any, *, model: E5EmbeddingModel, k: int = 20) -> tuple[list[MatchingResult], bool]:

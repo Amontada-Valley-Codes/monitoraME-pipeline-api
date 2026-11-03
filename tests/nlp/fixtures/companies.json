@@ -1,7 +1,7 @@
 [
   {
     "company_id": "5382d207-d756-5d52-909a-afed5c17f6cb",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "3514000",
     "cnaes": [
@@ -14,11 +14,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "676ea2a6-4ece-5338-9486-d5fb04d400e2",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8411600",
     "cnaes": [
@@ -31,11 +50,30 @@
     "location": {
       "municipality_code": "2307650",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2307650"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "cb7699aa-28f8-51c5-985f-3c5ea183e0eb",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "7020400",
     "cnaes": [
@@ -103,11 +141,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "7b9a66f7-62f0-554d-bc7e-9d05eaced071",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "3600601",
     "cnaes": [
@@ -135,11 +192,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "3209372d-6444-55c6-8770-fa2d2c8c2a00",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "3811400",
     "cnaes": [
@@ -172,11 +248,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "5c4b070a-f6b7-5562-983e-09fcc903a5a1",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -224,11 +319,30 @@
     "location": {
       "municipality_code": "2302503",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2302503"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "d3f2f9e5-a8ac-5c60-ad5e-600c06f227af",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "3811400",
     "cnaes": [
@@ -411,11 +525,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "f01f951e-5efd-58bf-b3b9-ccef003af41b",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -443,11 +576,30 @@
     "location": {
       "municipality_code": "2301901",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2301901"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "2031c7cf-0f7e-58b0-9d1c-174fa0a8953f",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610102",
     "cnaes": [
@@ -460,11 +612,30 @@
     "location": {
       "municipality_code": "2312908",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2312908"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "ad267a0f-0509-57eb-82e6-c1cfafc9044e",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -602,11 +773,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "59daf40a-de0d-5735-b640-720ca19f51d1",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "5222200",
     "cnaes": [
@@ -659,11 +849,30 @@
     "location": {
       "municipality_code": "3550308",
       "state": "SP"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "3550308"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "6456ebfe-acc3-5932-9aac-694c811a7054",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8411600",
     "cnaes": [
@@ -676,11 +885,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "9cacd041-9f45-500d-80b1-4f8cc3a9a118",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "3811400",
     "cnaes": [
@@ -738,11 +966,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "b5b29839-61a2-5126-81ed-cc9d665895d0",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8660700",
     "cnaes": [
@@ -790,11 +1037,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "7ddf46af-1384-50e5-bade-99d4192c8bef",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "EPP",
     "primary_cnae": "5911102",
     "cnaes": [
@@ -837,11 +1103,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "51e9d015-69fe-5790-956a-42a5c44922c3",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "EPP",
     "primary_cnae": "9001999",
     "cnaes": [
@@ -1149,11 +1434,30 @@
     "location": {
       "municipality_code": "2307809",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2307809"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "6b1690b0-af20-5dcb-927f-e085bb165ace",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4120400",
     "cnaes": [
@@ -1301,11 +1605,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "28956e44-91bb-5a35-bbf2-da60d330850a",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "7210000",
     "cnaes": [
@@ -1358,11 +1681,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "f6074853-148a-522c-a7f4-73e4d711d70b",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -1375,11 +1717,30 @@
     "location": {
       "municipality_code": "2313302",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2313302"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "1bef2b70-25f9-5c77-a385-7228d3b6ab97",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -1417,11 +1778,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "ee78a94a-22ff-5655-9a31-94f37c77fcf1",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "2920401",
     "cnaes": [
@@ -1569,11 +1949,30 @@
     "location": {
       "municipality_code": "3167202",
       "state": "MG"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "3167202"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "485a9e8f-ce04-5d2b-9645-60f709bc1e24",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "ME",
     "primary_cnae": "4761001",
     "cnaes": [
@@ -1641,11 +2040,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "e0a39df9-8f00-57e6-99fc-f8e3a9af3aae",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "ME",
     "primary_cnae": "8230001",
     "cnaes": [
@@ -1708,11 +2126,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "8c26611a-8ec0-5a25-8f5e-1cd355ab1c9d",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "3811400",
     "cnaes": [
@@ -1740,11 +2177,30 @@
     "location": {
       "municipality_code": "2303709",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2303709"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "1f1f82ea-e05c-5244-9365-73ddfb283b4d",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "7112000",
     "cnaes": [
@@ -1897,11 +2353,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "75aa8384-c12f-5a08-adf2-825a0416df4d",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4120400",
     "cnaes": [
@@ -2224,11 +2699,30 @@
     "location": {
       "municipality_code": "2312908",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2312908"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "2dc91bfb-0435-5194-83c4-35418bdca0e5",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -2241,11 +2735,30 @@
     "location": {
       "municipality_code": "2306405",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2306405"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "a0655bd0-6ed6-5e25-8764-cae842e1ec6a",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "ME",
     "primary_cnae": "4120400",
     "cnaes": [
@@ -2348,11 +2861,30 @@
     "location": {
       "municipality_code": "2304285",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304285"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "f0ead10a-b2de-5308-8b94-794df0084671",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "5811500",
     "cnaes": [
@@ -2385,11 +2917,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "162226aa-0b74-54dd-bcb9-ab0c75fcc2e0",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "7020400",
     "cnaes": [
@@ -2552,11 +3103,30 @@
     "location": {
       "municipality_code": "3505708",
       "state": "SP"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "3505708"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "12fbf2f6-dab2-556e-ada1-f9ec0b91dfa7",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8640203",
     "cnaes": [
@@ -2589,11 +3159,30 @@
     "location": {
       "municipality_code": "2304285",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2304285"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "99f7d2eb-5d74-52ea-92b8-fd231d6fd959",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "9430800",
     "cnaes": [
@@ -2666,11 +3255,30 @@
     "location": {
       "municipality_code": "2701209",
       "state": "AL"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2701209"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "5339294f-f43f-5b79-a434-43cb2bee8550",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4647802",
     "cnaes": [
@@ -2693,11 +3301,30 @@
     "location": {
       "municipality_code": "2211001",
       "state": "PI"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2211001"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "d0afaea3-9dbf-5195-a47a-92274dafb1d2",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4618403",
     "cnaes": [
@@ -2720,11 +3347,30 @@
     "location": {
       "municipality_code": "2211001",
       "state": "PI"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2211001"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "f1fafb81-6042-5159-958a-ec67ebbf9a71",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610101",
     "cnaes": [
@@ -2737,11 +3383,30 @@
     "location": {
       "municipality_code": "2304202",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304202"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "3d5f2390-11ac-5e0c-a017-86aa8d67701e",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4924800",
     "cnaes": [
@@ -3104,11 +3769,30 @@
     "location": {
       "municipality_code": "2302800",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2302800"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "8eebd0e7-340b-5074-94c4-d39b9da3b9bf",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4120400",
     "cnaes": [
@@ -3281,11 +3965,30 @@
     "location": {
       "municipality_code": "2312908",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2312908"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "e1f571e7-b5aa-56b3-9267-8a026cc4d37d",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8211300",
     "cnaes": [
@@ -3363,11 +4066,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "95ba9eb7-a9b7-5b81-b0dd-cc0f4aae0eac",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "EPP",
     "primary_cnae": "8660700",
     "cnaes": [
@@ -3525,11 +4247,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "bb7398f3-9e04-53ca-8383-f079459e0337",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4923002",
     "cnaes": [
@@ -3807,11 +4548,30 @@
     "location": {
       "municipality_code": "2308203",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2308203"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "ed95925d-cbf3-5ef9-96fb-9579d6d80fd4",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8610102",
     "cnaes": [
@@ -3824,11 +4584,30 @@
     "location": {
       "municipality_code": "2301901",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2301901"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "d0ee9e1a-1ebf-5f96-afb2-329483c8d6dc",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "8660700",
     "cnaes": [
@@ -4001,11 +4780,30 @@
     "location": {
       "municipality_code": "3505500",
       "state": "SP"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "3505500"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "1a0843c4-2618-5199-9860-85de3214af83",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "7020400",
     "cnaes": [
@@ -4073,11 +4871,30 @@
     "location": {
       "municipality_code": "3505708",
       "state": "SP"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "3505708"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "0c026623-d919-56cb-ab5f-bad2d01d43dc",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4221903",
     "cnaes": [
@@ -4240,11 +5057,30 @@
     "location": {
       "municipality_code": "2307601",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2307601"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "573ea8c5-31ad-54ed-9bc8-7616abb586ff",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4211101",
     "cnaes": [
@@ -4292,11 +5128,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "bb194a5e-7111-5485-950e-3f6ac901d6c9",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "6202300",
     "cnaes": [
@@ -4309,11 +5164,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "CE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "ce0a6b6c-b7e2-5e6c-a46f-dad03b3e2fc9",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "ME",
     "primary_cnae": "3811400",
     "cnaes": [
@@ -4421,11 +5295,30 @@
     "location": {
       "municipality_code": "2313500",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PI"
+    ],
+    "interested_municipalities": [
+      "2313500"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "45000397-cef2-5c5e-bb34-4bdc404dce2c",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "ME",
     "primary_cnae": "4120400",
     "cnaes": [
@@ -4733,11 +5626,30 @@
     "location": {
       "municipality_code": "2304285",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "RN"
+    ],
+    "interested_municipalities": [
+      "2304285"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "e44823dc-7941-5802-89a1-28c83268a588",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "4647802",
     "cnaes": [
@@ -4785,11 +5697,30 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PB"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "00b27420-3667-525f-852b-910473c93678",
-    "profile_version": "fixture-opencnpj-v1",
+    "profile_version": "demo-completo-v1",
     "company_size": "DEMAIS",
     "primary_cnae": "6204000",
     "cnaes": [
@@ -4852,7 +5783,26 @@
     "location": {
       "municipality_code": "2304400",
       "state": "CE"
-    }
+    },
+    "categories": [],
+    "operational_preferences": {
+      "aceita_entrega_parcelada": true,
+      "possui_capacidade_local": true,
+      "exige_visita_tecnica": false
+    },
+    "participation_forms": [
+      "ELETRONICA"
+    ],
+    "interested_states": [
+      "PE"
+    ],
+    "interested_municipalities": [
+      "2304400"
+    ],
+    "preferred_modality_codes": [
+      "6",
+      "8"
+    ]
   },
   {
     "company_id": "482f66c6-a6b3-53fe-8cd9-0fbc4e8c6263",
@@ -12538,5 +13488,1599 @@
       "municipality_code": "2311108",
       "state": "CE"
     }
+  },
+  {
+    "company_id": "904633ed-df0b-422e-b409-550a322f1bc0",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "DEMAIS",
+    "primary_cnae": "8660700",
+    "cnaes": [
+      {
+        "code": "8660700",
+        "description": "Atividades de apoio à gestão de saúde",
+        "is_primary": true
+      },
+      {
+        "code": "7210000",
+        "description": "Pesquisa e desenvolvimento experimental em ciências físicas e naturais",
+        "is_primary": false
+      },
+      {
+        "code": "7490199",
+        "description": "Outras atividades profissionais, científicas e técnicas não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "8599604",
+        "description": "Treinamento em desenvolvimento profissional e gerencial",
+        "is_primary": false
+      },
+      {
+        "code": "8610101",
+        "description": "Atividades de atendimento hospitalar, exceto pronto-socorro e unidades para atendimento a urgências",
+        "is_primary": false
+      },
+      {
+        "code": "8610102",
+        "description": "Atividades de atendimento em pronto-socorro e unidades hospitalares para atendimento a urgências",
+        "is_primary": false
+      },
+      {
+        "code": "8630503",
+        "description": "Atividade médica ambulatorial restrita a consultas",
+        "is_primary": false
+      },
+      {
+        "code": "8630504",
+        "description": "Atividade odontológica",
+        "is_primary": false
+      },
+      {
+        "code": "8630599",
+        "description": "Atividades de atenção ambulatorial não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "9430800",
+        "description": "Atividades de associações de defesa de direitos sociais",
+        "is_primary": false
+      },
+      {
+        "code": "9499500",
+        "description": "Atividades associativas não especificadas anteriormente",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2312908",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "17b5e11d-4b46-4ea7-8372-4f783cecd5cf",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "DEMAIS",
+    "primary_cnae": "4644301",
+    "cnaes": [
+      {
+        "code": "4644301",
+        "description": "Comércio atacadista de medicamentos e drogas de uso humano",
+        "is_primary": true
+      },
+      {
+        "code": "3312103",
+        "description": "Manutenção e reparação de aparelhos eletromédicos e eletroterapêuticos e equipamentos de irradiação",
+        "is_primary": false
+      },
+      {
+        "code": "4631100",
+        "description": "Comércio atacadista de leite e laticínios",
+        "is_primary": false
+      },
+      {
+        "code": "4632001",
+        "description": "Comércio atacadista de cereais e leguminosas beneficiados",
+        "is_primary": false
+      },
+      {
+        "code": "4635499",
+        "description": "Comércio atacadista de bebidas não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4637199",
+        "description": "Comércio atacadista especializado em outros produtos alimentícios não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4641902",
+        "description": "Comércio atacadista de artigos de cama, mesa e banho",
+        "is_primary": false
+      },
+      {
+        "code": "4642702",
+        "description": "Comércio atacadista de roupas e acessórios para uso profissional e de segurança do trabalho",
+        "is_primary": false
+      },
+      {
+        "code": "4645101",
+        "description": "Comércio atacadista de instrumentos e materiais para uso médico, cirúrgico, hospitalar e de laboratórios",
+        "is_primary": false
+      },
+      {
+        "code": "4645102",
+        "description": "Comércio atacadista de próteses e artigos de ortopedia",
+        "is_primary": false
+      },
+      {
+        "code": "4645103",
+        "description": "Comércio atacadista de produtos odontológicos",
+        "is_primary": false
+      },
+      {
+        "code": "4646001",
+        "description": "Comércio atacadista de cosméticos e produtos de perfumaria",
+        "is_primary": false
+      },
+      {
+        "code": "4646002",
+        "description": "Comércio atacadista de produtos de higiene pessoal",
+        "is_primary": false
+      },
+      {
+        "code": "4647801",
+        "description": "Comércio atacadista de artigos de escritório e de papelaria",
+        "is_primary": false
+      },
+      {
+        "code": "4649401",
+        "description": "Comércio atacadista de equipamentos elétricos de uso pessoal e doméstico",
+        "is_primary": false
+      },
+      {
+        "code": "4649404",
+        "description": "Comércio atacadista de móveis e artigos de colchoaria",
+        "is_primary": false
+      },
+      {
+        "code": "4649408",
+        "description": "Comércio atacadista de produtos de higiene, limpeza e conservação domiciliar",
+        "is_primary": false
+      },
+      {
+        "code": "4649499",
+        "description": "Comércio atacadista de outros equipamentos e artigos de uso pessoal e doméstico não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4651601",
+        "description": "Comércio atacadista de equipamentos de informática",
+        "is_primary": false
+      },
+      {
+        "code": "4651602",
+        "description": "Comércio atacadista de suprimentos para informática",
+        "is_primary": false
+      },
+      {
+        "code": "4663000",
+        "description": "Comércio atacadista de Máquinas e equipamentos para uso industrial; partes e peças",
+        "is_primary": false
+      },
+      {
+        "code": "4664800",
+        "description": "Comércio atacadista de máquinas, aparelhos e equipamentos para uso odonto-médico-hospitalar; partes e peças",
+        "is_primary": false
+      },
+      {
+        "code": "4665600",
+        "description": "Comércio atacadista de máquinas e equipamentos para uso comercial; partes e peças",
+        "is_primary": false
+      },
+      {
+        "code": "4669999",
+        "description": "Comércio atacadista de outras máquinas e equipamentos não especificados anteriormente; partes e peças",
+        "is_primary": false
+      },
+      {
+        "code": "4684299",
+        "description": "Comércio atacadista de outros produtos químicos e petroquímicos não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4689399",
+        "description": "Comércio atacadista especializado em outros produtos intermediários não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4751201",
+        "description": "Comércio varejista especializado de equipamentos e suprimentos de informática",
+        "is_primary": false
+      },
+      {
+        "code": "4753900",
+        "description": "Comércio varejista especializado de eletrodomésticos e equipamentos de áudio e vídeo",
+        "is_primary": false
+      },
+      {
+        "code": "4754701",
+        "description": "Comércio varejista de móveis",
+        "is_primary": false
+      },
+      {
+        "code": "4789005",
+        "description": "Comércio varejista de produtos saneantes domissanitários",
+        "is_primary": false
+      },
+      {
+        "code": "7729203",
+        "description": "Aluguel de material médico",
+        "is_primary": false
+      },
+      {
+        "code": "7739002",
+        "description": "Aluguel de equipamentos científicos, médicos e hospitalares, sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "8650007",
+        "description": "Atividades de terapia de nutrição enteral e parenteral",
+        "is_primary": false
+      },
+      {
+        "code": "8712300",
+        "description": "Atividades de fornecimento de infra-estrutura de apoio e assistência a paciente no domicílio",
+        "is_primary": false
+      },
+      {
+        "code": "9529199",
+        "description": "Reparação e manutenção de outros objetos e equipamentos pessoais e domésticos não especificados anteriormente",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2304400",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "6c63677b-3f1b-4bad-bb04-867d4cdfc08c",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "DEMAIS",
+    "primary_cnae": "4120400",
+    "cnaes": [
+      {
+        "code": "4120400",
+        "description": "Construção de edifícios",
+        "is_primary": true
+      },
+      {
+        "code": "0161099",
+        "description": "Atividades de apoio à agricultura não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "0899199",
+        "description": "Extração de outros minerais não-metálicos não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "2539001",
+        "description": "Serviços de usinagem, tornearia e solda",
+        "is_primary": false
+      },
+      {
+        "code": "3600601",
+        "description": "Captação, tratamento e distribuição de água",
+        "is_primary": false
+      },
+      {
+        "code": "3600602",
+        "description": "Distribuição de água por caminhões",
+        "is_primary": false
+      },
+      {
+        "code": "3701100",
+        "description": "Gestão de redes de esgoto",
+        "is_primary": false
+      },
+      {
+        "code": "3702900",
+        "description": "Atividades relacionadas a esgoto, exceto a gestão de redes",
+        "is_primary": false
+      },
+      {
+        "code": "3811400",
+        "description": "Coleta de resíduos não-perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "3812200",
+        "description": "Coleta de resíduos perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "4211101",
+        "description": "Construção de rodovias e ferrovias",
+        "is_primary": false
+      },
+      {
+        "code": "4211102",
+        "description": "Pintura para sinalização em pistas rodoviárias e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4212000",
+        "description": "Construção de obras de arte especiais",
+        "is_primary": false
+      },
+      {
+        "code": "4213800",
+        "description": "Obras de urbanização - ruas, praças e calçadas",
+        "is_primary": false
+      },
+      {
+        "code": "4221901",
+        "description": "Construção de barragens e represas para geração de energia elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4221902",
+        "description": "Construção de estações e redes de distribuição de energia elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4222701",
+        "description": "Construção de redes de abastecimento de água, coleta de esgoto e construções correlatas, exceto obras de irrigação",
+        "is_primary": false
+      },
+      {
+        "code": "4222702",
+        "description": "Obras de irrigação",
+        "is_primary": false
+      },
+      {
+        "code": "4291000",
+        "description": "Obras portuárias, marítimas e fluviais",
+        "is_primary": false
+      },
+      {
+        "code": "4299501",
+        "description": "Construção de instalações esportivas e recreativas",
+        "is_primary": false
+      },
+      {
+        "code": "4299599",
+        "description": "Outras obras de engenharia civil não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4311801",
+        "description": "Demolição de edifícios e outras estruturas",
+        "is_primary": false
+      },
+      {
+        "code": "4312600",
+        "description": "Perfurações e sondagens",
+        "is_primary": false
+      },
+      {
+        "code": "4313400",
+        "description": "Obras de terraplenagem",
+        "is_primary": false
+      },
+      {
+        "code": "4319300",
+        "description": "Serviços de preparação do terreno não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4321500",
+        "description": "Instalação e manutenção elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4322301",
+        "description": "Instalações hidráulicas, sanitárias e de gás",
+        "is_primary": false
+      },
+      {
+        "code": "4322302",
+        "description": "Instalação e manutenção de sistemas centrais de ar condicionado, de ventilação e refrigeração",
+        "is_primary": false
+      },
+      {
+        "code": "4329104",
+        "description": "Montagem e instalação de sistemas e equipamentos de iluminação e sinalização em vias públicas, portos e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4329199",
+        "description": "Outras obras de instalações em construções não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4330401",
+        "description": "Impermeabilização em obras de engenharia civil",
+        "is_primary": false
+      },
+      {
+        "code": "4330499",
+        "description": "Outras obras de acabamento da construção",
+        "is_primary": false
+      },
+      {
+        "code": "4391600",
+        "description": "Obras de fundações",
+        "is_primary": false
+      },
+      {
+        "code": "4399103",
+        "description": "Obras de alvenaria",
+        "is_primary": false
+      },
+      {
+        "code": "4399105",
+        "description": "Perfuração e construção de poços de água",
+        "is_primary": false
+      },
+      {
+        "code": "4399199",
+        "description": "Serviços especializados para construção não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4921301",
+        "description": "Transporte rodoviário coletivo de passageiros, com itinerário fixo, municipal",
+        "is_primary": false
+      },
+      {
+        "code": "4922101",
+        "description": "Transporte rodoviário coletivo de passageiros, com itinerário fixo, intermunicipal, exceto em região metropolitana",
+        "is_primary": false
+      },
+      {
+        "code": "4922102",
+        "description": "Transporte rodoviário coletivo de passageiros, com itinerário fixo, interestadual",
+        "is_primary": false
+      },
+      {
+        "code": "4923002",
+        "description": "Serviço de transporte de passageiros - locação de automóveis com motorista",
+        "is_primary": false
+      },
+      {
+        "code": "4924800",
+        "description": "Transporte escolar",
+        "is_primary": false
+      },
+      {
+        "code": "4929901",
+        "description": "Transporte rodoviário coletivo de passageiros, sob regime de fretamento, municipal",
+        "is_primary": false
+      },
+      {
+        "code": "4929902",
+        "description": "Transporte rodoviário coletivo de passageiros, sob regime de fretamento, intermunicipal, interestadual e internacional",
+        "is_primary": false
+      },
+      {
+        "code": "4929999",
+        "description": "Outros transportes rodoviários de passageiros não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "7111100",
+        "description": "Serviços de arquitetura",
+        "is_primary": false
+      },
+      {
+        "code": "7112000",
+        "description": "Serviços de engenharia",
+        "is_primary": false
+      },
+      {
+        "code": "7119701",
+        "description": "Serviços de cartografia, topografia e geodésia",
+        "is_primary": false
+      },
+      {
+        "code": "7119703",
+        "description": "Serviços de desenho técnico relacionados à arquitetura e engenharia",
+        "is_primary": false
+      },
+      {
+        "code": "7490102",
+        "description": "Escafandria e mergulho",
+        "is_primary": false
+      },
+      {
+        "code": "7711000",
+        "description": "Locação de automóveis sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7719599",
+        "description": "Locação de outros meios de transporte não especificados anteriormente, sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7731400",
+        "description": "Aluguel de máquinas e equipamentos agrícolas sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "7732201",
+        "description": "Aluguel de máquinas e equipamentos para construção sem operador, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7732202",
+        "description": "Aluguel de andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7733100",
+        "description": "Aluguel de máquinas e equipamentos para escritórios",
+        "is_primary": false
+      },
+      {
+        "code": "7739003",
+        "description": "Aluguel de palcos, coberturas e outras estruturas de uso temporário, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739099",
+        "description": "Aluguel de outras máquinas e equipamentos comerciais e industriais não especificados anteriormente, sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "7830200",
+        "description": "Fornecimento e gestão de recursos humanos para terceiros",
+        "is_primary": false
+      },
+      {
+        "code": "8111700",
+        "description": "Serviços combinados para apoio a edifícios, exceto condomínios prediais",
+        "is_primary": false
+      },
+      {
+        "code": "8121400",
+        "description": "Limpeza em prédios e em domicílios",
+        "is_primary": false
+      },
+      {
+        "code": "8129000",
+        "description": "Atividades de limpeza não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "8130300",
+        "description": "Atividades paisagísticas",
+        "is_primary": false
+      },
+      {
+        "code": "8230001",
+        "description": "Serviços de organização de feiras, congressos, exposições e festas",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2312908",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "31cdef90-d2ac-4707-ab7a-d7fb62dd016e",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "ME",
+    "primary_cnae": "7711000",
+    "cnaes": [
+      {
+        "code": "7711000",
+        "description": "Locação de automóveis sem condutor",
+        "is_primary": true
+      },
+      {
+        "code": "3701100",
+        "description": "Gestão de redes de esgoto",
+        "is_primary": false
+      },
+      {
+        "code": "3702900",
+        "description": "Atividades relacionadas a esgoto, exceto a gestão de redes",
+        "is_primary": false
+      },
+      {
+        "code": "3811400",
+        "description": "Coleta de resíduos não-perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "4120400",
+        "description": "Construção de edifícios",
+        "is_primary": false
+      },
+      {
+        "code": "4221903",
+        "description": "Manutenção de redes de distribuição de energia elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4221904",
+        "description": "Construção de estações e redes de telecomunicações",
+        "is_primary": false
+      },
+      {
+        "code": "4221905",
+        "description": "Manutenção de estações e redes de telecomunicações",
+        "is_primary": false
+      },
+      {
+        "code": "4313400",
+        "description": "Obras de terraplenagem",
+        "is_primary": false
+      },
+      {
+        "code": "4329104",
+        "description": "Montagem e instalação de sistemas e equipamentos de iluminação e sinalização em vias públicas, portos e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4399104",
+        "description": "Serviços de operação e fornecimento de equipamentos para transporte e elevação de cargas e pessoas para uso em obras",
+        "is_primary": false
+      },
+      {
+        "code": "4921301",
+        "description": "Transporte rodoviário coletivo de passageiros, com itinerário fixo, municipal",
+        "is_primary": false
+      },
+      {
+        "code": "4923002",
+        "description": "Serviço de transporte de passageiros - locação de automóveis com motorista",
+        "is_primary": false
+      },
+      {
+        "code": "4924800",
+        "description": "Transporte escolar",
+        "is_primary": false
+      },
+      {
+        "code": "4930203",
+        "description": "Transporte rodoviário de produtos perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "7112000",
+        "description": "Serviços de engenharia",
+        "is_primary": false
+      },
+      {
+        "code": "7719599",
+        "description": "Locação de outros meios de transporte não especificados anteriormente, sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7729299",
+        "description": "Aluguel de outros objetos pessoais e domésticos não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "7732201",
+        "description": "Aluguel de máquinas e equipamentos para construção sem operador, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739099",
+        "description": "Aluguel de outras máquinas e equipamentos comerciais e industriais não especificados anteriormente, sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "8211300",
+        "description": "Serviços combinados de escritório e apoio administrativo",
+        "is_primary": false
+      },
+      {
+        "code": "8299701",
+        "description": "Medição de consumo de energia elétrica, gás e água",
+        "is_primary": false
+      },
+      {
+        "code": "8299799",
+        "description": "Outras atividades de serviços prestados principalmente às empresas não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "9001906",
+        "description": "Atividades de sonorização e de iluminação",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2304400",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "268bf196-5d64-4eb3-8925-3150095ec097",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "ME",
+    "primary_cnae": "4120400",
+    "cnaes": [
+      {
+        "code": "4120400",
+        "description": "Construção de edifícios",
+        "is_primary": true
+      },
+      {
+        "code": "3811400",
+        "description": "Coleta de resíduos não-perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "3812200",
+        "description": "Coleta de resíduos perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "4213800",
+        "description": "Obras de urbanização - ruas, praças e calçadas",
+        "is_primary": false
+      },
+      {
+        "code": "4292801",
+        "description": "Montagem de estruturas metálicas",
+        "is_primary": false
+      },
+      {
+        "code": "4311801",
+        "description": "Demolição de edifícios e outras estruturas",
+        "is_primary": false
+      },
+      {
+        "code": "4313400",
+        "description": "Obras de terraplenagem",
+        "is_primary": false
+      },
+      {
+        "code": "4330499",
+        "description": "Outras obras de acabamento da construção",
+        "is_primary": false
+      },
+      {
+        "code": "4399101",
+        "description": "Administração de obras",
+        "is_primary": false
+      },
+      {
+        "code": "4399104",
+        "description": "Serviços de operação e fornecimento de equipamentos para transporte e elevação de cargas e pessoas para uso em obras",
+        "is_primary": false
+      },
+      {
+        "code": "4399105",
+        "description": "Perfuração e construção de poços de água",
+        "is_primary": false
+      },
+      {
+        "code": "4923002",
+        "description": "Serviço de transporte de passageiros - locação de automóveis com motorista",
+        "is_primary": false
+      },
+      {
+        "code": "4924800",
+        "description": "Transporte escolar",
+        "is_primary": false
+      },
+      {
+        "code": "4929902",
+        "description": "Transporte rodoviário coletivo de passageiros, sob regime de fretamento, intermunicipal, interestadual e internacional",
+        "is_primary": false
+      },
+      {
+        "code": "4930201",
+        "description": "Transporte rodoviário de carga, exceto produtos perigosos e mudanças, municipal.",
+        "is_primary": false
+      },
+      {
+        "code": "4930202",
+        "description": "Transporte rodoviário de carga, exceto produtos perigosos e mudanças, intermunicipal, interestadual e internacional",
+        "is_primary": false
+      },
+      {
+        "code": "5212500",
+        "description": "Carga e descarga",
+        "is_primary": false
+      },
+      {
+        "code": "7119703",
+        "description": "Serviços de desenho técnico relacionados à arquitetura e engenharia",
+        "is_primary": false
+      },
+      {
+        "code": "7410202",
+        "description": "Design de interiores",
+        "is_primary": false
+      },
+      {
+        "code": "7711000",
+        "description": "Locação de automóveis sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7719599",
+        "description": "Locação de outros meios de transporte não especificados anteriormente, sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7732201",
+        "description": "Aluguel de máquinas e equipamentos para construção sem operador, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7732202",
+        "description": "Aluguel de andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739003",
+        "description": "Aluguel de palcos, coberturas e outras estruturas de uso temporário, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739099",
+        "description": "Aluguel de outras máquinas e equipamentos comerciais e industriais não especificados anteriormente, sem operador",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2304400",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "f03db1ba-0d77-493b-bd40-4fa8ccb51d01",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "DEMAIS",
+    "primary_cnae": "4120400",
+    "cnaes": [
+      {
+        "code": "4120400",
+        "description": "Construção de edifícios",
+        "is_primary": true
+      },
+      {
+        "code": "3811400",
+        "description": "Coleta de resíduos não-perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "3812200",
+        "description": "Coleta de resíduos perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "4211101",
+        "description": "Construção de rodovias e ferrovias",
+        "is_primary": false
+      },
+      {
+        "code": "4211102",
+        "description": "Pintura para sinalização em pistas rodoviárias e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4213800",
+        "description": "Obras de urbanização - ruas, praças e calçadas",
+        "is_primary": false
+      },
+      {
+        "code": "4221901",
+        "description": "Construção de barragens e represas para geração de energia elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4221904",
+        "description": "Construção de estações e redes de telecomunicações",
+        "is_primary": false
+      },
+      {
+        "code": "4222701",
+        "description": "Construção de redes de abastecimento de água, coleta de esgoto e construções correlatas, exceto obras de irrigação",
+        "is_primary": false
+      },
+      {
+        "code": "4222702",
+        "description": "Obras de irrigação",
+        "is_primary": false
+      },
+      {
+        "code": "4292801",
+        "description": "Montagem de estruturas metálicas",
+        "is_primary": false
+      },
+      {
+        "code": "4299501",
+        "description": "Construção de instalações esportivas e recreativas",
+        "is_primary": false
+      },
+      {
+        "code": "4311802",
+        "description": "Preparação de canteiro e limpeza de terreno",
+        "is_primary": false
+      },
+      {
+        "code": "4312600",
+        "description": "Perfurações e sondagens",
+        "is_primary": false
+      },
+      {
+        "code": "4313400",
+        "description": "Obras de terraplenagem",
+        "is_primary": false
+      },
+      {
+        "code": "4321500",
+        "description": "Instalação e manutenção elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4322301",
+        "description": "Instalações hidráulicas, sanitárias e de gás",
+        "is_primary": false
+      },
+      {
+        "code": "4329104",
+        "description": "Montagem e instalação de sistemas e equipamentos de iluminação e sinalização em vias públicas, portos e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4330401",
+        "description": "Impermeabilização em obras de engenharia civil",
+        "is_primary": false
+      },
+      {
+        "code": "4330402",
+        "description": "Instalação de portas, janelas, tetos, divisórias e armários embutidos de qualquer material",
+        "is_primary": false
+      },
+      {
+        "code": "4330403",
+        "description": "Obras de acabamento em gesso e estuque",
+        "is_primary": false
+      },
+      {
+        "code": "4330404",
+        "description": "Serviços de pintura de edifícios em geral",
+        "is_primary": false
+      },
+      {
+        "code": "4391600",
+        "description": "Obras de fundações",
+        "is_primary": false
+      },
+      {
+        "code": "4399101",
+        "description": "Administração de obras",
+        "is_primary": false
+      },
+      {
+        "code": "4399103",
+        "description": "Obras de alvenaria",
+        "is_primary": false
+      },
+      {
+        "code": "4399105",
+        "description": "Perfuração e construção de poços de água",
+        "is_primary": false
+      },
+      {
+        "code": "4923002",
+        "description": "Serviço de transporte de passageiros - locação de automóveis com motorista",
+        "is_primary": false
+      },
+      {
+        "code": "6810201",
+        "description": "Compra e venda de imóveis próprios",
+        "is_primary": false
+      },
+      {
+        "code": "6822600",
+        "description": "Gestão e administração da propriedade imobiliária",
+        "is_primary": false
+      },
+      {
+        "code": "7711000",
+        "description": "Locação de automóveis sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7732201",
+        "description": "Aluguel de máquinas e equipamentos para construção sem operador, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739003",
+        "description": "Aluguel de palcos, coberturas e outras estruturas de uso temporário, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "8211300",
+        "description": "Serviços combinados de escritório e apoio administrativo",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2312908",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "63a94107-f111-4974-b656-dd24d30245fe",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "DEMAIS",
+    "primary_cnae": "4120400",
+    "cnaes": [
+      {
+        "code": "4120400",
+        "description": "Construção de edifícios",
+        "is_primary": true
+      },
+      {
+        "code": "0161099",
+        "description": "Atividades de apoio à agricultura não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "0810006",
+        "description": "Extração de areia, cascalho ou pedregulho e beneficiamento associado",
+        "is_primary": false
+      },
+      {
+        "code": "0810099",
+        "description": "Extração e britamento de pedras e outros materiais para construção e beneficiamento associado",
+        "is_primary": false
+      },
+      {
+        "code": "1622699",
+        "description": "Fabricação de outros artigos de carpintaria para construção",
+        "is_primary": false
+      },
+      {
+        "code": "1813001",
+        "description": "Impressão de material para uso publicitário",
+        "is_primary": false
+      },
+      {
+        "code": "1822999",
+        "description": "Serviços de acabamentos gráficos, exceto encadernação e plastificação",
+        "is_primary": false
+      },
+      {
+        "code": "2330301",
+        "description": "Fabricação de estruturas pré-moldadas de concreto armado, em série e sob encomenda",
+        "is_primary": false
+      },
+      {
+        "code": "2599301",
+        "description": "Serviços de confecção de armações metálicas para a construção",
+        "is_primary": false
+      },
+      {
+        "code": "3314707",
+        "description": "Manutenção e reparação de máquinas e aparelhos de refrigeração e ventilação para uso industrial e comercial",
+        "is_primary": false
+      },
+      {
+        "code": "3314716",
+        "description": "Manutenção e reparação de tratores, exceto agrícolas",
+        "is_primary": false
+      },
+      {
+        "code": "3600602",
+        "description": "Distribuição de água por caminhões",
+        "is_primary": false
+      },
+      {
+        "code": "3811400",
+        "description": "Coleta de resíduos não-perigosos",
+        "is_primary": false
+      },
+      {
+        "code": "4211101",
+        "description": "Construção de rodovias e ferrovias",
+        "is_primary": false
+      },
+      {
+        "code": "4211102",
+        "description": "Pintura para sinalização em pistas rodoviárias e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4213800",
+        "description": "Obras de urbanização - ruas, praças e calçadas",
+        "is_primary": false
+      },
+      {
+        "code": "4221901",
+        "description": "Construção de barragens e represas para geração de energia elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4221903",
+        "description": "Manutenção de redes de distribuição de energia elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4222701",
+        "description": "Construção de redes de abastecimento de água, coleta de esgoto e construções correlatas, exceto obras de irrigação",
+        "is_primary": false
+      },
+      {
+        "code": "4292801",
+        "description": "Montagem de estruturas metálicas",
+        "is_primary": false
+      },
+      {
+        "code": "4299501",
+        "description": "Construção de instalações esportivas e recreativas",
+        "is_primary": false
+      },
+      {
+        "code": "4299599",
+        "description": "Outras obras de engenharia civil não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4311801",
+        "description": "Demolição de edifícios e outras estruturas",
+        "is_primary": false
+      },
+      {
+        "code": "4311802",
+        "description": "Preparação de canteiro e limpeza de terreno",
+        "is_primary": false
+      },
+      {
+        "code": "4312600",
+        "description": "Perfurações e sondagens",
+        "is_primary": false
+      },
+      {
+        "code": "4313400",
+        "description": "Obras de terraplenagem",
+        "is_primary": false
+      },
+      {
+        "code": "4319300",
+        "description": "Serviços de preparação do terreno não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4321500",
+        "description": "Instalação e manutenção elétrica",
+        "is_primary": false
+      },
+      {
+        "code": "4322301",
+        "description": "Instalações hidráulicas, sanitárias e de gás",
+        "is_primary": false
+      },
+      {
+        "code": "4322302",
+        "description": "Instalação e manutenção de sistemas centrais de ar condicionado, de ventilação e refrigeração",
+        "is_primary": false
+      },
+      {
+        "code": "4329104",
+        "description": "Montagem e instalação de sistemas e equipamentos de iluminação e sinalização em vias públicas, portos e aeroportos",
+        "is_primary": false
+      },
+      {
+        "code": "4330401",
+        "description": "Impermeabilização em obras de engenharia civil",
+        "is_primary": false
+      },
+      {
+        "code": "4330404",
+        "description": "Serviços de pintura de edifícios em geral",
+        "is_primary": false
+      },
+      {
+        "code": "4330405",
+        "description": "Aplicação de revestimentos e de resinas em interiores e exteriores",
+        "is_primary": false
+      },
+      {
+        "code": "4391600",
+        "description": "Obras de fundações",
+        "is_primary": false
+      },
+      {
+        "code": "4399102",
+        "description": "Montagem e desmontagem de andaimes e outras estruturas temporárias",
+        "is_primary": false
+      },
+      {
+        "code": "4399103",
+        "description": "Obras de alvenaria",
+        "is_primary": false
+      },
+      {
+        "code": "4399104",
+        "description": "Serviços de operação e fornecimento de equipamentos para transporte e elevação de cargas e pessoas para uso em obras",
+        "is_primary": false
+      },
+      {
+        "code": "4399105",
+        "description": "Perfuração e construção de poços de água",
+        "is_primary": false
+      },
+      {
+        "code": "4399199",
+        "description": "Serviços especializados para construção não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4679604",
+        "description": "Comércio atacadista especializado de materiais de construção não especificados anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "4744004",
+        "description": "Comércio varejista de cal, areia, pedra britada, tijolos e telhas",
+        "is_primary": false
+      },
+      {
+        "code": "4744099",
+        "description": "Comércio varejista de materiais de construção em geral",
+        "is_primary": false
+      },
+      {
+        "code": "4923002",
+        "description": "Serviço de transporte de passageiros - locação de automóveis com motorista",
+        "is_primary": false
+      },
+      {
+        "code": "4924800",
+        "description": "Transporte escolar",
+        "is_primary": false
+      },
+      {
+        "code": "4929901",
+        "description": "Transporte rodoviário coletivo de passageiros, sob regime de fretamento, municipal",
+        "is_primary": false
+      },
+      {
+        "code": "4930201",
+        "description": "Transporte rodoviário de carga, exceto produtos perigosos e mudanças, municipal.",
+        "is_primary": false
+      },
+      {
+        "code": "4930202",
+        "description": "Transporte rodoviário de carga, exceto produtos perigosos e mudanças, intermunicipal, interestadual e internacional",
+        "is_primary": false
+      },
+      {
+        "code": "5620102",
+        "description": "Serviços de alimentação para eventos e recepções - bufê",
+        "is_primary": false
+      },
+      {
+        "code": "7112000",
+        "description": "Serviços de engenharia",
+        "is_primary": false
+      },
+      {
+        "code": "7119701",
+        "description": "Serviços de cartografia, topografia e geodésia",
+        "is_primary": false
+      },
+      {
+        "code": "7319099",
+        "description": "Outras atividades de publicidade não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "7420001",
+        "description": "Atividades de produção de fotografias, exceto aérea e submarina",
+        "is_primary": false
+      },
+      {
+        "code": "7420004",
+        "description": "Filmagem de festas e eventos",
+        "is_primary": false
+      },
+      {
+        "code": "7711000",
+        "description": "Locação de automóveis sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7719599",
+        "description": "Locação de outros meios de transporte não especificados anteriormente, sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7731400",
+        "description": "Aluguel de máquinas e equipamentos agrícolas sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "7732201",
+        "description": "Aluguel de máquinas e equipamentos para construção sem operador, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739003",
+        "description": "Aluguel de palcos, coberturas e outras estruturas de uso temporário, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739099",
+        "description": "Aluguel de outras máquinas e equipamentos comerciais e industriais não especificados anteriormente, sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "8121400",
+        "description": "Limpeza em prédios e em domicílios",
+        "is_primary": false
+      },
+      {
+        "code": "8122200",
+        "description": "Imunização e controle de pragas urbanas",
+        "is_primary": false
+      },
+      {
+        "code": "8129000",
+        "description": "Atividades de limpeza não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "8211300",
+        "description": "Serviços combinados de escritório e apoio administrativo",
+        "is_primary": false
+      },
+      {
+        "code": "8219901",
+        "description": "Fotocópias",
+        "is_primary": false
+      },
+      {
+        "code": "8230001",
+        "description": "Serviços de organização de feiras, congressos, exposições e festas",
+        "is_primary": false
+      },
+      {
+        "code": "9001902",
+        "description": "Produção musical",
+        "is_primary": false
+      },
+      {
+        "code": "9001906",
+        "description": "Atividades de sonorização e de iluminação",
+        "is_primary": false
+      },
+      {
+        "code": "9001999",
+        "description": "Artes cênicas, espetáculos e atividades complementares não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "9002701",
+        "description": "Atividades de artistas plásticos, jornalistas independentes e escritores",
+        "is_primary": false
+      },
+      {
+        "code": "9002702",
+        "description": "Restauração de obras-de-arte",
+        "is_primary": false
+      },
+      {
+        "code": "9003500",
+        "description": "Gestão de espaços para artes cênicas, espetáculos e outras atividades artísticas",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2312908",
+      "state": "CE"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
+  },
+  {
+    "company_id": "71de97f3-b372-41fa-958a-3e81e94867f2",
+    "profile_version": "real-company-manual-2026-11-03-v1",
+    "company_size": "DEMAIS",
+    "primary_cnae": "9001902",
+    "cnaes": [
+      {
+        "code": "9001902",
+        "description": "Produção musical",
+        "is_primary": true
+      },
+      {
+        "code": "5911102",
+        "description": "Produção de filmes para publicidade",
+        "is_primary": false
+      },
+      {
+        "code": "5911199",
+        "description": "Atividades de produção cinematográfica, de vídeos e de programas de televisão não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "5912001",
+        "description": "Serviços de dublagem",
+        "is_primary": false
+      },
+      {
+        "code": "5912002",
+        "description": "Serviços de mixagem sonora em produção audiovisual",
+        "is_primary": false
+      },
+      {
+        "code": "5912099",
+        "description": "Atividades de pós-produção cinematográfica, de vídeos e de programas de televisão não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "5913800",
+        "description": "Distribuição cinematográfica, de vídeo e de programas de televisão",
+        "is_primary": false
+      },
+      {
+        "code": "5920100",
+        "description": "Atividades de gravação de som e de edição de música",
+        "is_primary": false
+      },
+      {
+        "code": "7312200",
+        "description": "Agenciamento de espaços para publicidade, exceto em veículos de comunicação",
+        "is_primary": false
+      },
+      {
+        "code": "7319002",
+        "description": "Promoção de vendas",
+        "is_primary": false
+      },
+      {
+        "code": "7420003",
+        "description": "Laboratórios fotográficos",
+        "is_primary": false
+      },
+      {
+        "code": "7420004",
+        "description": "Filmagem de festas e eventos",
+        "is_primary": false
+      },
+      {
+        "code": "7490104",
+        "description": "Atividades de intermediação e agenciamento de serviços e negócios em geral, exceto imobiliários",
+        "is_primary": false
+      },
+      {
+        "code": "7490105",
+        "description": "Agenciamento de profissionais para atividades esportivas, culturais e artísticas",
+        "is_primary": false
+      },
+      {
+        "code": "7711000",
+        "description": "Locação de automóveis sem condutor",
+        "is_primary": false
+      },
+      {
+        "code": "7729202",
+        "description": "Aluguel de móveis, utensílios e aparelhos de uso doméstico e pessoal; instrumentos musicais",
+        "is_primary": false
+      },
+      {
+        "code": "7732202",
+        "description": "Aluguel de andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739003",
+        "description": "Aluguel de palcos, coberturas e outras estruturas de uso temporário, exceto andaimes",
+        "is_primary": false
+      },
+      {
+        "code": "7739099",
+        "description": "Aluguel de outras máquinas e equipamentos comerciais e industriais não especificados anteriormente, sem operador",
+        "is_primary": false
+      },
+      {
+        "code": "8230001",
+        "description": "Serviços de organização de feiras, congressos, exposições e festas",
+        "is_primary": false
+      },
+      {
+        "code": "9001901",
+        "description": "Produção teatral",
+        "is_primary": false
+      },
+      {
+        "code": "9001903",
+        "description": "Produção de espetáculos de dança",
+        "is_primary": false
+      },
+      {
+        "code": "9001906",
+        "description": "Atividades de sonorização e de iluminação",
+        "is_primary": false
+      },
+      {
+        "code": "9001999",
+        "description": "Artes cênicas, espetáculos e atividades complementares não especificadas anteriormente",
+        "is_primary": false
+      },
+      {
+        "code": "9002701",
+        "description": "Atividades de artistas plásticos, jornalistas independentes e escritores",
+        "is_primary": false
+      },
+      {
+        "code": "9003500",
+        "description": "Gestão de espaços para artes cênicas, espetáculos e outras atividades artísticas",
+        "is_primary": false
+      },
+      {
+        "code": "9319101",
+        "description": "Produção e promoção de eventos esportivos",
+        "is_primary": false
+      }
+    ],
+    "location": {
+      "municipality_code": "2408102",
+      "state": "RN"
+    },
+    "categories": [],
+    "operational_preferences": {},
+    "participation_forms": null,
+    "interested_states": null,
+    "interested_municipalities": null,
+    "preferred_modality_codes": null
   }
 ]

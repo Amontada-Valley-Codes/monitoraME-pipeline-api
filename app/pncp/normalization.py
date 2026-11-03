@@ -4,16 +4,49 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import orm
 from app.core.models import PncpOportunidade, PncpQuarentena, RawPncpRecord
 from app.nlp.corpus import sincronizar_corpus
-from app.pncp.jobs import JobReivindicado
+from app.pncp.jobs import JobReivindicado, NovoJob, agendar_job_session
 from app.pncp.opportunities import registrar_eventos_alteracao_session
-from app.pncp.quality import avaliar_payload, registrar_avaliacao_session
+from app.pncp.quality import RULE_VERSION, avaliar_payload, registrar_avaliacao_session
+from app.pncp.raw import JOB_NORMALIZAR, PRIORIDADE_NORMALIZACAO
 from app.pncp.urls import url_edital_oficial
 from app.pncp.derived_status import aplicar_status_session
+
+
+def agendar_reprocessamento_regra_session(session: Session, *, limite: int = 2000) -> dict[str, int | str]:
+    """Agenda RAWs atuais cuja oportunidade ainda usa regra de normalizacao antiga."""
+    if limite < 1:
+        raise ValueError("limite deve ser maior que zero")
+    regra_atual = func.coalesce(PncpOportunidade.dados_semanticos["rule_version"].as_string(), "")
+    raws = session.scalars(
+        select(RawPncpRecord)
+        .join(PncpOportunidade,
+              (PncpOportunidade.source == RawPncpRecord.source)
+              & (PncpOportunidade.external_id == RawPncpRecord.external_id)
+              & (PncpOportunidade.payload_hash == RawPncpRecord.payload_hash))
+        .where(RawPncpRecord.entity_type == "CONTRATACAO", regra_atual != RULE_VERSION)
+        .order_by(RawPncpRecord.id)
+        .limit(limite)
+    ).all()
+    agendados = 0
+    for raw in raws:
+        _, criado = agendar_job_session(session, NovoJob(
+            job_type=JOB_NORMALIZAR,
+            entity_type=raw.entity_type,
+            source=raw.source,
+            scope_key=str(raw.id),
+            dedupe_key=f"normalize:PNCP:{raw.id}:rule:{RULE_VERSION}",
+            priority=PRIORIDADE_NORMALIZACAO,
+            next_run_at=datetime.now(timezone.utc),
+            raw_record_id=raw.id,
+        ))
+        agendados += int(criado)
+    return {"oportunidades_encontradas": len(raws), "jobs_criados": agendados, "rule_version": RULE_VERSION}
 
 class ErroNormalizacaoPncp(ValueError):
     """Inconsistência estrutural: preservar RAW e aguardar replay autorizado."""

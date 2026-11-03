@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.models import NlpProcurementSegment, PncpItem, PncpOportunidade
 
 
-CORPUS_VERSION = "pncp-text-v1"
+CORPUS_VERSION = "pncp-text-v2"
 STATUS_READY = "READY"
 STATUS_NO_USABLE_TEXT = "NO_USABLE_TEXT"
 _LIMITE_PARAMETROS_SQL = 60_000
@@ -25,6 +25,7 @@ _CAMPOS_ESTRUTURADOS = (
     "orcamento_sigiloso",
     "orcamento_sigiloso_codigo",
     "orcamento_sigiloso_descricao",
+    "informacao_complementar",
     "data_abertura_proposta",
     "data_publicacao",
     "data_atualizacao",
@@ -209,6 +210,21 @@ def preparar_segmentos(
                 raw_text=descricao_complementar,
                 structured_metadata=base_metadata,
                 atual=(existentes or {}).get(("COMPLEMENTARY", "complementary:orcamento_sigiloso_descricao")),
+            )
+        )
+    informacao_complementar = (oportunidade.dados_semanticos or {}).get(
+        "informacao_complementar"
+    )
+    if isinstance(informacao_complementar, str):
+        segmentos.append(
+            _segmento(
+                oportunidade,
+                segment_type="COMPLEMENTARY",
+                segment_key="complementary:informacao_complementar",
+                source_field="pncp_oportunidades.dados_semanticos.informacao_complementar",
+                raw_text=informacao_complementar,
+                structured_metadata=base_metadata,
+                atual=(existentes or {}).get(("COMPLEMENTARY", "complementary:informacao_complementar")),
             )
         )
     itens_por_lote: dict[str, list[PncpItem]] = {}

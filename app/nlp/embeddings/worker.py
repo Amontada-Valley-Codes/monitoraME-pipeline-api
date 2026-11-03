@@ -56,6 +56,16 @@ def agendar_embeddings_pendentes_session(session: Any, *, model_version: str, li
     """Agenda apenas hashes ainda sem vetor e sem job terminal correspondente."""
     embeddings = NlpProcurementEmbedding
     jobs = IngestionJob
+    # Enquanto houver trabalho ativo, deixe os workers drenarem a fila atual.
+    # Sem este fast path, cada embedding concluído revarria todos os segmentos
+    # sem vetor e fazia uma consulta SQL por candidato para verificar dedupe.
+    fila_ativa = session.scalar(
+        select(jobs.id)
+        .where(jobs.job_type == JOB_TYPE, jobs.status.in_(("PENDING", "RUNNING", "RETRY_WAIT")))
+        .limit(1)
+    )
+    if fila_ativa is not None:
+        return 0
     tem_embedding = exists(select(1).where(
         embeddings.source == NlpProcurementSegment.source,
         embeddings.external_id == NlpProcurementSegment.external_id,
@@ -91,6 +101,27 @@ def agendar_embeddings_pendentes_session(session: Any, *, model_version: str, li
         if agendados >= limit:
             break
     return agendados
+
+
+def contar_embeddings_faltantes_session(session: Any, *, model_version: str) -> int:
+    """Conta segmentos READY sem vetor da revisão atual do modelo."""
+    embeddings = NlpProcurementEmbedding
+    tem_embedding = exists(select(1).where(
+        embeddings.source == NlpProcurementSegment.source,
+        embeddings.external_id == NlpProcurementSegment.external_id,
+        embeddings.segment_type == NlpProcurementSegment.segment_type,
+        embeddings.segment_key == NlpProcurementSegment.segment_key,
+        embeddings.text_hash == NlpProcurementSegment.text_hash,
+        embeddings.model_version == model_version,
+    ))
+    return int(session.scalar(
+        select(func.count()).select_from(NlpProcurementSegment)
+        .where(
+            NlpProcurementSegment.status == "READY",
+            NlpProcurementSegment.text_hash.is_not(None),
+            not_(tem_embedding),
+        )
+    ) or 0)
 
 
 def processar_job(job: Any, model: E5EmbeddingModel) -> str:
@@ -152,31 +183,32 @@ def executar_worker(*, idle_seconds: float | None = None, stop_after: int | None
     model.load()
     worker_id = f"matching-nlp:{socket.gethostname()}:{uuid4().hex[:8]}"
     processados = 0
+    embeddings_faltantes_anterior: int | None = None
     logger.info("Worker de embeddings iniciado", extra={"worker_id": worker_id, "model_version": model.model_version})
     while stop_after is None or processados < stop_after:
         try:
             with orm.main_session() as session:
                 recuperados = recuperar_leases_expirados_session(session, job_type=JOB_TYPE)
                 recuperados += recuperar_leases_expirados_session(session, job_type=MATCHING_JOB_TYPE)
-                job = reivindicar_proximo_job_session(
-                    session, worker_id=worker_id, lease_seconds=7200,
-                    job_type=MATCHING_JOB_TYPE,
+                agendados = agendar_embeddings_pendentes_session(
+                    session, model_version=model.model_version
                 )
-                if job is None:
+                job = reivindicar_proximo_job_session(
+                    session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
+                )
+                embeddings_faltantes = contar_embeddings_faltantes_session(
+                    session, model_version=model.model_version,
+                )
+                if job is None and embeddings_faltantes == 0:
                     job = reivindicar_proximo_job_session(
-                        session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
+                        session, worker_id=worker_id, lease_seconds=7200,
+                        job_type=MATCHING_JOB_TYPE,
                     )
-                agendados = 0
-                if job is None:
-                    agendados = agendar_embeddings_pendentes_session(
-                        session, model_version=model.model_version
-                    )
-                    if agendados:
-                        job = reivindicar_proximo_job_session(
-                            session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
-                        )
             if recuperados or agendados:
                 logger.info("Fila NLP atualizada", extra={"leases_recuperados": recuperados, "jobs_agendados": agendados})
+            if embeddings_faltantes and embeddings_faltantes != embeddings_faltantes_anterior:
+                logger.warning("Matching aguardando vetores completos", extra={"embeddings_faltantes": embeddings_faltantes})
+            embeddings_faltantes_anterior = embeddings_faltantes
             if job is None:
                 time.sleep(idle_seconds)
                 continue

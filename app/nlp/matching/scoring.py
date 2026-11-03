@@ -1,4 +1,4 @@
-"""Pontuação determinística, com evidências e confiança de cobertura."""
+"""Pontuação híbrida com peso reduzido para objeto e evidência dos itens."""
 from __future__ import annotations
 
 import re
@@ -9,8 +9,17 @@ from app.nlp.matching.schemas import MatchingEvidence, ProcurementProfile
 from app.nlp.profiles.schemas import CompanyProfile
 
 
-WEIGHTS: dict[str, int] = {"category": 40, "object": 35, "cnae": 25}
+# Objeto de compras frequentemente contém texto padronizado e pouco discriminante.
+WEIGHTS: dict[str, int] = {"category": 20, "object": 10, "complementary": 20, "items": 35, "cnae": 15}
 PREFERENCE_WEIGHTS: dict[str, int] = {"region": 50, "modality": 25, "operations": 25}
+SEMANTIC_SCORE_FLOOR = 0.88
+GENERIC_TOKENS = {
+    "servico", "servicos", "comum", "comuns", "engenharia", "manutencao", "reparacao",
+    "reparo", "aquisicao", "contratacao", "contratar", "fornecimento", "fornecer",
+    "prestacao", "objeto", "licitacao", "edital", "item", "itens",
+    "empresa", "publica", "publico", "geral", "diversos", "diversas", "apoio",
+    "execucao", "realizacao", "eventual", "futura", "futuro", "necessidade",
+}
 assert sum(WEIGHTS.values()) == 100
 assert sum(PREFERENCE_WEIGHTS.values()) == 100
 
@@ -43,19 +52,31 @@ def classificar_score(score: float) -> str:
 
 
 def _tokens(text: str) -> set[str]:
-    normalized = unicodedata.normalize("NFKC", text).casefold()
+    normalized = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", text).casefold())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
     return {token for token in re.findall(r"[\w]+", normalized) if len(token) > 1}
 
 
+def _tokens_especificos(text: str) -> set[str]:
+    return _tokens(text) - GENERIC_TOKENS
+
+
 def _similaridade(texto_a: str, texto_b: str) -> float:
-    a, b = _tokens(texto_a), _tokens(texto_b)
+    a, b = _tokens_especificos(texto_a), _tokens_especificos(texto_b)
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
 
 
-def _termos_comuns(texto_a: str, texto_b: str) -> list[str]:
-    return sorted(_tokens(texto_a) & _tokens(texto_b))[:20]
+def _calibrar_semantica(score: float | None) -> float:
+    if score is None:
+        return 0.0
+    return max(0.0, min(1.0, (score - SEMANTIC_SCORE_FLOOR) / (1 - SEMANTIC_SCORE_FLOOR)))
+
+
+def calibrar_relevancia_semantica(score: float | None) -> float | None:
+    """Converte similaridade cosseno bruta em relevância calibrada 0-100."""
+    return _calibrar_semantica(score) * 100 if score is not None else None
 
 
 def calcular_score(
@@ -65,32 +86,50 @@ def calcular_score(
     taxonomy_version: str,
     cnae_categories: dict[str, list[TaxonomyAssociation]],
     semantic_score: float | None = None,
+    semantic_object_score: float | None = None,
+    semantic_complementary_score: float | None = None,
+    semantic_items_score: float | None = None,
 ) -> ScoreBreakdown:
-    """Calcula score 0-100; critérios sem entrada não reduzem compatibilidade."""
+    """Calcula score 0-100; critérios ausentes contribuem zero, sem renormalização."""
     values: dict[str, float] = {}
     details: dict[str, str] = {}
-    # Categorias confirmadas pelo perfil são independentes da inferência por CNAE.
+    warnings_extra: list[str] = []
+    for name, value in (("semantic_score", semantic_score), ("semantic_object_score", semantic_object_score), ("semantic_complementary_score", semantic_complementary_score), ("semantic_items_score", semantic_items_score)):
+        if value is not None and not 0 <= value <= 1:
+            raise ValueError(f"{name} deve estar entre 0 e 1")
     company_categories = set(company.categories)
     opportunity_categories = set(opportunity.categories)
     if opportunity_categories and company_categories:
         values["category"] = len(opportunity_categories & company_categories) / len(opportunity_categories | company_categories)
-        matched = sorted(opportunity_categories & company_categories)
-        details["category"] = f"Categorias coincidentes: {', '.join(matched) or 'nenhuma'}; categorias do edital: {', '.join(sorted(opportunity_categories))}."
+        details["category"] = "Categorias do perfil comparadas às categorias do edital."
 
-    profile_text = " ".join(c.description or "" for c in company.cnaes).strip()
-    opportunity_text = " ".join(filter(None, [opportunity.object, *opportunity.items])).strip()
-    if semantic_score is not None and not 0 <= semantic_score <= 1:
-        raise ValueError("semantic_score deve estar entre 0 e 1")
-    if profile_text and opportunity_text:
-        lexical_score = _similaridade(profile_text, opportunity_text)
-        values["object"] = max(lexical_score, semantic_score or 0.0)
-        terms = _termos_comuns(profile_text, opportunity_text)
-        details["object"] = f"Similaridade lexical determinística; termos coincidentes: {', '.join(terms) or 'nenhum'} ({len(_tokens(opportunity_text))} termos no edital)."
-        if semantic_score is not None:
-            details["object"] += f" Score semântico Top-K={semantic_score:.4f}; score lexical={lexical_score:.4f}."
-    elif semantic_score is not None:
-        values["object"] = semantic_score
-        details["object"] = f"Score semântico Top-K {semantic_score:.4f}; texto lexical insuficiente."
+    descriptions = [cnae.description or "" for cnae in company.cnaes if cnae.description]
+    # Compatibilidade legada para chamadas que ainda forneçam um único score.
+    object_semantic = semantic_object_score if semantic_object_score is not None else semantic_score
+    if opportunity.object and descriptions:
+        object_terms = _tokens_especificos(opportunity.object)
+        if object_terms:
+            lexical = max((_similaridade(desc, opportunity.object) for desc in descriptions), default=0.0)
+            semantic = _calibrar_semantica(object_semantic)
+            values["object"] = max(lexical, semantic)
+            details["object"] = f"Objeto (peso {WEIGHTS['object']}%); lexical={lexical:.4f}, semântico calibrado={semantic:.4f}, termos específicos={', '.join(sorted(object_terms)[:12])}."
+        else:
+            warnings_extra.append("OBJECT_LOW_SPECIFICITY")
+
+    if opportunity.complementary_text and descriptions:
+        lexical = max((_similaridade(desc, opportunity.complementary_text) for desc in descriptions), default=0.0)
+        semantic = _calibrar_semantica(semantic_complementary_score)
+        values["complementary"] = max(lexical, semantic)
+        details["complementary"] = f"Informação complementar (peso {WEIGHTS['complementary']}%); lexical={lexical:.4f}, semântico calibrado={semantic:.4f}."
+
+    if opportunity.items and descriptions:
+        lexical = max(
+            (_similaridade(desc, item) for desc in descriptions for item in opportunity.items if item),
+            default=0.0,
+        )
+        semantic = _calibrar_semantica(semantic_items_score)
+        values["items"] = max(lexical, semantic)
+        details["items"] = f"Itens (peso {WEIGHTS['items']}%); melhor correspondência lexical={lexical:.4f}, semântico calibrado={semantic:.4f}; {len(opportunity.items)} itens avaliados."
 
     associations: dict[str, TaxonomyAssociation] = {}
     conditional_categories: set[str] = set()
@@ -107,63 +146,44 @@ def calcular_score(
     mapped_categories = set(associations)
     if opportunity_categories and mapped_categories:
         matched = sorted(opportunity_categories & mapped_categories)
-        values["cnae"] = sum(associations[category].confidence for category in matched) / len(opportunity_categories | mapped_categories)
-        provenance = ", ".join(
-            f"{category} ({associations[category].relation_type}, confiança {associations[category].confidence:.2f})"
-            for category in matched
-        ) or "nenhuma"
-        unresolved = sorted(conditional_categories & opportunity_categories)
-        unresolved_text = ", ".join(
-            f"{category} (CONDICIONAL: {conditional_details[category] or 'condição não informada'})"
-            for category in unresolved
-        )
-        suffix = f" Relações não avaliadas: {unresolved_text}." if unresolved else ""
-        details["cnae"] = f"Taxonomia {taxonomy_version}; associações coincidentes: {provenance}.{suffix}"
+        values["cnae"] = sum(associations[c].confidence for c in matched) / len(opportunity_categories | mapped_categories)
+        details["cnae"] = f"Taxonomia {taxonomy_version}; categorias coincidentes: {', '.join(matched) or 'nenhuma'}."
 
     preferences: dict[str, float] = {}
     preference_details: dict[str, str] = {}
     if company.interested_states is not None or company.interested_municipalities is not None:
-        state_targets = set(opportunity.territory_states or [])
-        municipality_targets = set(opportunity.territory_municipalities or [])
-        state_interest = set(company.interested_states or [])
-        municipality_interest = set(company.interested_municipalities or [])
-        comparisons: list[float] = []
-        if state_interest and state_targets:
-            comparisons.append(float(bool(state_interest & state_targets)))
-        if municipality_interest and municipality_targets:
-            comparisons.append(float(bool(municipality_interest & municipality_targets)))
+        states, municipalities = set(opportunity.territory_states or []), set(opportunity.territory_municipalities or [])
+        comparisons = []
+        if company.interested_states and states:
+            comparisons.append(float(bool(set(company.interested_states) & states)))
+        if company.interested_municipalities and municipalities:
+            comparisons.append(float(bool(set(company.interested_municipalities) & municipalities)))
         if comparisons:
             preferences["region"] = sum(comparisons) / len(comparisons)
-            preference_details["region"] = "Comparação entre territórios explicitamente interessados e abrangência do edital."
+            preference_details["region"] = "Territórios de interesse comparados à abrangência do edital."
     if company.preferred_modality_codes and opportunity.modality_code:
         preferences["modality"] = float(opportunity.modality_code in company.preferred_modality_codes)
-        preference_details["modality"] = f"Modalidade do edital {opportunity.modality_code} comparada às modalidades explicitamente preferidas."
+        preference_details["modality"] = f"Modalidade {opportunity.modality_code} comparada às preferências."
     shared_preferences = set(company.operational_preferences) & set(opportunity.operational_requirements)
     if shared_preferences:
-        matches = sum(company.operational_preferences[key] == opportunity.operational_requirements[key] for key in shared_preferences)
-        preferences["operations"] = matches / len(shared_preferences)
-        preference_details["operations"] = "Preferências comparadas: " + ", ".join(sorted(shared_preferences))
+        preferences["operations"] = sum(company.operational_preferences[k] == opportunity.operational_requirements[k] for k in shared_preferences) / len(shared_preferences)
+        preference_details["operations"] = "Preferências operacionais: " + ", ".join(sorted(shared_preferences))
 
     coverage = sum(WEIGHTS[key] for key in values)
-    score = (sum(WEIGHTS[key] * value for key, value in values.items()) / coverage * 100) if coverage else 0.0
+    score = sum(WEIGHTS[key] * value for key, value in values.items())
     preference_coverage = sum(PREFERENCE_WEIGHTS[key] for key in preferences)
-    preference_score = (sum(PREFERENCE_WEIGHTS[key] * value for key, value in preferences.items()) / preference_coverage * 100) if preference_coverage else None
-    confidence = float(coverage)
+    preference_score = sum(PREFERENCE_WEIGHTS[key] * value for key, value in preferences.items()) / preference_coverage * 100 if preference_coverage else None
     evidence = tuple(
-        [MatchingEvidence(criterion=key, score=round(value, 6), details=details[key]) for key, value in values.items()]
-        + [MatchingEvidence(criterion=f"preference_{key}", score=round(value, 6), details=preference_details[key]) for key, value in preferences.items()]
+        [MatchingEvidence(criterion=k, score=round(v, 6), details=details[k]) for k, v in values.items()]
+        + [MatchingEvidence(criterion=f"preference_{k}", score=round(v, 6), details=preference_details[k]) for k, v in preferences.items()]
     )
-    reasons = tuple(f"{key.upper()}_MATCH" if value > 0 else f"{key.upper()}_NO_MATCH" for key, value in values.items())
-    warnings = [f"{key.upper()}_DATA_MISSING" for key in WEIGHTS if key not in values]
-    warnings.extend(f"PREFERENCE_{key.upper()}_NOT_COMPARABLE" for key in PREFERENCE_WEIGHTS if key not in preferences)
+    reasons = tuple(f"{k.upper()}_MATCH" if v > 0 else f"{k.upper()}_NO_MATCH" for k, v in values.items())
+    warnings = [f"{k.upper()}_DATA_MISSING" for k in WEIGHTS if k not in values]
+    warnings.extend(warnings_extra)
+    warnings.extend(f"PREFERENCE_{k.upper()}_NOT_COMPARABLE" for k in PREFERENCE_WEIGHTS if k not in preferences)
     if conditional_categories & opportunity_categories:
         warnings.append("CNAE_CONDITIONAL_UNRESOLVED")
-    # Score alto exige pelo menos uma evidência concreta nos critérios de atividade.
-    activity_evidence = any(key in values for key in ("category", "object", "cnae"))
-    if score >= 75 and not activity_evidence:
+    if score >= 75 and coverage < 50:
         score = 74.999999
-        warnings.append("HIGH_WITHOUT_ACTIVITY_EVIDENCE")
-    return ScoreBreakdown(
-        round(score, 6), preference_score, float(preference_coverage),
-        confidence, evidence, reasons, tuple(warnings),
-    )
+        warnings.append("HIGH_WITH_LOW_EVIDENCE_COVERAGE")
+    return ScoreBreakdown(round(score, 6), preference_score, float(preference_coverage), float(coverage), evidence, reasons, tuple(warnings))
