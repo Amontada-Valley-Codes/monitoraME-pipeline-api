@@ -72,6 +72,7 @@ def conciliar_pagamentos(
     """Rejeita chaves repetidas e cruzamentos incompletos antes de calcular."""
     cadastro: dict[str, dict] = {}
     camaras = set()
+    executivo_municipal = set()
     for orgao in orgaos:
         codigo = _texto(orgao, "codigo_orgao")
         if codigo in cadastro:
@@ -81,8 +82,15 @@ def conciliar_pagamentos(
         tipo = _texto(orgao, "codigo_tipo_unidade")
         if tipo == "02" or "CAMARA" in nome:
             camaras.add(codigo)
+        else:
+            # O cadastro de órgãos é retornado no escopo do município. Tipos
+            # diferentes de 02 representam a administração municipal; a
+            # Câmara é isolada pelo código oficial ou pelo nome normalizado.
+            executivo_municipal.add(codigo)
     if not camaras:
         raise ValueError("Cadastro nao permite identificar a Camara; revisar orgaos.")
+    if not executivo_municipal:
+        raise ValueError("Cadastro nao permite identificar orgaos do Executivo municipal; revisar orgaos.")
 
     indice = {}
     for empenho in empenhos:
@@ -134,6 +142,7 @@ def conciliar_pagamentos(
     return elegiveis, {
         "empenhos_coletados": len(empenhos), "pagamentos_coletados": len(pagamentos),
         "pagamentos_elegiveis": len(elegiveis), "excluidos": dict(excluidos),
+        "orgaos_executivo_municipal": sorted(executivo_municipal),
         "orgaos_camara": sorted(camaras), "chaves_duplicadas": 0,
         "pagamentos_sem_empenho": 0,
     }
