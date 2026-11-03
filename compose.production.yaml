@@ -71,6 +71,24 @@ services:
       retries: 5
       start_period: 10s
 
+  pncp-worker-normalizacao:
+    <<: *app-service
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "normalizacao"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  pncp-worker-enriquecimento:
+    <<: *app-service
+    init: true
+    command: ["python", "scripts/pncp_worker.py", "enriquecimento"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   matching-nlp-worker:
     <<: *app-service
     build:
@@ -94,14 +112,22 @@ services:
       LOG_DATABASE_URL: postgresql://${POSTGRES_USER:?configure POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?configure POSTGRES_DB in .env}
       DATABASE_SSLMODE: disable
       LOG_DATABASE_SSLMODE: disable
+      MATCHING_INTERNAL_API_TOKEN: ""
       NLP_EMBEDDING_DEVICE: ${NLP_EMBEDDING_DEVICE:-cpu}
       NLP_EMBEDDING_REVISION: ${NLP_EMBEDDING_REVISION:-fd1525a9fd15316a2d503bf26ab031a61d056e98}
       NLP_EMBEDDING_BATCH_SIZE: "1"
-      NLP_EMBEDDING_IDLE_SECONDS: ${NLP_EMBEDDING_IDLE_SECONDS:-10}
+      NLP_EMBEDDING_IDLE_SECONDS: ${NLP_EMBEDDING_IDLE_SECONDS:-5}
+      NLP_WORKER_IDLE_EXIT_SECONDS: ${NLP_WORKER_IDLE_EXIT_SECONDS:-5}
+      NLP_MODEL_IDLE_UNLOAD_SECONDS: ${NLP_MODEL_IDLE_UNLOAD_SECONDS:-60}
       NLP_EMBEDDING_MAX_ATTEMPTS: ${NLP_EMBEDDING_MAX_ATTEMPTS:-5}
       HF_HOME: /opt/huggingface
       OMP_NUM_THREADS: "1"
       TOKENIZERS_PARALLELISM: "false"
+    networks:
+      default: {}
+      backend_internal:
+        aliases:
+          - matching-nlp
 
 volumes:
   matching_nlp_model_cache:

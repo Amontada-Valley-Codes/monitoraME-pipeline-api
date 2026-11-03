@@ -48,12 +48,14 @@ As regras locais e a definição de confiança ficam em
 [`matching-deterministico.md`](matching-deterministico.md). Resultados LOW
 continuam pesquisáveis; os estados de elegibilidade permanecem explícitos.
 
-## Planejamento das rotas futuras
+## Integração HTTP implementada
 
-As definições abaixo são uma proposta de contrato para a fase de integração.
-Não há routers, handlers, autenticação ou persistência HTTP implementados.
-Os códigos HTTP e regras ainda devem ser confirmados com o Backend antes da
-integração.
+As rotas abaixo estão disponíveis no serviço Pipeline. O Backend envia um
+snapshot `matching.v1`; o Pipeline persiste o lote na fila PostgreSQL, e o
+worker executa o matching de forma assíncrona. Todas exigem
+`Authorization: Bearer <MATCHING_INTERNAL_API_TOKEN>`. Configure o mesmo segredo
+no Backend e na API do Pipeline. Se o segredo não estiver configurado, a API
+responde `503`; se estiver ausente ou inválido, responde `401`.
 
 ### `POST /internal/matching/batches`
 
@@ -65,12 +67,9 @@ não executa matching durante o ciclo HTTP.
   aceita.
 - `409 Conflict` se `batch_id` já existir com conteúdo diferente. Nunca
   substitui o conteúdo de um lote existente.
-- `413 Content Too Large` se ultrapassar o limite operacional de corpo,
-  independente do máximo de 500 perfis do schema.
 - `422 Unprocessable Entity` para JSON inválido semanticamente, schema
   desconhecido, porte inválido, CNAE/localização inválidos, IDs repetidos ou
-  campos extras. O corpo deve apontar `code`, `message` e `field` (caminho do
-  campo), sem ecoar o payload recebido.
+  campos extras. Os erros de validação não ecoam o payload recebido.
 - `503 Service Unavailable` se não for possível registrar o lote de modo
   durável; o chamador pode repetir a mesma solicitação com o mesmo `batch_id`.
 
@@ -86,7 +85,7 @@ Consulta estado e contagens do lote; retorna `BatchStatusResponse`.
 
 - `200 OK` para lote conhecido, inclusive estados terminais.
 - `404 Not Found` para UUID válido sem lote visível ao chamador.
-- `400 Bad Request` para `batch_id` fora do formato UUID.
+- `422 Unprocessable Entity` para `batch_id` fora do formato UUID.
 
 Estados: `pending` ainda não iniciado; `running` em execução; `completed` com
 todos os perfis processados sem falhas; `partial` com pelo menos um sucesso e
@@ -135,17 +134,18 @@ execução pendente de lote concluído sem matches.
   worker separado calcula e persiste os resultados. Repetir POST não pode
   duplicar jobs nem resultados.
 
-## Uso local
+## Uso local com fixtures explícitas
 
 ```powershell
-python -m app.nlp.cli validate-fixtures
+python -m app.nlp.cli validate-fixtures --fixtures tests/nlp/fixtures/companies.json
 python -m unittest tests.nlp.test_contracts
 ```
 
-As fixtures em `tests/nlp/fixtures/companies.json` simulam quatro empresas de
-segmentos, portes, localidades e quantidades de CNAE distintos. A CLI valida
-os contratos sem NestJS, credenciais, assinatura, Redis, banco ou chamadas ao
-PNCP; editais consumidos pelo motor devem vir da visão já normalizada do
+As fixtures em `tests/nlp/fixtures/companies.json` simulam empresas para
+validação e smoke tests. A CLI só as lê quando `--fixtures` é informado; não
+existe arquivo de empresas padrão no fluxo de produção. O Backend envia os
+perfis pela API interna, e o worker processa o snapshot persistido no
+PostgreSQL. Editais consumidos pelo motor vêm da visão já normalizada do
 Pipeline.
 
 ## Campos adicionados ao motor hibrido local

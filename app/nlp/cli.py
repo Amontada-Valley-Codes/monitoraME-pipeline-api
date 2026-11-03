@@ -21,8 +21,7 @@ def main() -> int:
     parser.add_argument(
         "--fixtures",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "tests" / "nlp" / "fixtures" / "companies.json",
-        help="Arquivo JSON no formato de lista de CompanyProfile.",
+        help="Arquivo JSON explícito para validação ou execução local com perfis de teste.",
     )
     parser.add_argument("--page-size", type=int, default=200, help="Oportunidades por página na leitura do Analytics.")
     parser.add_argument("--dry-run", action="store_true", help="Calcula alterações do corpus sem persistir.")
@@ -34,6 +33,9 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=100, help="Máximo de resultados consultados.")
     parser.add_argument("--cursor", help="Cursor opaco para paginação de resultados do batch.")
     args = parser.parse_args()
+
+    if args.command in {"validate-fixtures", "run-matching", "enqueue-matching"} and args.fixtures is None:
+        parser.error(f"{args.command} exige --fixtures; o matching de produção recebe perfis pela API interna.")
 
     if args.command == "sync-corpus":
         try:

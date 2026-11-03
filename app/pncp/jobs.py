@@ -127,7 +127,9 @@ WITH candidate AS (
       AND next_run_at <= now()
       AND (:somente_backfill = false OR job_type = 'backfill')
       AND (CAST(:job_type AS text) IS NULL OR job_type = CAST(:job_type AS text))
-    ORDER BY priority DESC, next_run_at ASC, created_at ASC
+    ORDER BY
+      CASE WHEN job_type = 'normalize' AND status = 'RETRY_WAIT' THEN 1 ELSE 0 END ASC,
+      priority DESC, next_run_at ASC, created_at ASC
     FOR UPDATE SKIP LOCKED
     LIMIT 1
 )

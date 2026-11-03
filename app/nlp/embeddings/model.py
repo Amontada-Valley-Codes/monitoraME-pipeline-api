@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gc
 import os
 from typing import TYPE_CHECKING, Literal
 
@@ -66,6 +67,11 @@ class E5EmbeddingModel:
     def load(self) -> None:
         """Carrega o modelo explicitamente para medir inicialização/warm-up."""
         self._carregar()
+
+    def unload(self) -> None:
+        """Libera o modelo ocioso; o cache dos arquivos permanece no volume."""
+        self._model = None
+        gc.collect()
 
     def encode(self, texts: list[str], *, input_type: TipoTexto) -> EmbeddingBatch:
         """Codifica textos em lote com prefixo E5 e norma L2 unitária."""
