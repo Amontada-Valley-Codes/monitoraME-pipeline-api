@@ -21,6 +21,7 @@ from app.core.models import ApiResponseCache
 
 logger = logging.getLogger(__name__)
 CACHE_SCHEMA_VERSION = "v1"
+CRESCIMENTO_ME_CACHE_SCHEMA_VERSION = "v7"
 RESPONSE_CACHE_TTL_SECONDS = max(
     1,
     int(os.getenv("API_RESPONSE_CACHE_TTL_SECONDS", "3600")),
@@ -53,9 +54,14 @@ def _chave_cache(request: Request, corpo: bytes) -> str:
         doseq=True,
     )
     corpo_hash = hashlib.sha256(corpo).hexdigest()
+    schema_version = (
+        CRESCIMENTO_ME_CACHE_SCHEMA_VERSION
+        if request.url.path == "/pipeline/tce/assinante/crescimento-anual-me"
+        else CACHE_SCHEMA_VERSION
+    )
     fingerprint = "\n".join(
         (
-            CACHE_SCHEMA_VERSION,
+            schema_version,
             request.method.upper(),
             request.url.path,
             consulta,

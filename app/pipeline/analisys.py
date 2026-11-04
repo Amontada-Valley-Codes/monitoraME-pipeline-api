@@ -1,3 +1,4 @@
+import calendar
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -836,6 +837,129 @@ def consultar_overview_tce(
     if not metadados["data_available"] or not metadados["totais"]["despesas"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta
+
+
+def consultar_percentual_mensal_me_tce(
+    data_inicial: str,
+    data_final: str,
+    *,
+    codigo_municipio: str | None = None,
+) -> dict[str, Any]:
+    """Retorna progresso acumulado anual de pagamentos identificados como ME."""
+    inicio = date.fromisoformat(data_inicial)
+    fim = date.fromisoformat(data_final)
+
+    def buscar_base(periodo_inicio: date, periodo_fim: date) -> tuple[pd.DataFrame, dict[str, Any]]:
+        if codigo_municipio is None:
+            base_consultada, dados_consulta = montar_base_analitica_pagamentos_tce_estado_somente_banco(
+                periodo_inicio.isoformat(), periodo_fim.isoformat(),
+            )
+        else:
+            base_consultada, dados_consulta = montar_base_analitica_pagamentos_tce_somente_banco(
+                periodo_inicio.isoformat(),
+                periodo_fim.isoformat(),
+                codigo_municipio=codigo_municipio,
+            )
+        if not base_consultada.empty:
+            datas = pd.to_datetime(base_consultada["data_referencia"], errors="coerce")
+            base_consultada = base_consultada.loc[
+                datas.dt.date.between(periodo_inicio, periodo_fim)
+            ].copy()
+        return base_consultada, dados_consulta
+
+    def serie_mensal(
+        base_analitica: pd.DataFrame,
+        dados: dict[str, Any],
+        periodo_inicio: date,
+        periodo_fim: date,
+    ) -> list[dict[str, object]]:
+        calculados = {
+            str(item["periodo"]): item
+            for item in kpis.calcular_percentual_mensal_me(base_analitica)
+        }
+        competencias = set(dados.get("competencias_publicadas", []))
+        periodos: list[str] = []
+        cursor = date(periodo_inicio.year, periodo_inicio.month, 1)
+        limite = date(periodo_fim.year, periodo_fim.month, 1)
+        while cursor <= limite:
+            periodos.append(cursor.strftime("%Y-%m"))
+            cursor = date(cursor.year + (cursor.month == 12), cursor.month % 12 + 1, 1)
+
+        resultado = []
+        for periodo in periodos:
+            if periodo not in competencias:
+                continue
+            item = dict(calculados.get(periodo) or {
+                "periodo": periodo,
+                "pagamentos_me_centavos": 0,
+                "pagamentos_totais_centavos": 0,
+                "pagamentos_me_identificados_centavos": 0,
+                "porte_nao_identificado_registros": 0,
+                "fornecedores_pessoa_fisica": 0,
+                "percentual_participacao_me": 0.0,
+            })
+            ano, mes = (int(parte) for parte in periodo.split("-"))
+            inicio_mes = date(ano, mes, 1)
+            fim_mes = date(ano, mes, calendar.monthrange(ano, mes)[1])
+            item["periodo_completo"] = periodo_inicio <= inicio_mes and periodo_fim >= fim_mes
+            item["competencia_publicada"] = True
+            resultado.append(item)
+        return resultado
+
+    base_atual, metadados = buscar_base(inicio, fim)
+    atual = serie_mensal(base_atual, metadados, inicio, fim)
+    linhas_por_exercicio: dict[int, list[dict[str, object]]] = {}
+    for item in atual:
+        exercicio = int(str(item["periodo"]).split("-")[0])
+        linhas_por_exercicio.setdefault(exercicio, []).append(item)
+
+    progresso_por_exercicio: list[dict[str, Any]] = []
+    for exercicio, linhas in sorted(linhas_por_exercicio.items()):
+        total_me_ano = sum(int(item["pagamentos_me_centavos"]) for item in linhas)
+        primeiro_ano, primeiro_mes = (
+            int(parte) for parte in str(linhas[0]["periodo"]).split("-")
+        )
+        acumulado = 0
+        meses: list[dict[str, Any]] = []
+        for item in linhas:
+            acumulado += int(item["pagamentos_me_centavos"])
+            item.pop("percentual_participacao_me", None)
+            item["pagamentos_me_acumulados_centavos"] = acumulado
+            item["pagamentos_me_identificados_ano_centavos"] = total_me_ano
+            item["percentual_acumulado_me"] = (
+                round(acumulado * 100 / total_me_ano, 2)
+                if total_me_ano > 0
+                else None
+            )
+            meses.append(item)
+        progresso_por_exercicio.append(
+            {
+                "exercicio": exercicio,
+                "pagamentos_me_identificados_ano_centavos": total_me_ano,
+                "porte_nao_identificado_registros": sum(
+                    int(item.get("porte_nao_identificado_registros", 0))
+                    for item in linhas
+                ),
+                "ponto_inicial": {
+                    "data": date(primeiro_ano, primeiro_mes, 1).isoformat(),
+                    "percentual_acumulado_me": 0.0,
+                },
+                "meses": meses,
+            }
+        )
+
+    return {
+        **metadados,
+        "kpi": "progresso_acumulado_anual_pagamentos_me",
+        "unidade_monetaria": "CENTAVOS",
+        "escopo": {
+            "portes_considerados": ["ME"],
+            "regra_percentual": "pagamentos ME acumulados no exercício / pagamentos ME identificados no exercício * 100",
+            "inicio_exercicio": "0%",
+            "fim_exercicio_com_total_me_identificado": "100%",
+        },
+        "progresso_anual_me": progresso_por_exercicio,
+    }
 
 
 PORTES_FILTRO_OVERVIEW_MUNICIPAL = {

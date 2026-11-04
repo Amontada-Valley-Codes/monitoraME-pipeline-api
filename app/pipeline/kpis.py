@@ -614,7 +614,6 @@ def calcular_participacao_por_porte_por_mes(
         [coluna_data, coluna_valor],
         "participacao por porte por mes",
     )
-
     base = df.copy()
     base["ano_mes"] = extrair_ano_mes(base[coluna_data])
 
@@ -624,6 +623,55 @@ def calcular_participacao_por_porte_por_mes(
         coluna_valor=coluna_valor,
         coluna_porte=coluna_porte,
     )
+
+
+def calcular_percentual_mensal_me(
+    base_analitica: pd.DataFrame,
+    *,
+    coluna_data: str = "data_referencia",
+    coluna_valor: str = "valor",
+    coluna_porte: str = "porte_fornecedor",
+    coluna_tipo_documento: str = "tipo_documento_fornecedor",
+) -> list[dict[str, object]]:
+    """Calcula pagamentos mensais identificados como ME."""
+    _validar_colunas(
+        base_analitica,
+        [coluna_data, coluna_valor, coluna_porte, coluna_tipo_documento],
+        "percentual mensal de pagamentos a ME",
+    )
+    base = base_analitica.copy()
+    base["_periodo"] = pd.to_datetime(base[coluna_data], errors="coerce").dt.strftime("%Y-%m")
+    base["_valor_centavos"] = base[coluna_valor].map(_valor_reais_para_centavos)
+    base = base.loc[base["_periodo"].notna() & base["_valor_centavos"].notna()]
+    resultado: list[dict[str, object]] = []
+    portes_conhecidos = tuple(
+        porte for porte in PORTES_EMPRESARIAIS if porte != "NAO_IDENTIFICADO"
+    )
+    for periodo, grupo in base.groupby("_periodo", sort=True):
+        pessoa_fisica = grupo[coluna_tipo_documento].astype("string").eq("2")
+        portes_identificados = grupo[coluna_porte].isin(portes_conhecidos) | pessoa_fisica
+        registros_sem_porte = int((~portes_identificados).sum())
+        total_me_identificado = _somar_centavos(
+            grupo.loc[grupo[coluna_porte].eq("ME"), "_valor_centavos"]
+        )
+        total_pagamentos = _somar_centavos(grupo["_valor_centavos"])
+        percentual_me = (
+            _percentual_0_a_100(total_me_identificado, total_pagamentos)
+            if registros_sem_porte == 0 and total_pagamentos != 0
+            else None
+        )
+        resultado.append(
+            {
+                "periodo": str(periodo),
+                "pagamentos_me_centavos": total_me_identificado,
+                "pagamentos_totais_centavos": total_pagamentos,
+                "pagamentos_me_identificados_centavos": total_me_identificado,
+                "porte_nao_identificado_registros": registros_sem_porte,
+                "fornecedores_pessoa_fisica": int(pessoa_fisica.sum()),
+                "percentual_participacao_me": percentual_me,
+            }
+        )
+    return resultado
 
 
 def calcular_overview_me_mei(

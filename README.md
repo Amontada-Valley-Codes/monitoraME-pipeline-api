@@ -402,6 +402,22 @@ O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de M
 
 O parametro opcional `codigo_municipio` mantem o fluxo municipal existente. `GET /pipeline/tce/overview/municipal` tambem mantem seu contrato por portes.
 
+### Progresso anual de pagamentos a ME para assinantes
+
+`GET /pipeline/tce/assinante/crescimento-anual-me` retorna o progresso mensal
+acumulado dos pagamentos a MEs. Para cada exercício selecionado, a série parte
+de `0%` no início do período e acumula os pagamentos de cada competência até
+`100%` no último mês, considerando o total anual de pagamentos ME identificados.
+Quando a consulta inclui mais de um exercício, cada um recebe sua própria série
+e total anual. Aceita `data_inicial`, `data_final` e, opcionalmente,
+`codigo_municipio`. Os valores monetários são inteiros em centavos. O retorno
+informa também registros com porte não identificado, que podem tornar o total
+de MEs identificado parcial. Os portes vêm do cache cadastral local; preencha-o
+com
+`docker compose run --rm api tce-enriquecer --ano 2025 --codigo-municipio 004`.
+A rota usa somente dados locais e tem cache de resposta conforme as demais
+consultas GET.
+
 ### Comparação de overviews
 
 `POST /pipeline/tce/comparisons` recebe dois lados independentes e permite

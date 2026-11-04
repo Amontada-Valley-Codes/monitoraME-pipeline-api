@@ -201,6 +201,37 @@ def tce_overview(
 
 
 @router.get(
+    "/tce/assinante/crescimento-anual-me",
+    tags=["Dados de assinante"],
+    summary="Consulta o progresso anual dos pagamentos a MEs",
+    description=(
+        "Série acumulada dos pagamentos a MEs em cada exercício selecionado, "
+        "partindo de 0% no início e chegando a 100% no fim do exercício."
+    ),
+    response_description=(
+        "Progresso mensal acumulado dos pagamentos a MEs, separado por exercício."
+    ),
+)
+def tce_percentual_mensal_me_assinante(
+    data_inicial: Annotated[str, _data_inicial_query()],
+    data_final: Annotated[str, _data_final_query()],
+    codigo_municipio: Annotated[
+        str | None,
+        Query(description="Código opcional do município no TCE-CE."),
+    ] = None,
+) -> dict[str, object]:
+    try:
+        _validar_periodo_api(data_inicial, data_final)
+        return analisys.consultar_percentual_mensal_me_tce(
+            data_inicial=data_inicial,
+            data_final=data_final,
+            codigo_municipio=codigo_municipio,
+        )
+    except Exception as error:
+        raise _erro_pipeline(error) from error
+
+
+@router.get(
     "/tce/overview/municipal",
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de um municipio por periodo",
