@@ -144,6 +144,29 @@ class PagamentosTest(unittest.TestCase):
         self.assertIsNone(cadastros["02530104000133"]["referencia_base_cadastral"])
         self.assertEqual(result["fornecedores_me"][0]["quantidade_pagamentos"], 2)
 
+    def test_agrega_por_cnpj_e_preserva_razoes_sociais_observadas(self):
+        es = [
+            empenho(numero_empenho="0001", nome_negociante="Fornecedor Original Ltda"),
+            empenho(numero_empenho="0002", nome_negociante="Fornecedor Atualizado Ltda",
+                    numero_documento_negociante="02530104000133"),
+        ]
+        ps = [
+            pagamento(numero_empenho="0001", numero_nota_pagamento="0002"),
+            pagamento(numero_empenho="0002", numero_nota_pagamento="0003"),
+        ]
+        rows, _ = conciliar(es, ps)
+        result = p.resumir_pagamentos(rows, {
+            "02530104000133": {"porte_codigo": "01", "situacao_classificacao": "ok"},
+        })
+        self.assertEqual(len(result["fornecedores_me"]), 1)
+        fornecedor = result["fornecedores_me"][0]
+        self.assertEqual(fornecedor["cnpj"], "02530104000133")
+        self.assertEqual(fornecedor["valor_pago_centavos"], 2_000_000)
+        self.assertEqual(fornecedor["quantidade_pagamentos"], 2)
+        self.assertEqual(fornecedor["nomes_observados"], [
+            "Fornecedor Atualizado Ltda", "Fornecedor Original Ltda",
+        ])
+
     @patch.object(p.fornecedores, "coletar_fornecedor")
     def test_cadastro_divergente_ou_desconhecido_nao_inventa_porte(self, coletar):
         rows, _ = conciliar([empenho()], [pagamento()])

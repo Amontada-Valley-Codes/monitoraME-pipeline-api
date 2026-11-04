@@ -29,6 +29,8 @@ O endpoint consulta as fontes externas em cada chamada. A execucao integral pode
 
 ME significa porte cadastral `01`, sem exclusao adicional de MEI. Nome empresarial, opcao pelo Simples e valores recebidos nao determinam porte. O CNPJ retornado pela fonte deve corresponder ao solicitado. Documentos incompletos, invalidos ou de outro tipo ficam rastreaveis.
 
+O total consolidado usa cada nota de pagamento uma unica vez. O fornecedor e identificado pelo CNPJ completo normalizado, nunca pelo nome: pagamentos de um mesmo CNPJ ficam no mesmo grupo mesmo quando empenhos antigos e novos registram razoes sociais diferentes. `fornecedores_me` preserva `nomes_observados` para auditoria e continua expondo um unico valor agregado por CNPJ e elemento. Nomes iguais com CNPJs diferentes permanecem fornecedores distintos; filiais com CNPJs completos diferentes tambem nao sao fundidas automaticamente.
+
 ## Regras financeiras
 
 O cadastro `orgaos`, consultado no escopo do municipio, identifica a Camara por tipo `02` ou nome contendo Camara, sem fixar um numero universal. Os demais codigos cadastrados sao identificados como orgaos do Executivo municipal. A conciliacao exige ao menos um orgao de cada grupo e rejeita qualquer pagamento cujo orgao nao esteja no cadastro. A auditoria retorna os codigos identificados em `orgaos_executivo_municipal` e `orgaos_camara`.

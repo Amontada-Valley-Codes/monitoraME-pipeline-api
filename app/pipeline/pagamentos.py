@@ -243,15 +243,25 @@ def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) 
             me_por_elemento[elemento] += valor
             grupo = grupos.setdefault((elemento, cnpj), {
                 "elemento": elemento, "cnpj": cnpj, "nome": pagamento["nome"],
+                "_nomes_observados": {},
                 "valor_pago_centavos": 0, "quantidade_pagamentos": 0,
             })
+            nome = str(pagamento.get("nome") or "").strip()
+            nome_chave = normalizar_texto(nome)
+            if nome_chave:
+                grupo["_nomes_observados"].setdefault(nome_chave, nome)
             grupo["valor_pago_centavos"] += valor
             grupo["quantidade_pagamentos"] += 1
     total = sum(totais.values())
     assert sum(categorias.values()) == total
+    fornecedores_me = []
+    for grupo in grupos.values():
+        nomes = grupo.pop("_nomes_observados")
+        grupo["nomes_observados"] = [nomes[chave] for chave in sorted(nomes)]
+        fornecedores_me.append(grupo)
     return {
         "total_me_centavos": categorias["ME"], "me_por_elemento_centavos": me_por_elemento,
-        "fornecedores_me": sorted(grupos.values(), key=lambda g: (g["elemento"], g["cnpj"])),
+        "fornecedores_me": sorted(fornecedores_me, key=lambda g: (g["elemento"], g["cnpj"])),
         "controle_financeiro": {
             "total_centavos": total, "por_elemento_centavos": totais,
             "por_categoria_centavos": categorias, "reconciliado": True,
