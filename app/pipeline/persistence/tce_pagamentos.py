@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 import json
 from typing import Any, Iterable
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 
 from app.core import database, orm
@@ -308,6 +308,7 @@ def publicar_lote(
             TcePagamentoIngestionRun.expira_em <= agora,
         ))
         anterior = _run_publicado(session, codigo_municipio_tce, exercicio_orcamento * 100, competencia)
+        anterior_id = anterior.id if anterior is not None else None
         run = TcePagamentoIngestionRun(
             codigo_municipio_tce=codigo_municipio_tce,
             exercicio_orcamento=exercicio_orcamento * 100,
@@ -331,10 +332,25 @@ def publicar_lote(
 
         session.add_all(_modelo_pagamento(run.id, registro) for registro in registros)
         session.flush()
-        if anterior is not None:
+        if anterior_id is not None:
+            substituido_em = agora
+            expiracao = agora + RETENCAO_LOTES_SUBSTITUIDOS
+            # Libera a unicidade parcial imediatamente antes de publicar o novo snapshot.
+            session.execute(
+                update(TcePagamentoIngestionRun)
+                .where(
+                    TcePagamentoIngestionRun.id == anterior_id,
+                    TcePagamentoIngestionRun.status == STATUS_PUBLICADO,
+                )
+                .values(
+                    status=STATUS_SUBSTITUIDO,
+                    substituido_em=substituido_em,
+                    expira_em=expiracao,
+                )
+            )
             anterior.status = STATUS_SUBSTITUIDO
-            anterior.substituido_em = agora
-            anterior.expira_em = agora + RETENCAO_LOTES_SUBSTITUIDOS
+            anterior.substituido_em = substituido_em
+            anterior.expira_em = expiracao
             session.flush()
         run.status = STATUS_PUBLICADO
         run.finalizado_em = agora
@@ -342,7 +358,7 @@ def publicar_lote(
         session.flush()
         return ResultadoPublicacaoPagamentos(
             run.id, run.status, codigo_municipio_tce, exercicio_orcamento * 100,
-            competencia, len(registros), [], anterior.id if anterior else None,
+            competencia, len(registros), [], anterior_id,
         )
 
 
