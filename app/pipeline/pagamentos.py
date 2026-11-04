@@ -122,7 +122,7 @@ def conciliar_pagamentos(
             raise ValueError(f"Chave de empenho duplicada: {chave}.")
         indice[chave] = empenho
 
-    vistos = set()
+    vistos: dict[tuple[str, ...], dict] = {}
     elegiveis = []
     excluidos = defaultdict(int)
     anomalias = []
@@ -130,9 +130,18 @@ def conciliar_pagamentos(
         chave = _chave(pagamento)
         chave_pagamento = (*chave, _texto(pagamento, "numero_sub_empenho"),
                            _texto(pagamento, "numero_nota_pagamento"))
-        if chave_pagamento in vistos:
-            raise ValueError(f"Chave de pagamento duplicada: {chave_pagamento}.")
-        vistos.add(chave_pagamento)
+        pagamento_anterior = vistos.get(chave_pagamento)
+        if pagamento_anterior is not None:
+            if pagamento_anterior != pagamento:
+                raise ValueError(f"Duplicidade conflitante de pagamento: {chave_pagamento}.")
+            excluidos["duplicado_identico"] += 1
+            anomalias.append({
+                "codigo": "PAGAMENTO_DUPLICADO_IDENTICO",
+                "chave_pagamento": list(chave_pagamento),
+                "referencia_documentacao": pagamento.get("data_referencia_doc"),
+            })
+            continue
+        vistos[chave_pagamento] = pagamento
         if chave not in indice:
             raise ValueError(f"Pagamento sem empenho correspondente: {chave_pagamento}.")
         if chave[2] not in cadastro:

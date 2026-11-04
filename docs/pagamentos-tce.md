@@ -37,7 +37,7 @@ Coletam-se os doze meses de empenhos e todos os meses de pagamentos ate a refere
 
 O relacionamento usa municipio, exercicio, orgao, unidade orcamentaria, data de emissao do empenho e numero do empenho. Datas e espacos externos sao normalizados; zeros dos identificadores sao preservados. A referencia documental nao integra a chave. A chave de pagamento acrescenta numero do subempenho e numero da nota.
 
-Qualquer chave repetida, mesmo aparentemente identica, interrompe o calculo com a chave na mensagem. Pagamentos sem empenho e estados de estorno diferentes de `0` e `1` tambem impedem a soma. Nao se escolhe arbitrariamente uma versao conflitante.
+Uma chave de pagamento repetida com payload identico e contada uma unica vez, com anomalia registrada na auditoria. Duplicidades conflitantes interrompem o calculo com a chave na mensagem; nenhuma versao e escolhida arbitrariamente. Pagamentos sem empenho impedem a soma. Estados de estorno diferentes de `0` e `1` permanecem auditaveis, mas sao excluidos do total.
 
 Somam-se centavos de `valor_nota_pagamento`, nunca o valor empenhado. Consideram-se os orgaos do Executivo municipal e excluem-se pagamentos da Camara, do estado de estorno `1` e de elementos fora de `39`, `30`, `51`, `52`, `32`, `40`, `35`. O elemento corresponde as posicoes cinco e seis do codigo de oito digitos.
 

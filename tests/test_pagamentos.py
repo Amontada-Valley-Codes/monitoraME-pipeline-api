@@ -80,12 +80,19 @@ class PagamentosTest(unittest.TestCase):
     def test_duplicatas_e_orfaos_nao_produzem_total(self):
         for es, ps, erro in [
             ([empenho(), empenho()], [pagamento()], "empenho duplicada"),
-            ([empenho()], [pagamento(), pagamento()], "pagamento duplicada"),
+            ([empenho()], [pagamento(), pagamento(valor_nota_pagamento="1.00")], "Duplicidade conflitante"),
             ([empenho()], [pagamento(codigo_orgao="99")], "sem empenho"),
             ([empenho(codigo_municipio="005")], [], "fora do recorte"),
         ]:
             with self.subTest(erro=erro), self.assertRaisesRegex(ValueError, erro):
                 conciliar(es, ps)
+
+    def test_duplicata_identica_de_api_e_contada_apenas_uma_vez(self):
+        rows, audit = conciliar([empenho()], [pagamento(), pagamento()])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["valor_centavos"], 1_000_000)
+        self.assertEqual(audit["excluidos"], {"duplicado_identico": 1})
+        self.assertEqual(audit["anomalias"][0]["codigo"], "PAGAMENTO_DUPLICADO_IDENTICO")
 
     def test_estado_estorno_desconhecido_e_preservado_e_excluido_do_total(self):
         rows, audit = conciliar([empenho()], [pagamento(estado_de_estornado=2)])
