@@ -14,7 +14,6 @@ from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor, extr
 from app.pipeline.ingestion import fornecedores, tce
 from app.pipeline.persistence import tce_despesas as tce_despesas_persistence
 from app.pipeline.persistence import tce_pagamentos as tce_pagamentos_persistence
-from app.pipeline.pagamentos import REFERENCIA_PORTAL_ACARAU_2025
 
 
 logger = logging.getLogger(__name__)
@@ -600,10 +599,12 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Base de pagamentos com empenhos usados apenas como dimensoes."""
     inicio, fim = date.fromisoformat(data_inicial), date.fromisoformat(data_final)
+    competencias_pagamentos: list[str] = []
     registros, competencias_ausentes = tce_pagamentos_persistence.listar_pagamentos_municipais_para_analise(
         codigo_municipio_tce=codigo_municipio,
         data_inicial=inicio,
         data_final=fim,
+        competencias_publicadas=competencias_pagamentos,
     )
     if competencias_ausentes:
         raise CompetenciasTceIndisponiveisError(
@@ -636,53 +637,24 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         base["base_calculo"] = "PAGAMENTOS_TCE"
         base["valor_empenhado"] = pd.NA
         base["valor_anulado"] = pd.NA
-    financeiro_por_elemento = {codigo: 0 for codigo in kpis.NATUREZAS_DESPESA_MONITORADAS}
-    for registro in registros:
-        financeiro_por_elemento[registro["natureza_despesa_codigo"]] += int(registro["valor_centavos"])
-    conferencia_portal = None
-    if (
-        codigo_municipio == "004"
-        and inicio == date(2025, 1, 1)
-        and fim == date(2026, 9, 30)
-    ):
-        divergencias = {
-            codigo: financeiro_por_elemento.get(codigo, 0) - esperado
-            for codigo, esperado in REFERENCIA_PORTAL_ACARAU_2025.items()
-        }
-        conferencia_portal = {
-            "referencia": "TCE-CE Portal da Transparencia, conferida em 2026-10-19",
-            "valores_esperados_centavos": REFERENCIA_PORTAL_ACARAU_2025,
-            "divergencia_centavos_por_elemento": divergencias,
-            "total_esperado_centavos": sum(REFERENCIA_PORTAL_ACARAU_2025.values()),
-            "total_apurado_centavos": sum(financeiro_por_elemento.values()),
-            "divergencia_total_centavos": sum(financeiro_por_elemento.values()) - sum(REFERENCIA_PORTAL_ACARAU_2025.values()),
-        }
-        conferencia_portal["bate"] = not any(divergencias.values())
-    classificacao_completa = bool(base.empty) or not base["porte_fornecedor"].eq("NAO_IDENTIFICADO").any()
+    competencias_pagamentos = sorted(set(competencias_pagamentos))
     return base, {
         "fonte": "TCE-CE/SIM",
         "parametros": {"data_inicial": data_inicial, "data_final": data_final,
                        "codigo_municipio": codigo_municipio},
         "competencias_solicitadas": _competencias_entre_datas(data_inicial, data_final),
-        "competencias_publicadas": _competencias_entre_datas(data_inicial, data_final),
+        "competencias_publicadas": competencias_pagamentos,
+        "competencias_pagamentos_incluidas": competencias_pagamentos,
+        "pagamentos_estendidos_automaticamente": bool(
+            competencias_pagamentos
+            and competencias_pagamentos[-1] > fim.strftime("%Y-%m")
+        ),
         "competencias_ausentes": [],
         "totais": {"pagamentos": len(registros), "despesas": len(registros)},
         "data_available": bool(registros),
         "is_stale": False,
         "source_status": "CURRENT" if registros else "EMPTY",
         "quality": {"coverage": "COMPLETE", "missing_competencies": []},
-        "controle_financeiro": {
-            "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
-            "por_elemento_centavos": financeiro_por_elemento,
-            "total_centavos": sum(financeiro_por_elemento.values()),
-            "reconciliado": True,
-        },
-        "conferencia_portal": conferencia_portal,
-        "indicador_me_validado": (
-            None if conferencia_portal is None
-            else bool(conferencia_portal["bate"] and classificacao_completa)
-        ),
-        "porte_historico_comprovado": False,
         "base_analitica": {"nome": "pagamentos_tce", "base_calculo": "PAGAMENTOS",
                            "dimensoes_empenho": ["natureza", "fornecedor"]},
         "unidade_monetaria": "CENTAVOS",
@@ -692,10 +664,12 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
 def montar_base_analitica_pagamentos_tce_estado_somente_banco(
     data_inicial: str, data_final: str,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
+    competencias_pagamentos: list[str] = []
     registros, ausentes = tce_pagamentos_persistence.listar_pagamentos_estaduais_para_analise(
         data_inicial=date.fromisoformat(data_inicial),
         data_final=date.fromisoformat(data_final),
         uf=UF_PADRAO,
+        competencias_publicadas=competencias_pagamentos,
     )
     if ausentes:
         amostra = ausentes[:10]
@@ -727,7 +701,12 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
         "fonte": "TCE-CE/SIM",
         "parametros": {"data_inicial": data_inicial, "data_final": data_final},
         "competencias_solicitadas": _competencias_entre_datas(data_inicial, data_final),
-        "competencias_publicadas": _competencias_entre_datas(data_inicial, data_final),
+        "competencias_publicadas": sorted(set(competencias_pagamentos)),
+        "competencias_pagamentos_incluidas": sorted(set(competencias_pagamentos)),
+        "pagamentos_estendidos_automaticamente": bool(
+            competencias_pagamentos
+            and max(competencias_pagamentos) > date.fromisoformat(data_final).strftime("%Y-%m")
+        ),
         "competencias_ausentes": [],
         "totais": {"pagamentos": len(registros), "despesas": len(registros)},
         "data_available": bool(registros),

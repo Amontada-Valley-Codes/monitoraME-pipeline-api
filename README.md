@@ -829,6 +829,22 @@ Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagame
 
 As rotas analíticas de despesas e fornecedores incluem somente órgãos municipais classificados como Executivo pelo cadastro `/orgaos` do TCE, por município e exercício. Após aplicar a migration `0029_tce_classificacao_orgaos`, classifique os exercícios já publicados com `python scripts/sincronizar_classificacoes_orgaos_tce.py` (ou limite a Acaraú com `--municipio 004`). A Câmara e órgãos ainda sem classificação de alta confiança ficam fora dos cálculos; as linhas brutas de empenhos e anulações permanecem preservadas. Novas ingestões atualizam as classificações automaticamente.
 
+Para ingerir empenhos, anulações e pagamentos do Ceará inteiro para um exercício orçamentário, use o orquestrador abaixo no Compose de produção:
+
+```bash
+docker compose -f compose.production.yaml run --rm api python -m scripts.ingestir_tce_ce --ano 2025
+```
+
+O comando coleta as competências de empenhos/anulações do ano indicado para os 184 municípios e, em seguida, as competências documentais de pagamentos de janeiro do exercício até o mês corrente em `America/Fortaleza`, preservando o exercício orçamentário informado. Como a fonte é mensal, a competência do mês corrente é coletada integralmente; não há recorte diário. O fluxo de pagamentos usa no máximo dois workers por padrão, imprime progresso por município/competência e retorna código `2` se houver falhas ou rejeições em qualquer etapa.
+
+Se empenhos e anulações já estiverem publicados, use `--somente-pagamentos` para não executá-los novamente:
+
+```bash
+docker compose -f compose.production.yaml run --rm api python -m scripts.ingestir_tce_ce --ano 2025 --somente-pagamentos
+```
+
+O modo somente pagamentos atualiza o catálogo dos 184 municípios, mas não ingere despesas. Reexecutar uma competência substitui seu snapshot publicado, sem duplicar notas; o snapshot anterior fica retido por sete dias. Os demais comandos e procedimentos estão em [docs/ingestao-tce-ce.md](docs/ingestao-tce-ce.md).
+
 ### Qualidade semantica PNCP
 
 A normalizacao avalia qualidade por campo e RAW, preserva valores monetarios com Decimal, datas de origem e codigos desconhecidos, e isola erros de contrato. A migration `0017_pncp_qualidade` acrescenta evidencias versionadas. Homologacao tecnica aprovada em PostgreSQL isolado com amostras reais dos dois endpoints, 63 verificacoes e relatorios publicados em `docs/`. Consulte a [matriz, metricas e procedimento de homologacao](docs/pncp-qualidade-semantica.md). Para exportar metricas e excecoes locais: `python scripts/relatorio_pncp_qualidade.py --saida relatorio-qualidade.json` (filtros opcionais `--run-id` e `--endpoint`).

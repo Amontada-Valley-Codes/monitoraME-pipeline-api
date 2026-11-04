@@ -68,31 +68,49 @@ def _run_publicado(
     )
 
 
+def _competencias_entre(inicio: str, fim: str) -> list[str]:
+    ano, mes = map(int, inicio.split("-"))
+    fim_ano, fim_mes = map(int, fim.split("-"))
+    competencias = []
+    while (ano, mes) <= (fim_ano, fim_mes):
+        competencias.append(f"{ano:04d}-{mes:02d}")
+        if mes == 12:
+            ano, mes = ano + 1, 1
+        else:
+            mes += 1
+    return competencias
+
+
 def listar_pagamentos_para_analise(
     *, codigo_municipio_tce: str, exercicio_orcamento: int,
     data_inicial: date, data_final: date,
+    competencias_publicadas: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Le pagamentos publicados no intervalo civil e liga dimensoes ao empenho."""
+    """Le pagamentos publicados e estende o fim ate o ultimo snapshot do orcamento."""
     database.init_db()
     if data_inicial > data_final:
         raise ValueError("data_inicial deve ser menor ou igual a data_final.")
-    competencias = []
-    cursor = date(data_inicial.year, data_inicial.month, 1)
-    fim = date(data_final.year, data_final.month, 1)
-    while cursor <= fim:
-        competencias.append(cursor.strftime("%Y-%m"))
-        cursor = date(cursor.year + (cursor.month == 12), cursor.month % 12 + 1, 1)
+    competencia_inicial = data_inicial.strftime("%Y-%m")
+    competencia_final_solicitada = data_final.strftime("%Y-%m")
     with orm.main_session() as session:
         runs = session.scalars(select(TcePagamentoIngestionRun).where(
             TcePagamentoIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
             TcePagamentoIngestionRun.exercicio_orcamento == exercicio_orcamento,
-            TcePagamentoIngestionRun.competencia.in_(competencias),
+            TcePagamentoIngestionRun.competencia >= competencia_inicial,
             TcePagamentoIngestionRun.status == STATUS_PUBLICADO,
-        )).all()
+        ).order_by(TcePagamentoIngestionRun.competencia)).all()
+        ultima_publicada = max(
+            (run.competencia for run in runs),
+            default=competencia_final_solicitada,
+        )
+        competencia_final = max(competencia_final_solicitada, ultima_publicada)
+        competencias = _competencias_entre(competencia_inicial, competencia_final)
         por_competencia = {run.competencia: run for run in runs}
         ausentes = [item for item in competencias if item not in por_competencia]
         if ausentes:
             return [], ausentes
+        if competencias_publicadas is not None:
+            competencias_publicadas.extend(competencias)
         classificacoes = session.scalars(select(TceOrgaoClassificacao).where(
             TceOrgaoClassificacao.codigo_municipio_tce == codigo_municipio_tce,
             TceOrgaoClassificacao.exercicio_orcamento == exercicio_orcamento,
@@ -105,7 +123,7 @@ def listar_pagamentos_para_analise(
         if not executivo or not camara:
             raise ValueError("Classificacao de orgaos incompleta para calcular pagamentos da Prefeitura.")
         referencia_inicial = data_inicial.year * 100 + data_inicial.month
-        referencia_final = data_final.year * 100 + data_final.month
+        referencia_final = int(competencia_final.replace("-", ""))
         pagamentos = session.scalars(select(TcePagamento).where(
             TcePagamento.run_id.in_([run.id for run in runs]),
             TcePagamento.codigo_orgao.in_(executivo),
@@ -158,6 +176,7 @@ def listar_pagamentos_para_analise(
 
 def listar_pagamentos_municipais_para_analise(
     *, codigo_municipio_tce: str, data_inicial: date, data_final: date,
+    competencias_publicadas: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Combina exercícios orçamentários publicados no período de pagamento."""
     if data_inicial > data_final:
@@ -184,6 +203,7 @@ def listar_pagamentos_municipais_para_analise(
             exercicio_orcamento=exercicio,
             data_inicial=data_inicial,
             data_final=data_final,
+            competencias_publicadas=competencias_publicadas,
         )
         registros.extend(pagamentos)
         ausentes.extend({"exercicio_orcamento": str(exercicio), "competencia": item}
@@ -193,6 +213,7 @@ def listar_pagamentos_municipais_para_analise(
 
 def listar_pagamentos_estaduais_para_analise(
     *, data_inicial: date, data_final: date, uf: str,
+    competencias_publicadas: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Lista pagamentos estaduais somente quando todos os lotes municipais existem."""
     from app.core.models import IbgeMunicipio
@@ -212,6 +233,7 @@ def listar_pagamentos_estaduais_para_analise(
     for codigo in municipios:
         pagamentos, faltantes = listar_pagamentos_municipais_para_analise(
             codigo_municipio_tce=str(codigo), data_inicial=data_inicial, data_final=data_final,
+            competencias_publicadas=competencias_publicadas,
         )
         registros.extend(pagamentos)
         ausentes.extend({"codigo_municipio": str(codigo), **item} for item in faltantes)
