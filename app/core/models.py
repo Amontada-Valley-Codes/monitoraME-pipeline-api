@@ -632,6 +632,27 @@ class TceEmpenho(MainBase):
     lote: Mapped[TceDespesaIngestionRun] = relationship(back_populates="empenhos")
 
 
+class TceOrgaoClassificacao(MainBase):
+    """Classificação auditável do cadastro de órgãos por município/exercício."""
+    __tablename__ = "tce_orgaos_classificacao"
+    __table_args__ = (UniqueConstraint(
+        "codigo_municipio_tce", "exercicio_orcamento", "codigo_orgao",
+        name="uq_tce_orgao_classificacao_escopo",
+    ),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    codigo_municipio_tce: Mapped[str] = mapped_column(Text)
+    exercicio_orcamento: Mapped[int] = mapped_column(Integer)
+    codigo_orgao: Mapped[str] = mapped_column(Text)
+    nome_orgao: Mapped[str] = mapped_column(Text)
+    codigo_tipo_unidade: Mapped[str | None] = mapped_column(Text)
+    classificacao: Mapped[str] = mapped_column(Text)
+    regra: Mapped[str] = mapped_column(Text)
+    confianca: Mapped[str] = mapped_column(Text)
+    fonte: Mapped[str] = mapped_column(Text, server_default=text("'TCE-CE /orgaos'"))
+    observado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class TceAnulacaoEmpenho(MainBase):
     __tablename__ = "tce_anulacoes_empenhos"
     __table_args__ = (
@@ -818,6 +839,7 @@ __all__ = [
     "TceAnulacaoEmpenho",
     "TceDespesaIngestionRun",
     "TceEmpenho",
+    "TceOrgaoClassificacao",
     "TceMunicipio",
     "TcePagamento",
     "TcePagamentoIngestionRun",

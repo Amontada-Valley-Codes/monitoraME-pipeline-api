@@ -65,6 +65,7 @@ class OrmMetadataTest(unittest.TestCase):
             "tce_anulacoes_empenhos",
             "tce_pagamento_ingestion_runs",
             "tce_pagamentos",
+            "tce_orgaos_classificacao",
         }
 
         self.assertEqual(set(orm.MainBase.metadata.tables), esperado)

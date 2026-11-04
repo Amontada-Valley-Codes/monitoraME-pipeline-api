@@ -20,6 +20,7 @@ from app.core.models import (
     TceEmpenho,
     TceMunicipio,
 )
+from app.pipeline.persistence.tce_orgaos import executivo_tce
 
 
 STATUS_EM_VALIDACAO = "EM_VALIDACAO"
@@ -485,6 +486,11 @@ def listar_empenhos_liquidos_publicados(
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            executivo_tce(
+                TceDespesaIngestionRun.codigo_municipio_tce,
+                TceEmpenho.exercicio_orcamento,
+                TceEmpenho.codigo_orgao,
+            ),
             TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.data_empenho >= data_inicial,
             TceEmpenho.data_empenho <= data_final,
@@ -543,6 +549,7 @@ def listar_cnpjs_fornecedores_publicados(
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
             TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.cnpj_fornecedor.is_not(None),
         )
@@ -737,6 +744,7 @@ def listar_empenhos_publicados_paginados(
 
     filtros = [
         TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+        executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
         TceEmpenho.natureza_considerada.is_(True),
         TceEmpenho.data_empenho >= data_inicial,
         TceEmpenho.data_empenho <= data_final,
@@ -877,6 +885,7 @@ def obter_empenho_publicado_por_chave(chave_empenho: str) -> dict[str, Any] | No
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
             TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.chave_empenho == chave_empenho,
         )
@@ -910,9 +919,11 @@ def listar_anulacoes_publicadas_por_empenho(
             TceAnulacaoEmpenho.valor_anulacao_centavos,
         )
         .join(TceDespesaIngestionRun, TceAnulacaoEmpenho.run_id == TceDespesaIngestionRun.id)
+        .join(TceEmpenho, TceEmpenho.chave_empenho == TceAnulacaoEmpenho.chave_empenho)
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
             TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
+            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
             TceAnulacaoEmpenho.chave_empenho == chave_empenho,
         )
         .order_by(TceAnulacaoEmpenho.data_anulacao, TceAnulacaoEmpenho.chave_anulacao)

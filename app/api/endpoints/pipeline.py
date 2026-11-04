@@ -165,10 +165,10 @@ def tce_kpi_portes_por_mes(
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview estadual de Microempresas (ME)",
     description=(
-        "Sem municipio, consolida os lotes publicados de todo o Ceara usando o banco local. "
-        "O recorte estadual considera somente ME; MEI integra demais portes. "
-        "Inclui ranking dos municipios pelo valor final de despesas de ME. "
-        "Os valores retornados sao finais. Para valores pagos use /tce/pagamentos/overview."
+        "Calcula sobre notas de pagamento publicadas no banco local; empenhos fornecem "
+        "natureza e fornecedor, sem compor o valor. O recorte considera somente ME; "
+        "MEI, EPP e demais portes integram Outros. O porte vem do cadastro enriquecido "
+        "disponivel e nao comprova classificacao historica. A rota nao consulta fontes externas."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
@@ -205,8 +205,10 @@ def tce_overview(
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de um municipio por periodo",
     description=(
-        "Busca o overview municipal para o periodo informado. Por padrao, "
-        "considera todos os portes; company_sizes restringe todo o calculo."
+        "Calcula o overview municipal sobre notas de pagamento publicadas. Por padrao, "
+        "mostra todos os portes; company_sizes restringe o calculo. Empenhos fornecem "
+        "natureza e fornecedor, sem compor valor. A rota nao consulta fontes externas e "
+        "falha quando faltam lotes mensais publicados ou empenhos de ligacao."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "

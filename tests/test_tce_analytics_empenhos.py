@@ -320,6 +320,7 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
     def setUp(self) -> None:
         self.base = None
 
+    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
     @patch(
         "app.pipeline.analisys.database.localizar_municipio_tce",
         return_value={"codigo_municipio_tce": "010", "nome": "Amontada"},
@@ -333,7 +334,7 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
     @patch("app.pipeline.tce_observability.portes_historicos.raizes_classificadas_por_competencia", return_value={})
     @patch("app.pipeline.analisys.database.listar_fornecedores_cache")
     @patch("app.pipeline.analisys.tce_despesas_pipeline.executar_ingestao_competencia_tce")
-    def test_indicadores_e_porte_mensal_usam_empenhos_liquidos(
+    def test_indicadores_e_porte_mensal_usam_pagamentos(
         self,
         executar_ingestao,
         listar_cache,
@@ -342,6 +343,7 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
         listar_publicacoes,
         listar_empenhos,
         localizar_municipio,
+        montar_base_pagamentos,
     ) -> None:
         listar_empenhos.return_value = [
             _empenho("E1", "2025-01-10", "30", 1_000_000, 200_000, "11444777000161", "ME"),
@@ -369,6 +371,29 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
                 }
             },
         }
+        montar_base_pagamentos.return_value = (
+            pd.DataFrame([
+                {
+                    "ano_mes": "2025-01", "data_referencia": "2025-01-10",
+                    "valor": 8_000.0, "cnpj_fornecedor": "11444777000161",
+                    "nome_fornecedor": "Comercio Local LTDA", "porte_fornecedor": "ME",
+                    "fornecedor_e_me": True, "fornecedor_e_mpe": True,
+                    "natureza_despesa_codigo": "30", "natureza_despesa": "Material de consumo",
+                    "origem_geografica": "Sediado no municÃ­pio comprador",
+                    "municipio_sede_fornecedor": "AMONTADA", "uf_sede_fornecedor": "CE",
+                },
+                {
+                    "ano_mes": "2025-01", "data_referencia": "2025-01-20",
+                    "valor": 15_000.0, "cnpj_fornecedor": "98765432000111",
+                    "nome_fornecedor": "Fornecedor Fortaleza SA", "porte_fornecedor": "EPP",
+                    "fornecedor_e_me": False, "fornecedor_e_mpe": True,
+                    "natureza_despesa_codigo": "39", "natureza_despesa": "Outros servicos",
+                    "origem_geografica": "Outro municÃ­pio do CearÃ¡",
+                    "municipio_sede_fornecedor": "FORTALEZA", "uf_sede_fornecedor": "CE",
+                },
+            ]),
+            {"data_available": True, "totais": {"despesas": 2, "pagamentos": 2}},
+        )
 
         indicadores = analisys.consultar_tce_indicadores_analiticos(
             data_inicial="2025-01-01",
@@ -401,36 +426,15 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
 
 
 class ResolverMunicipioTceTest(unittest.TestCase):
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_publicacoes_competencias_estado")
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
+    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_estado_somente_banco")
     @patch("app.pipeline.analisys.database.listar_municipios_ibge", return_value=[])
     def test_overview_sem_municipio_consolida_ceara_somente_com_banco_local(
-        self,
-        _listar_municipios,
-        _falhas,
-        listar_publicacoes,
-        listar_empenhos,
+        self, _listar_municipios, montar_base,
     ) -> None:
-        listar_publicacoes.return_value = [
-            {
-                "codigo_municipio_tce": "004",
-                "codigo_municipio_ibge": "2300200",
-                "municipio": "Acarau",
-                "uf": "CE",
-                "competencia": "2025-01",
-                "publicado_em": None,
-            },
-            {
-                "codigo_municipio_tce": "162",
-                "codigo_municipio_ibge": "2312908",
-                "municipio": "Sobral",
-                "uf": "CE",
-                "competencia": "2025-01",
-                "publicado_em": None,
-            },
-        ]
-        listar_empenhos.return_value = []
+        montar_base.return_value = (
+            pd.DataFrame(columns=["ano_mes", "valor", "porte_fornecedor", "origem_geografica", "natureza_despesa_codigo"]),
+            {"data_available": False, "totais": {"despesas": 0, "pagamentos": 0}},
+        )
 
         resultado = analisys.consultar_overview_tce(
             data_inicial="2025-01-01",
@@ -440,19 +444,10 @@ class ResolverMunicipioTceTest(unittest.TestCase):
 
         self.assertEqual(resultado["parametros"]["codigo_municipio"], None)
         self.assertEqual(resultado["escopo_territorial"]["tipo"], "ESTADO")
-        self.assertEqual(
-            resultado["escopo_territorial"]["quantidade_municipios_com_publicacao"],
-            2,
-        )
         self.assertEqual(resultado["origem_dados"], "BANCO_LOCAL")
         self.assertFalse(resultado["consultas_externas"])
         self.assertEqual(resultado["kpis"]["total_compras_ME_centavos"], 0)
-        listar_empenhos.assert_called_once_with(
-            codigo_municipio_tce=None,
-            data_inicial=date(2025, 1, 1),
-            data_final=date(2025, 1, 31),
-            uf="CE",
-        )
+        montar_base.assert_called_once_with("2025-01-01", "2025-01-31")
 
     @patch("app.pipeline.analisys.tce.buscar_municipios")
     @patch("app.pipeline.analisys.database.salvar_municipios_tce")
@@ -497,8 +492,8 @@ class ResolverMunicipioTceTest(unittest.TestCase):
         buscar_municipios.assert_called_once_with()
         salvar_municipios.assert_called_once_with(buscar_municipios.return_value, "CE")
 
-    @patch("app.pipeline.analisys.montar_base_analitica_tce_somente_banco")
-    def test_overview_preserva_metadados_e_aplica_escopo_me_mei(
+    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
+    def test_overview_preserva_metadados_e_restringe_numerador_a_me(
         self,
         montar_base,
     ) -> None:
@@ -543,17 +538,47 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             codigo_municipio="010",
         )
         self.assertEqual(resultado["competencias_publicadas"], ["2025-01"])
-        self.assertEqual(resultado["escopo"]["portes_considerados"], ["ME", "MEI"])
+        self.assertEqual(resultado["escopo"]["portes_considerados"], ["ME"])
         self.assertEqual(
             resultado["escopo"]["portes_no_denominador_participacao"],
             ["ME", "MEI", "EPP", "DEMAIS"],
         )
         self.assertEqual(resultado["unidade_monetaria"], "CENTAVOS")
-        self.assertEqual(resultado["kpis"]["percentual_participacao_me"], 100.0)
+        self.assertEqual(resultado["kpis"]["percentual_participacao_me"], 80.0)
         self.assertEqual(
             resultado["kpis"]["total_compras_ME_centavos"],
-            10_000,
+            8_000,
         )
+
+    @patch("app.pipeline.analisys.database.localizar_municipio_tce", return_value={"nome": "Acarau"})
+    @patch("app.pipeline.analisys.database.listar_fornecedores_cache", return_value={})
+    @patch("app.pipeline.analisys.tce_pagamentos_persistence.listar_pagamentos_municipais_para_analise")
+    def test_base_overview_usa_valor_pago_e_exige_snapshots_completos(
+        self, listar_pagamentos, _cache, _municipio,
+    ):
+        listar_pagamentos.return_value = ([{
+            "ano_mes": "2026-02", "data_referencia": "2026-02-02",
+            "valor_centavos": 1055, "natureza_despesa_codigo": "30",
+            "cnpj_fornecedor": None, "documento_fornecedor": None,
+            "tipo_documento_fornecedor": "2", "nome_fornecedor": "Fornecedor",
+            "codigo_municipio_tce": "004",
+        }], [])
+        base, metadata = analisys.montar_base_analitica_pagamentos_tce_somente_banco(
+            "2026-02-01", "2026-02-28", codigo_municipio="004",
+        )
+        self.assertEqual(str(base.iloc[0]["valor"]), "10.55")
+        self.assertEqual(base.iloc[0]["base_calculo"], "PAGAMENTOS_TCE")
+        self.assertEqual(metadata["totais"]["pagamentos"], 1)
+        listar_pagamentos.return_value = ([], [{
+            "exercicio_orcamento": "202500", "competencia": "2026-02",
+        }])
+        with self.assertRaisesRegex(
+            analisys.CompetenciasTceIndisponiveisError,
+            "Lotes de pagamentos publicados ausentes",
+        ):
+            analisys.montar_base_analitica_pagamentos_tce_somente_banco(
+                "2026-02-01", "2026-02-28", codigo_municipio="004",
+            )
 
 
 if __name__ == "__main__":

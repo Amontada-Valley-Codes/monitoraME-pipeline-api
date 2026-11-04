@@ -1,4 +1,4 @@
-# Pagamentos da Prefeitura e filtro cadastral ME
+﻿# Pagamentos da Prefeitura e filtro cadastral ME
 
 Implementacao do guia fornecido "Como reproduzir os valores do Portal da Transparencia do TCE". Auditoria executada em 20/10/2026, na branch `20_10_2026`.
 
@@ -29,15 +29,17 @@ O endpoint consulta as fontes externas em cada chamada. A execucao integral pode
 
 ME significa porte cadastral `01`, sem exclusao adicional de MEI. Nome empresarial, opcao pelo Simples e valores recebidos nao determinam porte. O CNPJ retornado pela fonte deve corresponder ao solicitado. Documentos incompletos, invalidos ou de outro tipo ficam rastreaveis.
 
+O total consolidado usa cada nota de pagamento uma unica vez. O fornecedor e identificado pelo CNPJ completo normalizado, nunca pelo nome: pagamentos de um mesmo CNPJ ficam no mesmo grupo mesmo quando empenhos antigos e novos registram razoes sociais diferentes. `fornecedores_me` preserva `nomes_observados` para auditoria e continua expondo um unico valor agregado por CNPJ e elemento. Nomes iguais com CNPJs diferentes permanecem fornecedores distintos; filiais com CNPJs completos diferentes tambem nao sao fundidas automaticamente.
+
 ## Regras financeiras
 
 O cadastro `orgaos`, consultado no escopo do municipio, identifica a Camara por tipo `02` ou nome contendo Camara, sem fixar um numero universal. Os demais codigos cadastrados sao identificados como orgaos do Executivo municipal. A conciliacao exige ao menos um orgao de cada grupo e rejeita qualquer pagamento cujo orgao nao esteja no cadastro. A auditoria retorna os codigos identificados em `orgaos_executivo_municipal` e `orgaos_camara`.
 
-Coletam-se os doze meses de empenhos e todos os meses de pagamentos ate a referencia final. Cada mes reinicia a paginacao em zero; falhas HTTP, respostas sem uma lista valida de `elements` e itens malformados nao encerram meses como vazios. O exercicio orcamentario permanece fixo, inclusive em referencias posteriores.
+Coletam-se os doze meses de empenhos e todos os meses de pagamentos ate a referencia final. A API documenta filtros opcionais por `codigo_orgao` e `codigo_unidade_orcamentaria`, mas nao oferece ordenacao para estabilizar offsets. Por isso, cada competencia documental é consultada por órgão e reinicia `$start_index` em zero. Se a partição de um órgão retornar pelo menos 1.000 notas, ela é refeita por unidade orçamentária; partições de unidade acima de 1.000 impedem publicar o resultado como completo. A resposta registra as dimensões e chamadas realizadas. Falhas HTTP, respostas sem uma lista valida de `elements` e itens malformados nao encerram meses como vazios. O exercicio orcamentario permanece fixo, inclusive em referencias posteriores.
 
 O relacionamento usa municipio, exercicio, orgao, unidade orcamentaria, data de emissao do empenho e numero do empenho. Datas e espacos externos sao normalizados; zeros dos identificadores sao preservados. A referencia documental nao integra a chave. A chave de pagamento acrescenta numero do subempenho e numero da nota.
 
-Qualquer chave repetida, mesmo aparentemente identica, interrompe o calculo com a chave na mensagem. Pagamentos sem empenho e estados de estorno diferentes de `0` e `1` tambem impedem a soma. Nao se escolhe arbitrariamente uma versao conflitante.
+Uma chave de pagamento repetida com payload identico e contada uma unica vez, com anomalia registrada na auditoria. Duplicidades conflitantes interrompem o calculo com a chave na mensagem; nenhuma versao e escolhida arbitrariamente. Pagamentos sem empenho impedem a soma. Estados de estorno diferentes de `0` e `1` permanecem auditaveis, mas sao excluidos do total.
 
 Somam-se centavos de `valor_nota_pagamento`, nunca o valor empenhado. Consideram-se os orgaos do Executivo municipal e excluem-se pagamentos da Camara, do estado de estorno `1` e de elementos fora de `39`, `30`, `51`, `52`, `32`, `40`, `35`. O elemento corresponde as posicoes cinco e seis do codigo de oito digitos.
 
@@ -100,4 +102,36 @@ O modo financeiro retorna subtotal ME zero com classificacao pendente, pois nao 
 
 O JSON de saida guarda os portes efetivamente consultados. A funcao pura `resumir_pagamentos` permite reconciliar uma lista de pagamentos ja normalizados com uma classificacao por CNPJ, sem consultar fontes externas. Nao se exige que o porte atual produza o subtotal ME historico de Consultoria de R$ 881.880,06.
 
+## Revalidação e paginação adaptativa (04/11/2026)
+
+O OpenAPI atual do TCE documenta `codigo_orgao` e `codigo_unidade_orcamentaria` como filtros opcionais em `/notas_pagamentos`, junto com `$count` e `$start_index`, sem parâmetro de ordenação. A coleta passou a consultar por órgão e só subdividir por unidade quando um órgão atinge 1.000 registros. A execução de Acaraú/2025 consultou 15 órgãos, registrou 25 unidades disponíveis, planejou e executou 315 consultas, sem subdivisão adicional. Vieram 12.067 notas, sem chaves duplicadas nem pagamentos órfãos; referências documentais seguiram de 2025-01 a 2026-09 com exercício orçamentário 202500.
+
+Essa coleta atual, processada uma vez por nota e sem Câmara/estorno, ainda divergiu da fotografia do portal consultada em 19/10/2026. O total foi R$ 136.213.306,64, diferença de +R$ 901.777,20. Elementos 30, 32, 39 e 52 divergiram; 35, 40 e 51 coincidiram. A composição por elemento e a diferença constam em `conferencia_portal` da resposta e no arquivo local de auditoria. Portanto, o subtotal cadastral ME não é marcado como validado quando o controle financeiro de todos os portes não bate com a referência.
+
+Na classificação cadastral consultada em 04/11/2026, os valores ME por elemento foram: 30 R$ 2.689.620,61; 32 R$ 284.931,90; 35 R$ 881.880,06; 40 R$ 0,00; 51 R$ 6.920.121,87; 52 R$ 490.062,45. Cinco dos seis alvos informados coincidiram; Material de Consumo ficou R$ 23.789,84 acima do alvo de R$ 2.665.830,77. Como a conferência financeira geral não bate e a referência cadastral histórica não está disponível (`referencia_base_cadastral=null`), não ajustamos fornecedor ou pagamento para forçar esse subtotal. A resposta informa `indicador_me_validado=false` nesse cenário.
+
+A evidência bruta está em `.local/tce-pagamentos/coleta-acarau-particionada.json`, e a reconciliação em `.local/tce-pagamentos/resultado-me-particionado.json` (arquivos locais não versionados). A referência oficial da paginação e dos filtros é a [documentação OpenAPI do SIM/TCE-CE](https://api-dados-abertos.tce.ce.gov.br/sim/).
+
 Os testes incluem esse subtotal apenas como exemplo de classificacao hipotetica, alem de meses vazios, mudanca de ano, paginas completas, normalizacao de chaves, duplicidades, orfaos, estornos desconhecidos, documentos invalidos e pendencias cadastrais. Nenhum total de referencia e usado como ajuste dos pagamentos.
+
+## Overviews por pagamentos publicados
+
+A rota `GET /pipeline/tce/overview` (estadual ou municipal por `codigo_municipio`) e `GET /pipeline/tce/overview/municipal` calculam valor financeiro a partir de `valor_nota_pagamento_centavos`, uma vez por chave de nota, nos snapshots mensais `PUBLICADO`. O intervalo das rotas usa a data civil da nota de pagamento; o exercício orçamentário permanece na chave de cada snapshot, de modo que uma nota paga em 2026 vinculada ao orçamento de 2025 continua incluída.
+
+Empenhos publicados servem somente para ligar cada pagamento a natureza e fornecedor. Anulações não são somadas nem subtraídas do valor pago. Só entram notas com `estado_de_estornado=0` e órgão classificado com confiança alta como `EXECUTIVO_MUNICIPAL`; órgãos classificados como Câmara e órgãos incertos ficam fora. Nota sem empenho publicado correspondente interrompe o cálculo, em vez de publicar um total parcial.
+
+A leitura exige snapshots publicados em todos os meses do intervalo para cada exercício orçamentário que tenha pagamentos publicados. Se faltar competência, a rota retorna erro de dados indisponíveis, nunca trata ausência de lote como mês vazio. Para o overview estadual, essa cobertura é exigida em todos os municípios do Ceará cadastrados. Isso preserva o comportamento somente leitura: a rota não inicia ingestão nem consulta TCE ou cadastro externo.
+
+O overview simples considera ME no numerador e agrupa MEI, EPP e DEMAIS em `OUTROS_PORTES`; não identificados permanecem em categoria própria. O overview municipal mostra a distribuição de todos os portes e aceita `company_sizes`. A classificação usa o cache cadastral disponível (retrato atual, não comprovação histórica). Pagamento não classificado continua no total financeiro, mas não entra em ME; portanto, os indicadores de porte dependem da cobertura cadastral.
+
+O histórico de despesas líquidas permanece disponível nas rotas de despesas que não foram migradas. Overview simples (estadual e municipal), overview municipal por portes, indicadores analíticos principais e KPI mensal de portes já usam pagamentos publicados. Rotas de listagem de empenhos e indicadores explicitamente de empenhado/anulado continuam com suas medidas originais. A validação do Postgres local abaixo é evidência de execução anterior; nesta revisão o Docker não estava acessível para repetir a chamada HTTP.
+
+## Validacao Acaraú no Postgres local (04/11/2026)
+
+A verificacao com snapshots locais confirmou 21 competencias publicadas para 202500, de 2025-01 a 2026-09; havia 11.951 notas, sendo 11.915 com `estado_de_estornado=0` e 36 estornadas. Nao houve estado desconhecido nem chave de empenho orfa. O filtro Prefeitura excluiu o orgao 01 (Camara) e manteve notas somente de orgaos do Executivo classificados com confianca alta.
+
+A regra nominal inicial deixava os orgaos 03 (Controladoria/Ouvidoria, grafado `Controlodaria`) e 10 (`Sec.` de Agronomia) como `REVISAR`. A regra passou a reconhecer o prefixo `CONTROL` e a abreviacao `SEC`; o cadastro Acaraú/2025 foi reclassificado, ficando 15 orgaos com confianca alta, incluindo uma Camara. Com a correcao, a rota passou de 7.920 para 8.187 notas monitoradas e o controle passou de R$ 133.358.028,00 para R$ 134.991.056,93.
+
+Na mesma execucao, os totais por elemento de todos os portes foram: 30 R$ 29.863.810,49; 32 R$ 1.937.198,26; 35 R$ 1.083.280,71; 39 R$ 65.481.674,75; 40 R$ 10.483,64; 51 R$ 31.285.160,58; 52 R$ 5.329.448,50. Contra a referencia do portal, a divergencia total permaneceu em -R$ 320.472,51 (30 +R$ 332.516,84; 32 +R$ 60.186,26; 35 R$ 0,00; 39 -R$ 836.766,44; 40 R$ 0,00; 51 +R$ 38.932,37; 52 -R$ 162.523,20). Portanto, a classificacao dos dois orgaos explicou parte da diferenca, mas a conciliacao financeira ainda falha.
+
+O subtotal ME corrente apos a reclassificacao foi: 30 R$ 2.650.825,02; 32 R$ 284.931,90; 35 R$ 881.880,06; 40 R$ 0,00; 51 R$ 6.881.189,50; 52 R$ 425.012,45. O cadastro historico continua nao comprovado, e as diferencas de Material de Consumo, Obras e Instalacoes e Material Permanente impedem validar todos os seis alvos. A rota retorna `indicador_me_validado=false` quando comparada com a referencia conhecida.
