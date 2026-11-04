@@ -8,6 +8,7 @@ from typing import Any
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline import empenhos
 from app.pipeline.persistence import tce_despesas, tce_fornecedores
+from app.utils import validar_cnpj
 
 
 TIPOS_DOCUMENTO = {"CNPJ": "1", "CPF": "2"}
@@ -271,6 +272,12 @@ def obter_fornecedor(
             "percentual": (valor * 100 / liquido) if liquido else 0.0,
         })
     path = f"/pipeline/tce/fornecedores/{tipo_documento}/{documento_normalizado}/despesas"
+    cadastro = _cadastro(registro)
+    nome_exibicao = _primeiro(
+        cadastro,
+        "razao_social",
+        "nome_fantasia",
+    ) or registro["nome_fornecedor"]
     return {
         "source": "TCE-CE",
         "data_source": "LOCAL_DATABASE",
@@ -288,10 +295,12 @@ def obter_fornecedor(
             "tipo_documento": tipo_documento,
             "documento": documento_normalizado,
             "cnpj": registro["cnpj_fornecedor"],
-            "nome": registro["nome_fornecedor"],
+            "nome": nome_exibicao,
+            "razao_social": cadastro.get("razao_social"),
+            "nome_fantasia": cadastro.get("nome_fantasia"),
             "porte": registro["porte_fornecedor"],
             "origens_no_recorte": registro["origens_no_recorte"],
-            "cadastro": _cadastro(registro),
+            "cadastro": cadastro,
         },
         "recorte": {
             "start_date": start_date,
@@ -364,6 +373,11 @@ def listar_empenhos_fornecedor(
         ordem=sort_order,
         tipo_documento_fornecedor=tipo_interno,
         documento_fornecedor=documento_normalizado,
+        cnpj_fornecedor=(
+            documento_normalizado
+            if tipo_interno == "1" and validar_cnpj(documento_normalizado)
+            else None
+        ),
     )
     total = int(resultado["total"])
     if total == 0 and page == 1 and not search:

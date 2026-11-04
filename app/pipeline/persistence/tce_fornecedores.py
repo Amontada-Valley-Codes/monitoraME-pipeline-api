@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, literal, or_, select
 
 from app.core import database, orm
 from app.core.models import (
@@ -20,6 +20,7 @@ from app.pipeline.persistence.tce_despesas import (
     _expressoes_empenhos_publicados,
     _subconsulta_anulacoes_publicadas,
 )
+from app.utils import validar_cnpj
 
 
 def _contexto_consulta(
@@ -102,14 +103,34 @@ def _joins(consulta: Any, anulacoes: Any) -> Any:
     )
 
 
-def _grupo_fornecedor(expressoes: dict[str, Any]) -> tuple[Any, ...]:
+def _grupo_fornecedor() -> tuple[Any, ...]:
+    identidade_tipo = case(
+        (TceEmpenho.cnpj_fornecedor.is_not(None), literal("1")),
+        else_=TceEmpenho.tipo_documento_fornecedor,
+    )
+    identidade_documento = case(
+        (TceEmpenho.cnpj_fornecedor.is_not(None), TceEmpenho.cnpj_fornecedor),
+        else_=TceEmpenho.documento_fornecedor,
+    )
     return (
-        TceEmpenho.tipo_documento_fornecedor,
-        TceEmpenho.documento_fornecedor,
-        TceEmpenho.cnpj_fornecedor,
-        expressoes["porte"],
+        identidade_tipo,
+        identidade_documento,
         FornecedorCache.cnpj,
         FornecedorCache.opencnpj_status,
+    )
+
+
+def _tipo_identidade_fornecedor() -> Any:
+    return case(
+        (TceEmpenho.cnpj_fornecedor.is_not(None), literal("1")),
+        else_=TceEmpenho.tipo_documento_fornecedor,
+    )
+
+
+def _documento_identidade_fornecedor() -> Any:
+    return case(
+        (TceEmpenho.cnpj_fornecedor.is_not(None), TceEmpenho.cnpj_fornecedor),
+        else_=TceEmpenho.documento_fornecedor,
     )
 
 
@@ -182,7 +203,43 @@ def listar_fornecedores_publicados_paginados(
     quantidade_empenhos = func.count(TceEmpenho.id)
     primeiro_empenho = func.min(TceEmpenho.data_empenho)
     ultimo_empenho = func.max(TceEmpenho.data_empenho)
-    nome = func.max(TceEmpenho.nome_fornecedor)
+    nome = func.coalesce(
+        func.max(
+            case(
+                (
+                    func.lower(
+                        func.trim(
+                            FornecedorCache.dados_normalizados[
+                                "opencnpj_razao_social"
+                            ].astext
+                        )
+                    ).in_(["", "-", "nao_informado", "não informado"]),
+                    None,
+                ),
+                else_=FornecedorCache.dados_normalizados[
+                    "opencnpj_razao_social"
+                ].astext,
+            )
+        ),
+        func.max(
+            case(
+                (
+                    func.lower(
+                        func.trim(
+                            FornecedorCache.dados_normalizados[
+                                "opencnpj_nome_fantasia"
+                            ].astext
+                        )
+                    ).in_(["", "-", "nao_informado", "não informado"]),
+                    None,
+                ),
+                else_=FornecedorCache.dados_normalizados[
+                    "opencnpj_nome_fantasia"
+                ].astext,
+            )
+        ),
+        func.max(TceEmpenho.nome_fornecedor),
+    )
     cadastro_status = case(
         (
             (FornecedorCache.cnpj.is_not(None))
@@ -192,11 +249,11 @@ def listar_fornecedores_publicados_paginados(
         else_="NAO_DISPONIVEL",
     )
     consulta = select(
-        TceEmpenho.tipo_documento_fornecedor,
-        TceEmpenho.documento_fornecedor,
-        TceEmpenho.cnpj_fornecedor,
+        _tipo_identidade_fornecedor().label("tipo_documento_fornecedor"),
+        _documento_identidade_fornecedor().label("documento_fornecedor"),
+        func.max(TceEmpenho.cnpj_fornecedor).label("cnpj_fornecedor"),
         nome.label("nome_fornecedor"),
-        expressoes["porte"].label("porte_fornecedor"),
+        func.max(expressoes["porte"]).label("porte_fornecedor"),
         cadastro_status.label("cadastro_status"),
         func.array_agg(func.distinct(expressoes["origem"])).label(
             "origens_no_recorte"
@@ -214,7 +271,7 @@ def listar_fornecedores_publicados_paginados(
         func.count().over().label("_total_items"),
     )
     consulta = _joins(consulta, contexto["anulacoes"]).where(*filtros).group_by(
-        *_grupo_fornecedor(expressoes)
+        *_grupo_fornecedor()
     )
     ordenacoes = {
         "supplier": nome,
@@ -232,15 +289,13 @@ def listar_fornecedores_publicados_paginados(
     ).limit(tamanho_pagina).offset((pagina - 1) * tamanho_pagina)
 
     grupos = select(
-        TceEmpenho.tipo_documento_fornecedor,
-        TceEmpenho.documento_fornecedor,
-        TceEmpenho.cnpj_fornecedor,
-        expressoes["porte"],
+        _tipo_identidade_fornecedor(),
+        _documento_identidade_fornecedor(),
         FornecedorCache.cnpj,
         FornecedorCache.opencnpj_status,
     )
     grupos = _joins(grupos, contexto["anulacoes"]).where(*filtros).group_by(
-        *_grupo_fornecedor(expressoes)
+        *_grupo_fornecedor()
     ).subquery()
     with orm.main_session() as session:
         registros = session.execute(consulta).mappings().all()
@@ -278,14 +333,20 @@ def obter_resumo_fornecedor_publicado(
         exigir_documento=False,
     )
     filtros_recorte = list(contexto["filtros"])
-    filtros_fornecedor = [
-        *filtros_recorte,
-        TceEmpenho.tipo_documento_fornecedor == tipo_documento,
-        TceEmpenho.documento_fornecedor == documento,
-    ]
+    if tipo_documento == "1" and validar_cnpj(documento):
+        filtros_fornecedor = [
+            *filtros_recorte,
+            TceEmpenho.cnpj_fornecedor == documento,
+        ]
+    else:
+        filtros_fornecedor = [
+            *filtros_recorte,
+            TceEmpenho.tipo_documento_fornecedor == tipo_documento,
+            TceEmpenho.documento_fornecedor == documento,
+        ]
     resumo = select(
-        TceEmpenho.tipo_documento_fornecedor,
-        TceEmpenho.documento_fornecedor,
+        _tipo_identidade_fornecedor(),
+        _documento_identidade_fornecedor(),
         func.max(TceEmpenho.cnpj_fornecedor).label("cnpj_fornecedor"),
         func.max(TceEmpenho.nome_fornecedor).label("nome_fornecedor"),
         func.max(contexto["expressoes"]["porte"]).label("porte_fornecedor"),
@@ -315,8 +376,8 @@ def obter_resumo_fornecedor_publicado(
         func.max(TceEmpenho.data_empenho).label("ultimo_empenho"),
     )
     resumo = _joins(resumo, contexto["anulacoes"]).where(*filtros_fornecedor).group_by(
-        TceEmpenho.tipo_documento_fornecedor,
-        TceEmpenho.documento_fornecedor,
+        _tipo_identidade_fornecedor(),
+        _documento_identidade_fornecedor(),
     )
 
     competencia = func.to_char(TceEmpenho.data_empenho, "YYYY-MM")

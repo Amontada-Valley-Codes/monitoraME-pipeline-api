@@ -465,7 +465,19 @@ As rotas de fornecedores sao somente leitura e consideram despesas de lotes `PUB
 
 `GET /pipeline/tce/fornecedores` agrupa fornecedores por tipo e documento. Os valores retornados sao finais em centavos. `sort_by=final_value` ordena pelo valor final.
 
+A identidade agregada prioriza CNPJ validado pelos digitos verificadores. Empenhos com o mesmo CNPJ valido formam um unico fornecedor mesmo que o nome publicado pelo TCE varie; valores, despesas, municipios e datas sao agregados sobre todos esses empenhos. CPF, CNPJ invalido e documento ausente nao sao associados por semelhanca de nome: documentos presentes permanecem separados por tipo e valor normalizado, e registros sem documento nao aparecem na listagem. Assim, nomes iguais sem identificador confiavel nao fundem entidades distintas. O nome exibido prioriza razao social cadastral, depois nome fantasia e, por fim, o nome publicado pelo TCE.
+
+Casos representativos e impacto esperado:
+
+| Registros no TCE | Identidade da resposta | Efeito nos indicadores |
+| --- | --- | --- |
+| Mesmo CNPJ com razoes sociais ou grafias diferentes | Um fornecedor pelo CNPJ validado | Soma empenhos e valores uma vez; reduz a contagem de fornecedores duplicados sem alterar os totais das despesas. |
+| Mesmo nome com CNPJs validos diferentes | Dois fornecedores | Mantem entidades distintas e seus valores separados. |
+| Documento ausente ou CNPJ/CPF invalido | Sem correspondencia por nome; documento informado continua identificado por tipo e valor | Evita fusao especulativa; ausentes continuam fora da listagem, conforme o filtro existente. |
+
 `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}` retorna cadastro, totais finais, evolucao mensal, distribuicao pelos sete elementos e participacao no valor total filtrado. Nao retorna valores brutos, anulacoes, valores liquidos ou medias.
+
+No detalhe, `fornecedor.nome` segue a mesma precedencia da listagem e `fornecedor.razao_social` e `fornecedor.nome_fantasia` foram adicionados como campos opcionais para tornar a identificacao mais clara. A rota de despesas do detalhe usa o CNPJ validado como chave quando disponivel, garantindo que os vinculos agregados incluam todas as variacoes de nome daquele fornecedor. Nao ha alteracao de schema do banco; consumidores do Backend podem ler os novos campos sem remover os existentes.
 
 `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas` retorna a lista paginada das despesas do fornecedor com o mesmo contrato de `/pipeline/tce/despesas`.
 
