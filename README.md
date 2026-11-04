@@ -65,6 +65,7 @@ Variáveis usadas pela aplicação:
 | `LOG_LEVEL` | Não | Nível dos logs operacionais (`DEBUG`, `INFO`, `WARNING`, `ERROR`); padrão `INFO`. |
 | `DATABASE_SSLMODE` | Não | Modo SSL do banco principal; use `disable` no PostgreSQL local. |
 | `LOG_DATABASE_SSLMODE` | Não | Modo SSL do banco de logs; use `disable` localmente. |
+| `API_RESPONSE_CACHE_TTL_SECONDS` | Não | Tempo em segundos de validade do cache JSON das consultas; padrão `3600`. |
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
@@ -93,6 +94,15 @@ Os dois ambientes Alembic continuam isolados pelas tabelas de versão
 As credenciais e a porta podem ser alteradas pelas variáveis `POSTGRES_*` do
 `.env`. Se forem alteradas, ajuste também `DATABASE_URL` e
 `LOG_DATABASE_URL`.
+
+As respostas JSON de sucesso das rotas `/pipeline/*` e `/pncp/*` são
+armazenadas na tabela `api_response_cache`, no banco principal. A chave considera
+método, caminho, query string e corpo da requisição; as consultas retornam
+`X-Cache: HIT` quando atendidas pelo cache e `X-Cache: MISS` quando calculadas.
+Para recalcular uma resposta e substituir sua entrada atual, envie
+`X-Force-Refresh: true` ou `Cache-Control: no-cache`; a chamada retorna
+`X-Cache: MISS`. Erros e rotas de saúde não são armazenados. O TTL padrão é de
+uma hora e pode ser alterado por `API_RESPONSE_CACHE_TTL_SECONDS`.
 
 Inicie a aplicação completa e confira seu estado:
 
@@ -137,6 +147,15 @@ estável acima; não use `docker compose down -v` em produção.
 O servico tambem permanece na rede Docker `monitorame_backend_internal`, com o
 alias `pipeline-api`, para chamadas internas do backend em
 `http://pipeline-api:8000`.
+
+O Compose de produção inicia os workers de normalização e enriquecimento. A
+coleta PNCP de teste é manual: dentro do container Pipeline, use
+`pncp coletar-amostra-abertas --limite 20` para importar no máximo 20
+contratações que ainda recebem propostas. O comando grava RAW e agenda a
+normalização automaticamente; veja
+[preparação do teste NLP na VPS](docs/preparacao-teste-nlp-vps.md). Os endpoints
+internos de matching recebem batches do Backend; o worker permanece leve sem
+trabalho e carrega o modelo apenas durante o processamento.
 
 Por enquanto, o CORS aceita qualquer origem, e a API tambem aceita chamadas sem
 cabecalho `Origin`. O cabecalho `Origin` nao autentica clientes; mantenha o
@@ -205,15 +224,16 @@ históricos precisam ser preservados.
 Para construir apenas a imagem:
 
 ```bash
-docker build -t monitorame-pipeline-api:local .
+docker build -t pipeline-api:local .
+docker build -t pipeline-migrate:local .
 ```
 
-A imagem executa a API por padrão e aceita o comando `migrate` para aplicar os
-dois ambientes Alembic:
+A imagem `pipeline-api` executa a API por padrão. A imagem
+`pipeline-migrate` aplica os dois ambientes Alembic:
 
 ```bash
-docker run --rm --env-file .env monitorame-pipeline-api:local migrate
-docker run --rm --env-file .env -p 8000:8000 monitorame-pipeline-api:local
+docker run --rm --env-file .env pipeline-migrate:local
+docker run --rm --env-file .env -p 8000:8000 pipeline-api:local
 ```
 
 Para publicar em um registry, defina um nome versionado, construa e envie:
@@ -354,12 +374,25 @@ Todos os valores monetários são inteiros em centavos e os percentuais usam a
 escala de `0` a `100`. Competências ausentes aparecem explicitamente na
 cobertura e não são convertidas em meses com valor zero.
 
-Competências publicadas são reutilizadas enquanto estiverem dentro da política
-de atualização: uma hora para o mês atual, 24 horas para os três meses
-anteriores e sete dias para os meses mais antigos. Quando uma publicação
-vencida não pode ser atualizada, sua última versão continua no cálculo e a
-competência aparece em `competencias_desatualizadas`. Competências sem qualquer
-publicação continuam aparecendo em `competencias_ausentes`.
+O teste concorrente desse motor usa múltiplos municípios, mede média, p95, p99,
+throughput, erros, tempo SQL, CPU e memória, e gera relatórios JSON e Markdown.
+Consulte [o procedimento de teste de carga](docs/carga-indicadores.md).
+
+As rotas analíticas de overview, comparação, indicadores e análise territorial
+são somente leitura: usam o último lote `PUBLICADO` e cadastros já armazenados,
+sem iniciar ingestão nem consultar fontes externas. Se uma tentativa posterior
+falhar, o lote publicado anterior permanece disponível e a resposta sinaliza
+`is_stale` e `stale_reason`. A atualização das competências deve ocorrer pelo
+processo de carga, separado da leitura analítica.
+
+Essas respostas incluem `data_available`, `data_as_of`,
+`last_successful_load_at`, `is_stale`, `stale_reason` e `quality`. O objeto
+`quality` informa municípios com dados/no escopo, despesas de origem
+desconhecida, cobertura da classificação histórica de porte, período parcial,
+competências ausentes e alertas legíveis sem expor documentos ou nomes de
+fornecedores. Um lote publicado sem empenhos representa ausência conhecida de
+movimento: valores monetários são zero e taxas sem denominador são `null`.
+Município/competência sem publicação não é tratado como valor zero.
 
 ### Overview estadual de ME
 
@@ -485,6 +518,36 @@ Nenhuma dessas rotas atualiza o cache cadastral ou consulta TCE-CE, IBGE ou Open
 
 ## Persistência
 
+### Matching NLP local
+
+O matching consulta somente oportunidades normalizadas e seus embeddings no
+PostgreSQL Analytics. A migration `0027_nlp_matching_results` adiciona batches
+e resultados versionados. Aplique as migrations antes de usar os comandos
+abaixo; o modelo E5 segue a revisao fixada em `NLP_EMBEDDING_REVISION`.
+
+```powershell
+.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m app.nlp.cli run-matching --fixtures tests/nlp/fixtures/companies.json --batch-id 11111111-1111-4111-8111-111111111111 --k 20
+.venv\Scripts\python.exe -m app.nlp.cli enqueue-matching --fixtures tests/nlp/fixtures/companies.json --batch-id 11111111-1111-4111-8111-111111111111
+.venv\Scripts\python.exe -m app.nlp.cli matching-status --batch-id 11111111-1111-4111-8111-111111111111
+.venv\Scripts\python.exe -m app.nlp.cli matching-batch-results --batch-id 11111111-1111-4111-8111-111111111111 --limit 100
+.venv\Scripts\python.exe -m app.nlp.cli matching-results --company-id 5382d207-d756-5d52-909a-afed5c17f6cb
+```
+
+Escolha `run-matching` ou `enqueue-matching` para cada batch. O primeiro
+processa no CLI. O segundo persiste um snapshot minimo
+e agenda `nlp_matching_batch`; o worker Matching consome esse job junto aos
+embeddings. Repetir o mesmo `batch_id` e payload e
+idempotente; reutilizar o ID com outro payload causa conflito. Score e
+preferencias sao sinais de ordenacao/relevancia; `ELIGIBLE` nao e garantia de
+habilitacao legal. Os endpoints HTTP internos estao implementados; a integracao
+NestJS deve usar o contrato descrito em
+[`integracao-backend-matching-v1.md`](docs/integracao-backend-matching-v1.md).
+Resultados de batch têm paginação estável por score, empresa e contratação;
+use o `next_cursor` da resposta como `--cursor` na chamada seguinte. A repetição
+do processamento preserva snapshots anteriores e atualiza apenas a mesma
+combinação de versões.
+
 O banco principal mantém:
 
 - `ibge_municipios`, `tce_municipios`, `fornecedores_me` e
@@ -529,19 +592,19 @@ A migration `0003_remove_pncp` exclui as antigas tabelas do módulo de oportunid
 O contrato RAW, a política inicial de retenção e as garantias de idempotência
 estão em [docs/pncp-raw.md](docs/pncp-raw.md).
 
-Para coletar contratações que ainda recebem propostas, sem limitar pela data de
-publicação do edital, use o endpoint PNCP de propostas abertas:
+Na VPS, execute a CLI pelo container `api`. Para coletar oportunidades pelos
+fluxos persistentes de publicação ou atualização e processar a fila, use:
 
 ```bash
-pncp coletar-propostas-abertas --tamanho-pagina 50
-pncp normalizar --limite 100
-pncp status
+docker compose -f compose.production.yaml exec api pncp coletar-publicacao --dias 1
+docker compose -f compose.production.yaml exec api pncp status
+docker compose -f compose.production.yaml logs -f pncp-worker-coleta pncp-worker-normalizacao
 ```
 
-Sem `--modalidade`, a consulta inclui todas as modalidades. Para filtrar, repita
-`--modalidade`, por exemplo `--modalidade 6 --modalidade 8`. A coleta percorre
-todas as páginas retornadas pelo PNCP, salva cada resposta em RAW e agenda a
-normalização. `--tamanho-pagina` aceita no máximo 50.
+Para um backfill, substitua `--dias 1` por `--ano 2026`; para atualizações,
+use `coletar-atualizacao` no lugar de `coletar-publicacao`. Os workers de coleta
+e normalização processam os jobs persistidos. `pncp coletar-amostra-abertas` é
+uma operação manual limitada e não substitui esses fluxos.
 
 Para executar uma coleta de fumaça do PNCP no ambiente Compose isolado, use
 `docker compose -p monitorame-pncp-test`. O nome passado em `-p` é uma opção
@@ -561,6 +624,205 @@ docker compose -p monitorame-pncp-test exec -T api \
   python scripts/replay_pncp_jobs.py --job-id 123
 ```
 
+O fluxo de publicação e atualização usa por padrão somente UFs do Nordeste
+(`AL`, `BA`, `CE`, `MA`, `PB`, `PE`, `PI`, `RN`, `SE`) e modalidades
+Concorrência/Pregão (`4`, `5`, `6`, `7`, `16`, `17`, `18`). Cada combinação UF e
+modalidade tem job e cursor próprios. É possível restringir ainda mais com
+`--uf` e `--modalidade` repetidos. O cliente PNCP limita `tamanhoPagina` a 50.
+Para agendar um backfill anual de publicações, indique o ano; o padrão divide a
+coleta em janelas semanais:
+
+```bash
+docker compose exec api python scripts/pncp_operacao.py coletar-publicacao --ano 2026
+GET /pncp/cobertura/2026
+GET /pncp/editais?ano_publicacao=2026
+GET /pncp/editais?ano_compra=2026
+```
+
+O comando agenda jobs persistentes e tenta executar a coleta imediatamente. O
+Compose também oferece `pncp-worker-coleta`, `pncp-worker-normalizacao` e `pncp-worker-enriquecimento` para
+processar continuamente coleta/retries e RAW pendente; suba-os com
+`docker compose up -d pncp-worker-coleta pncp-worker-normalizacao pncp-worker-enriquecimento`. A cobertura
+fica completa quando todas as janelas agendadas estiverem coletadas e seus jobs
+de normalização estiverem concluídos. Registros antigos sem esses campos na
+origem continuam com os campos anuais nulos até serem reprocessados de um RAW
+que os contenha.
+
+O enriquecimento sob demanda consulta todas as páginas de itens (limite
+`PNCP_ENRICHMENT_MAX_ITEM_PAGES`), consulta resultados por item e mantém um
+manifesto de documentos sem baixar seus arquivos. `GET /pncp/editais/{id}`
+retorna os dados principais e o detalhe adicional; `GET /pncp/editais/{id}/itens`
+retorna itens estruturados, resultados, lotes e cobertura; `GET
+/pncp/editais/{id}/anexos` retorna o manifesto e a disponibilidade dos documentos
+sem baixar seus arquivos. `GET /health/pncp` inclui contagens de cobertura.
+Consulte [o contrato e as limitações](docs/pncp-participacao-documentos.md)
+antes de usar lotes ou estados de resultado em matching.
+
+A situação oficial e a situação operacional calculada seguem a regra versionada
+[pncp-status-v1](docs/pncp-status-operacional.md). Para atualizar estados por
+passagem do tempo sem consultar novamente o PNCP, mantenha ativo o processo
+`python scripts/pncp_status_scheduler.py` (reavaliação local a cada 60 segundos).
+Para simular casos e ver o resultado JSON sem alterar o banco, execute no
+PowerShell: `Get-Content -Raw docs/pncp-status-cenarios.json | .venv\Scripts\python.exe scripts\avaliar_status_pncp.py`.
+Para inspecionar oportunidades persistidas, abra `http://localhost:18000/docs`
+ou consulte `GET /pncp/editais/{external_id}`; a resposta inclui
+`official_status`, `derived_status`, `reason_codes`, `data_confidence`,
+`status_evaluated_at` e `status_rule_version`.
+
+Para validar localmente com apenas alguns registros e sem avançar cursores,
+consulte `docs/pncp-validacao-local.md`.
+
+## Contratos locais de Matching NLP
+
+Os contratos v1, fixtures compatíveis com `Company`/`CompanyCnae` e endpoints
+HTTP implementados estão em [docs/matching-contratos-v1.md](docs/matching-contratos-v1.md).
+A integração de produção recebe snapshots do Backend pela API. Os comandos
+locais com fixtures exigem que o arquivo seja informado explicitamente:
+
+```powershell
+.venv\Scripts\python.exe -m app.nlp.cli validate-fixtures --fixtures tests/nlp/fixtures/companies.json
+```
+
+### Smoke test PNCP + matching com empresas simuladas
+
+`tests/nlp/fixtures/companies.json` contém 150 perfis `matching.v1`; os
+primeiros 50 incluem preferências completas e o perfil de teste é
+`7ddf46af-1384-50e5-bade-99d4192c8bef`. Os dados são sintéticos. Para o teste
+controlado na VPS, use a consulta de propostas abertas com limite baixo descrita
+em [preparação do teste NLP na VPS](docs/preparacao-teste-nlp-vps.md). O exemplo
+local abaixo continua disponível para reproduzir um intervalo de publicações:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose build api matching-nlp-worker
+docker compose up -d postgres
+docker compose run --rm migrate
+docker compose up -d api pncp-worker-normalizacao pncp-worker-enriquecimento matching-nlp-worker
+
+$inicio = (Get-Date).AddDays(-14).ToString('yyyy-MM-dd')
+$fim = (Get-Date).AddDays(-8).ToString('yyyy-MM-dd')
+docker compose run --rm api python scripts/pncp_operacao.py coletar-amostra `
+  --data-inicial $inicio --data-final $fim --modalidade 6 --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py agendar-enriquecimento `
+  --todos-normalizados --limite 2000
+docker compose logs -f pncp-worker-normalizacao pncp-worker-enriquecimento
+
+docker compose run --rm api python -m app.nlp.cli sync-corpus
+docker compose run --rm api python scripts/pncp_operacao.py status
+$fixturesPath = (Resolve-Path 'tests/nlp/fixtures').Path
+docker compose run --rm --volume "${fixturesPath}:/fixtures:ro" api `
+  python -m app.nlp.cli validate-fixtures --fixtures /fixtures/companies.json
+$batchId = [guid]::NewGuid().ToString()
+docker compose run --rm --volume "${fixturesPath}:/fixtures:ro" api `
+  python -m app.nlp.cli enqueue-matching --fixtures /fixtures/companies.json `
+  --batch-id $batchId
+```
+
+A coleta é limitada a 2.000 IDs distintos e não avança cursor; pode retornar menos se o
+intervalo/modalidade não tiver esse volume. O limite de `normalizar` conta jobs RAW;
+`agendar-enriquecimento --limite 2000` seleciona até 2.000 oportunidades, criando
+até três jobs por edital. Deixe o worker de enriquecimento drenar a fila; ele respeita
+rate limit e circuit breaker. Para uma execução manual curta, use
+`docker compose run --rm api python scripts/pncp_operacao.py enriquecer --limite 5`.
+`matching-nlp-worker` consome o batch automaticamente. Em produção, o Backend
+envia os perfis pela rota HTTP; o JSON acima é somente uma fixture de smoke
+test e precisa ser montado explicitamente no comando. O worker prepara vetores
+faltantes; a primeira inferência pode baixar o modelo E5. Acompanhe
+`docker compose logs -f matching-nlp-worker`. Sem batch, o worker não carrega
+os pesos nem percorre o corpus; libera os pesos após o período de ociosidade.
+
+Consulte o estado e os resultados do batch completo (paginados em blocos de até
+500) e, em separado, os editais compatíveis com a empresa de teste:
+
+```powershell
+docker compose run --rm api python -m app.nlp.cli matching-status `
+  --batch-id $batchId
+docker compose run --rm api python -m app.nlp.cli matching-batch-results `
+  --batch-id $batchId --limit 500
+docker compose run --rm api python -m app.nlp.cli matching-results `
+  --company-id 7ddf46af-1384-50e5-bade-99d4192c8bef --limit 500 --compatible-only
+```
+
+Se `matching-batch-results` retornar `next_cursor`, repita o comando com
+`--cursor <valor>` para buscar a próxima página. Para ver todos os resultados
+ranqueados da empresa, remova `--compatible-only`. Esse filtro conserva níveis
+`MEDIUM` e `HIGH`; elegibilidade é um campo separado e pode ficar
+`NOT_CONFIRMED` quando faltam dados da fonte. Nenhum desses sinais confirma
+habilitação jurídica. Os resultados são da classificação híbrida/semântica; não
+são textos gerados por um modelo generativo. Consulte
+[docs/pncp-validacao-local.md](docs/pncp-validacao-local.md) para os detalhes da
+coleta de amostra e do enriquecimento.
+
+Para preparar o corpus semântico a partir das contratações e itens normalizados
+no PostgreSQL Analytics, consulte [docs/nlp-corpus-pncp.md](docs/nlp-corpus-pncp.md).
+O comando `python -m app.nlp.cli sync-corpus --dry-run` calcula o delta sem
+persistir; sem `--dry-run`, grava segmentos versionados e hashes em
+`nlp_procurement_segments`. O processo não consulta a API PNCP.
+
+Após atualizar a regra de normalização, reprocese os RAW atuais para carregar
+`informacaoComplementar` das oportunidades já armazenadas. O worker de
+normalização atualiza o corpus no processo; depois sincronize o corpus e deixe
+o worker NLP criar embeddings faltantes antes de enviar um novo batch:
+
+```powershell
+docker compose build api
+docker compose up -d api pncp-worker-normalizacao
+docker compose run --rm api python scripts/pncp_operacao.py reprocessar-normalizacao --limite 2000
+docker compose run --rm api python scripts/pncp_operacao.py normalizar --limite 2000
+docker compose run --rm api python -m app.nlp.cli sync-corpus
+```
+
+`retrieval_segment.score` e a similaridade cosseno usada para recuperar texto;
+ela não equivale ao score final de compatibilidade. O campo `informacaoComplementar`
+agora recebe um peso próprio no matching (`hybrid-matching-v4`).
+
+Os resultados persistidos também podem ser explorados no Swagger da API em
+`http://127.0.0.1:8000/docs`, grupo **Compatibilidade NLP**. As rotas exigem
+`Authorization: Bearer <MATCHING_INTERNAL_API_TOKEN>`:
+
+- `GET /matching/results`: filtra opcionalmente por `company_id`, `compatibility_level`
+  (`LOW`, `MEDIUM`, `HIGH`) e `batch_id`.
+- `GET /matching/companies/{company_id}/results`: lista resultados da empresa,
+  com os mesmos filtros de nível e batch.
+
+Ambas aceitam `limit` (até 500) e `offset`; a resposta inclui `total`, nível,
+score, data de processamento e o resultado completo com evidências. Quando não
+informar `batch_id`, a consulta poderá incluir snapshots de batches diferentes.
+O worker NLP só agenda embeddings e carrega o modelo quando existe batch de
+empresa pronto. Ele processa jobs com `SKIP LOCKED`, libera os pesos após
+ociosidade e mantém o cache e a fila PostgreSQL persistentes.
+
+O adaptador inicial E5 e seu protocolo de validação estão em
+[docs/nlp-validacao-embeddings.md](docs/nlp-validacao-embeddings.md). A
+dependência pesada é opcional (`requirements-nlp.txt`) e deve ser instalada
+somente no worker que gera vetores. O serviço `matching-nlp-worker` é isolado,
+usa a rede privada do Compose e o mesmo `DATABASE_URL` PostgreSQL Analytics.
+Ele lê apenas segmentos já preparados no Pipeline, não consulta o PNCP e não
+usa banco ou fila do Backend. A normalização e o enriquecimento de itens
+atualizam o corpus; o worker agenda embeddings faltantes na tabela
+`ingestion_jobs` e grava vetores em `nlp_procurement_embeddings`, identificados
+por origem, segmento, `text_hash` e `model_version`. Após a migration NLP-06,
+os vetores usam `pgvector vector(384)` e índice HNSW no PostgreSQL Analytics.
+
+O Compose inicia o worker automaticamente. O padrão limita a 1,5 CPU, 2 GiB,
+uma inferência por vez e batch size 1; ajuste
+`MATCHING_NLP_MEMORY_LIMIT` e `MATCHING_NLP_CPUS` à VPS.
+O padrão de `NLP_EMBEDDING_REVISION` é o SHA
+`fd1525a9fd15316a2d503bf26ab031a61d056e98`, usado na validação local. Fixe a
+mesma revisão nos ambientes para manter `model_version` reproduzível; trocar o
+SHA agenda uma nova geração sem apagar os vetores anteriores. Erros usam retry
+e lease da fila PostgreSQL; após esgotar tentativas, o job fica `FAILED` para
+replay operacional.
+
+A recuperação Top-K por CNAE usa pgvector, retorna segmentos de objeto e itens
+e consolida editais repetidos pela maior similaridade. As 14 modalidades
+permanecem dados estruturados. K pode ser definido por chamada ou por
+`NLP_RETRIEVAL_TOP_K`; filtros de modalidade, região e situação só são
+aplicados quando informados. Consulte
+[docs/nlp-recuperacao-top-k.md](docs/nlp-recuperacao-top-k.md) para benchmark e
+operação.
+
 ## Testes
 
 ```bash
@@ -575,8 +837,34 @@ Publicações versionadas, importação dos dados reais e contrato das rotas: [h
 
 ### Pagamentos da Prefeitura e Microempresas
 
-Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. Consulte [regras, auditoria e reproducao](docs/pagamentos-tce.md).
+Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. A ingestao incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras, auditoria e reproducao do overview](docs/pagamentos-tce.md).
+
+As rotas analíticas de despesas e fornecedores incluem somente órgãos municipais classificados como Executivo pelo cadastro `/orgaos` do TCE, por município e exercício. Após aplicar a migration `0029_tce_classificacao_orgaos`, classifique os exercícios já publicados com `python scripts/sincronizar_classificacoes_orgaos_tce.py` (ou limite a Acaraú com `--municipio 004`). A Câmara e órgãos ainda sem classificação de alta confiança ficam fora dos cálculos; as linhas brutas de empenhos e anulações permanecem preservadas. Novas ingestões atualizam as classificações automaticamente.
+
+Para ingerir empenhos, anulações e pagamentos do Ceará inteiro para um exercício orçamentário, use o orquestrador abaixo no Compose de produção:
+
+```bash
+docker compose -f compose.production.yaml run --rm api python -m scripts.ingestir_tce_ce --ano 2025
+```
+
+O comando coleta as competências de empenhos/anulações do ano indicado para os 184 municípios e, em seguida, as competências documentais de pagamentos de janeiro do exercício até o mês corrente em `America/Fortaleza`, preservando o exercício orçamentário informado. Como a fonte é mensal, a competência do mês corrente é coletada integralmente; não há recorte diário. O fluxo de pagamentos usa no máximo dois workers por padrão, imprime progresso por município/competência e retorna código `2` se houver falhas ou rejeições em qualquer etapa.
+
+Se empenhos e anulações já estiverem publicados, use `--somente-pagamentos` para não executá-los novamente:
+
+```bash
+docker compose -f compose.production.yaml run --rm api python -m scripts.ingestir_tce_ce --ano 2025 --somente-pagamentos
+```
+
+O modo somente pagamentos atualiza o catálogo dos 184 municípios, mas não ingere despesas. Reexecutar uma competência substitui seu snapshot publicado, sem duplicar notas; o snapshot anterior fica retido por sete dias. Os demais comandos e procedimentos estão em [docs/ingestao-tce-ce.md](docs/ingestao-tce-ce.md).
 
 ### Qualidade semantica PNCP
 
 A normalizacao avalia qualidade por campo e RAW, preserva valores monetarios com Decimal, datas de origem e codigos desconhecidos, e isola erros de contrato. A migration `0017_pncp_qualidade` acrescenta evidencias versionadas. Homologacao tecnica aprovada em PostgreSQL isolado com amostras reais dos dois endpoints, 63 verificacoes e relatorios publicados em `docs/`. Consulte a [matriz, metricas e procedimento de homologacao](docs/pncp-qualidade-semantica.md). Para exportar metricas e excecoes locais: `python scripts/relatorio_pncp_qualidade.py --saida relatorio-qualidade.json` (filtros opcionais `--run-id` e `--endpoint`).
+
+### De-para CNAE e categoria PNCP
+
+A migration `0026_pncp_cnae_taxonomy` cria uma taxonomia inicial versionada para matching. Consulte o snapshot ativo e suas métricas em `GET /pncp/taxonomia/cnae-categoria`; passe `?versao=...` para reproduzir um mapa histórico. Revisões são imutáveis após ativação; o fluxo controlado de rascunho, cópia, revisão e ativação está em [docs/pncp-raw.md](docs/pncp-raw.md#taxonomia-cnae-categoria). Categoria confirmada pela empresa prevalece sobre inferência CNAE. O catálogo PNCP é isolado dos indicadores TCE.
+
+Para sincronizar as subclasses oficiais do IBGE para o catálogo local (ampliando a base usada nas métricas de cobertura), execute `.venv\Scripts\python.exe scripts\sincronizar_catalogo_cnae_ibge.py`. A rota `GET /pncp/taxonomia/cnaes/busca?q=software` pesquisa código/descrição e informa categorias já relacionadas; sincronizar CNAE não cria relações automaticamente.
+
+O de-para é revisado pela CLI: `pncp taxonomia --help` (container) ou `.venv\Scripts\python.exe scripts\pncp_operacao.py taxonomia --help` (Windows). O passo a passo está em [docs/pncp-raw.md](docs/pncp-raw.md#revisao-pelo-cli).

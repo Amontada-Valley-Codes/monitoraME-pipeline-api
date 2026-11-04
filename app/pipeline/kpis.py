@@ -677,13 +677,14 @@ def calcular_overview_me_mei(
     compras_consideradas = _somar_centavos(compras["_valor_centavos"])
     microempresas = _somar_centavos(base["_valor_centavos"])
 
+    despesas_me = todos.loc[todos["porte_fornecedor"].eq("ME")]
     elementos_despesa = [
         {
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
             "valor_final_centavos": _somar_centavos(
-                base.loc[
-                    base["natureza_despesa_codigo"].eq(codigo),
+                despesas_me.loc[
+                    despesas_me["natureza_despesa_codigo"].eq(codigo),
                     "_valor_centavos",
                 ]
             ),
@@ -786,6 +787,60 @@ def calcular_overview_me_mei(
     }
 
 
+def calcular_ranking_municipios_overview_estadual(
+    base_analitica: pd.DataFrame,
+    *,
+    total_me_centavos: int,
+    limite: int = 10,
+) -> list[dict[str, object]]:
+    """Ordena municípios pelo valor final de despesas de ME no estado."""
+    _validar_colunas(
+        base_analitica,
+        ["codigo_municipio_tce", "municipio_comprador", "porte_fornecedor", "valor"],
+        "ranking municipal do overview estadual",
+    )
+    me = base_analitica.loc[
+        base_analitica["porte_fornecedor"].eq("ME")
+        & base_analitica["codigo_municipio_tce"].notna()
+        & base_analitica["municipio_comprador"].notna()
+    ].copy()
+    if me.empty:
+        return []
+
+    me["_valor_centavos"] = me["valor"].map(_valor_reais_para_centavos)
+    me = me.loc[me["_valor_centavos"].notna()]
+    agrupado = (
+        me.groupby(
+            ["codigo_municipio_tce", "municipio_comprador"],
+            as_index=False,
+            dropna=True,
+        )
+        .agg(
+            compras_me_centavos=("_valor_centavos", "sum"),
+            quantidade_empenhos=("_valor_centavos", "size"),
+        )
+        .sort_values(
+            ["compras_me_centavos", "municipio_comprador"],
+            ascending=[False, True],
+            kind="stable",
+        )
+        .head(limite)
+    )
+    return [
+        {
+            "posicao": posicao,
+            "codigo_municipio_tce": str(linha.codigo_municipio_tce),
+            "municipio": str(linha.municipio_comprador),
+            "compras_me_centavos": int(linha.compras_me_centavos),
+            "quantidade_empenhos": int(linha.quantidade_empenhos),
+            "percentual_total_me": _percentual_0_a_100(
+                int(linha.compras_me_centavos), total_me_centavos
+            ),
+        }
+        for posicao, linha in enumerate(agrupado.itertuples(index=False), start=1)
+    ]
+
+
 def calcular_overview_portes(
     base_analitica: pd.DataFrame,
     *,
@@ -842,13 +897,14 @@ def calcular_overview_portes(
         + por_origem[ORIGEM_FORNECEDOR_FORA_CE]
     )
 
+    despesas_me = base.loc[base["porte_fornecedor"].eq("ME")]
     elementos = [
         {
             "codigo": codigo,
             "nome": NATUREZAS_DESPESA_MONITORADAS[codigo],
             "valor_final_centavos": _somar_centavos(
-                base.loc[
-                    base["natureza_despesa_codigo"].eq(codigo),
+                despesas_me.loc[
+                    despesas_me["natureza_despesa_codigo"].eq(codigo),
                     "_valor_centavos",
                 ]
             ),

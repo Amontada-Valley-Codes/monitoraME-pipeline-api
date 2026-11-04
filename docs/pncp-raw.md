@@ -72,7 +72,7 @@ normalização vão a `QUARANTINED`; falhas HTTP transitórias seguem `RETRY_WAI
 
 O coletor usa `GET /v1/contratacoes/publicacao` com `dataInicial` e
 `dataFinal` em `AAAAMMDD`, `codigoModalidadeContratacao`, `pagina` e
-`tamanhoPagina` (limitado a 500). Uma janela e criada por modalidade. Cada
+`tamanhoPagina` (limitado pelo cliente local a 50). Uma janela e criada por modalidade. Cada
 registro valido vai para RAW com `run_id=job:<id>:pagina:<n>`; portanto, uma
 falha na pagina seguinte preserva o trabalho anterior e o replay e idempotente.
 
@@ -80,6 +80,15 @@ Uma resposta 5xx, timeout, JSON invalido ou pagina vazia antes de
 `totalPaginas` encerra o job com falha; nunca e tratada como fim da janela. O
 job somente chega a `SUCCEEDED` depois que todas as paginas foram persistidas,
 logo esta etapa ainda nao confirma watermark algum.
+
+O comando `coletar-publicacao --ano AAAA` agenda um backfill persistente desde
+1º de janeiro até o momento da execução, em janelas semanais por modalidade.
+Cada janela pode ser acompanhada em `GET /pncp/cobertura/{ano}`; a rota informa
+contagens por estado e o status individual de cada janela/modalidade, além da
+fila de normalização associada às páginas coletadas. Os serviços Compose
+`pncp-worker-coleta` e `pncp-worker-normalizacao` processam jobs e retries
+continuamente. A API de consumo filtra por `ano_publicacao` (`dataPublicacaoPncp`)
+ou `ano_compra` (`anoCompra`) em parâmetros separados.
 
 ## Enriquecimento sob demanda
 
@@ -98,3 +107,67 @@ Ele nunca consulta o PNCP em uma requisição de usuário. Eventos internos em
 `pncp_eventos` têm chave idempotente por versão; matching em `pncp_matchings`
 guarda versão da regra, motivos e ausências e só usa um de-para explícito entre
 CNAE e categoria do objeto. O módulo não envia propostas ao PNCP.
+
+### Taxonomia CNAE-categoria
+
+`pncp_taxonomia_categorias` e `pncp_taxonomia_cnaes` formam o vocabulário
+controlado. Cada revisão em `pncp_mapa_revisoes` possui snapshot completo de
+relações em `pncp_mapa_cnae_categoria`; versões publicadas não são editadas.
+Para revisar, crie uma revisão `RASCUNHO`, copie as relações da versão ativa,
+use `copiar_relacoes`, altere/adiciona relações com
+`app.pncp.taxonomy.adicionar_relacao` / `atualizar_relacao` e ative com
+`ativar_revisao` na mesma transação. Relações removidas ficam no snapshot com
+`ativo=false`. Cada associação exige CNAE de sete dígitos existente, categoria
+existente, tipo, confiança, evidência e responsável; condições são obrigatórias
+para tipo `CONDICIONAL`.
+
+A migration `0026_pncp_cnae_taxonomy` cria `cnae-objeto-v1`, com quatro
+categorias e oito CNAEs observados no fixture local. A evidência inicial é a
+correspondência semântica das descrições CNAE-Subclasses 2.3 IBGE/CONCLA com os
+rótulos e descrições da taxonomia. Os pesos são curadoria inicial, não validação
+humana ampla nem prova de habilitação legal; ampliar ou ativar novos mapas exige
+revisão responsável documentada.
+
+`GET /pncp/taxonomia/cnae-categoria` retorna a revisão ativa; `?versao=...`
+retorna snapshot histórico reproduzível. As métricas incluem cobertura de
+CNAEs, categorias sem mapeamento, CNAEs sem mapeamento, relações inativas e
+cardinalidades N:N. Matching novo deve obter a versão somente por
+`mapa_ativo_para_matching`; resultados incluem a versão do mapa em
+`rule_version`. Categoria confirmada pela empresa tem precedência e substitui
+inferência por CNAE naquela avaliação. Esse catálogo e seus serviços pertencem
+ao domínio PNCP e não são importados pelos indicadores do Analytics TCE.
+
+O cadastro inicial da migration contém apenas oito códigos para prova do
+modelo. Para carregar o universo oficial, execute no PowerShell:
+`.venv\Scripts\python.exe scripts\sincronizar_catalogo_cnae_ibge.py`. O script
+usa `GET https://servicodados.ibge.gov.br/api/v2/cnae/subclasses`, valida
+subclasses de sete dígitos e faz upsert idempotente em
+`pncp_taxonomia_cnaes`; ele não cria associações automaticamente. Depois da
+carga, `GET /pncp/taxonomia/cnaes/busca?q=software` pesquisa código e descrição
+no catálogo local e indica relações existentes na revisão ativa. Assim, códigos
+IBGE sem categoria aparecem em `cnaes_sem_mapeamento` até serem avaliados e
+incluídos numa nova revisão do de-para.
+
+#### Revisão pelo CLI
+
+No container, use `pncp`; no checkout Windows, prefixe cada comando com
+`.venv\Scripts\python.exe scripts\pncp_operacao.py`:
+
+```text
+pncp taxonomia buscar --consulta software
+pncp taxonomia status
+pncp taxonomia revisar --versao cnae-objeto-v2 --responsavel "Nome do revisor" --evidencia "Revisão baseada na CNAE-Subclasses 2.3 do IBGE/CONCLA"
+pncp taxonomia mapear --versao cnae-objeto-v2 --cnae 0000000 --categoria software --tipo DIRETA --confianca 0.85 --responsavel "Nome do revisor" --evidencia "Descreva a evidência semântica observada"
+pncp taxonomia status --versao cnae-objeto-v2
+pncp taxonomia ativar --versao cnae-objeto-v2 --responsavel "Nome do aprovador"
+pncp taxonomia status
+```
+
+Substitua `0000000` pelo código de sete dígitos retornado pela busca e escolha
+a categoria/tipo pela evidência; o exemplo não afirma que esse código pertença
+a `software`. `revisar` cria um rascunho e copia o mapa ativo. Use `mapear` para
+uma nova combinação, `atualizar` para ajustar uma combinação copiada, ou
+`desativar` para retirar uma associação sem apagar o histórico. Ative apenas
+depois de conferir o snapshot e as métricas do rascunho. Cada ação grava no
+banco principal; a ativação substitui a versão ativa para cálculos futuros,
+mantendo as anteriores consultáveis por `?versao=...`.

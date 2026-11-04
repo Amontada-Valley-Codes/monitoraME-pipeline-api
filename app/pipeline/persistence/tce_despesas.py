@@ -20,6 +20,7 @@ from app.core.models import (
     TceEmpenho,
     TceMunicipio,
 )
+from app.pipeline.persistence.tce_orgaos import executivo_tce
 
 
 STATUS_EM_VALIDACAO = "EM_VALIDACAO"
@@ -341,6 +342,62 @@ def listar_publicacoes_competencias(
     return {str(competencia): publicado_em for competencia, publicado_em in registros}
 
 
+def listar_falhas_competencias(
+    *,
+    competencias: Iterable[str],
+    codigo_municipio_tce: str | None = None,
+    uf: str | None = None,
+) -> list[dict[str, Any]]:
+    """Retorna somente instantes/status de falhas, sem expor mensagens do fornecedor."""
+    competencias_unicas = tuple(dict.fromkeys(str(item) for item in competencias))
+    if not competencias_unicas:
+        return []
+    database.init_db()
+    consulta = (
+        select(
+            TceDespesaIngestionRun.codigo_municipio_tce,
+            TceDespesaIngestionRun.competencia,
+            func.max(TceDespesaIngestionRun.finalizado_em).label("finalizado_em"),
+        )
+        .where(
+            TceDespesaIngestionRun.status == STATUS_REJEITADO,
+            TceDespesaIngestionRun.competencia.in_(competencias_unicas),
+        )
+        .group_by(
+            TceDespesaIngestionRun.codigo_municipio_tce,
+            TceDespesaIngestionRun.competencia,
+        )
+    )
+    if codigo_municipio_tce is not None:
+        consulta = consulta.where(
+            TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce
+        )
+    if uf is not None:
+        consulta = (
+            consulta.join(
+                TceMunicipio,
+                TceMunicipio.codigo_municipio_tce
+                == TceDespesaIngestionRun.codigo_municipio_tce,
+            )
+            .join(
+                IbgeMunicipio,
+                IbgeMunicipio.codigo_municipio
+                == TceMunicipio.codigo_municipio_ibge,
+            )
+            .where(IbgeMunicipio.uf == uf.upper())
+        )
+    with orm.main_session() as session:
+        registros = session.execute(consulta).mappings().all()
+    return [
+        {
+            "codigo_municipio_tce": str(item["codigo_municipio_tce"]),
+            "competencia": str(item["competencia"]),
+            "finalizado_em": item["finalizado_em"],
+        }
+        for item in registros
+    ]
+
+
 def listar_empenhos_liquidos_publicados(
     *,
     codigo_municipio_tce: str | None,
@@ -429,6 +486,11 @@ def listar_empenhos_liquidos_publicados(
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            executivo_tce(
+                TceDespesaIngestionRun.codigo_municipio_tce,
+                TceEmpenho.exercicio_orcamento,
+                TceEmpenho.codigo_orgao,
+            ),
             TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.data_empenho >= data_inicial,
             TceEmpenho.data_empenho <= data_final,
@@ -487,6 +549,7 @@ def listar_cnpjs_fornecedores_publicados(
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
             TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.cnpj_fornecedor.is_not(None),
         )
@@ -682,6 +745,7 @@ def listar_empenhos_publicados_paginados(
 
     filtros = [
         TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+        executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
         TceEmpenho.natureza_considerada.is_(True),
         TceEmpenho.data_empenho >= data_inicial,
         TceEmpenho.data_empenho <= data_final,
@@ -824,6 +888,7 @@ def obter_empenho_publicado_por_chave(chave_empenho: str) -> dict[str, Any] | No
         )
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
             TceEmpenho.natureza_considerada.is_(True),
             TceEmpenho.chave_empenho == chave_empenho,
         )
@@ -857,9 +922,11 @@ def listar_anulacoes_publicadas_por_empenho(
             TceAnulacaoEmpenho.valor_anulacao_centavos,
         )
         .join(TceDespesaIngestionRun, TceAnulacaoEmpenho.run_id == TceDespesaIngestionRun.id)
+        .join(TceEmpenho, TceEmpenho.chave_empenho == TceAnulacaoEmpenho.chave_empenho)
         .where(
             TceDespesaIngestionRun.status == STATUS_PUBLICADO,
             TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
+            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
             TceAnulacaoEmpenho.chave_empenho == chave_empenho,
         )
         .order_by(TceAnulacaoEmpenho.data_anulacao, TceAnulacaoEmpenho.chave_anulacao)

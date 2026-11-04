@@ -27,6 +27,7 @@ ENDPOINT_CONTRATADOS = "contratados"
 ENDPOINT_ITENS = "itens_compoem_bens_servicos"
 ENDPOINT_NOTAS_EMPENHOS = "notas_empenhos"
 ENDPOINT_NOTAS_ANULACOES_EMPENHOS = "notas_anulacoes_empenhos"
+ENDPOINT_NOTAS_PAGAMENTOS = "notas_pagamentos"
 
 
 def normalizar_data_tce(data: str) -> str:
@@ -254,6 +255,44 @@ def buscar_notas_anulacoes_empenhos(
     )
 
 
+def buscar_notas_pagamentos(
+    competencia: str,
+    *,
+    exercicio_orcamento: int,
+    codigo_municipio: str = CODIGO_MUNICIPIO_PADRAO,
+) -> list[dict[str, Any]]:
+    """Coleta todas as notas de pagamento do mês para um orçamento específico."""
+    if isinstance(exercicio_orcamento, bool) or not isinstance(exercicio_orcamento, int):
+        raise ValueError("exercicio_orcamento deve ser um ano de quatro dígitos.")
+    if not 1 <= exercicio_orcamento <= 9999:
+        raise ValueError("exercicio_orcamento deve ser um ano de quatro dígitos.")
+    referencia = parametros_competencia_tce(competencia, codigo_municipio)["data_referencia_doc"]
+    parametros_api = {
+        "codigo_municipio": str(codigo_municipio).strip(),
+        "exercicio_orcamento": exercicio_orcamento * 100,
+        "data_referencia_doc": referencia,
+    }
+    parametros_log = {
+        "competencia": competencia,
+        "codigo_municipio": str(codigo_municipio).strip(),
+        "exercicio_orcamento": exercicio_orcamento * 100,
+        "data_referencia_doc": referencia,
+    }
+    return executar_com_log_ingestao(
+        fonte="TCE-CE",
+        etapa="buscar_notas_pagamentos",
+        parametros=parametros_log,
+        totais={"endpoint": ENDPOINT_NOTAS_PAGAMENTOS},
+        executar=lambda: listar_registros(
+            ENDPOINT_NOTAS_PAGAMENTOS,
+            parametros_api,
+            filtrar_por_codigo_despesa=False,
+            preservar_decimais=True,
+            falhar_ao_esgotar=True,
+        ),
+    )
+
+
 def buscar_contratacoes(
     data_inicial: str,
     data_final: str,
@@ -367,10 +406,12 @@ def buscar_itens_contratacao(
 
 
 def buscar_documentos_exercicio(
-    endpoint: str, *, codigo_municipio: str, exercicio: int, competencia: str | None = None,
+    endpoint: str, *, codigo_municipio: str, exercicio: int,
+    competencia: str | None = None, codigo_orgao: str | None = None,
+    codigo_unidade_orcamentaria: str | None = None,
 ) -> list[dict[str, Any]]:
     """Consulta SIM com exercicio fixo, inclusive referencias de anos posteriores."""
-    if endpoint not in {"orgaos", "notas_empenhos", "notas_pagamentos"}:
+    if endpoint not in {"orgaos", "unidades_orcamentarias", "notas_empenhos", "notas_pagamentos"}:
         raise ValueError("Endpoint nao suportado para conciliacao de pagamentos.")
     if isinstance(exercicio, bool) or not isinstance(exercicio, int) or not 1 <= exercicio <= 9999:
         raise ValueError("Exercicio deve ser um ano de quatro digitos.")
@@ -380,11 +421,15 @@ def buscar_documentos_exercicio(
         "codigo_municipio": str(codigo_municipio).strip(),
         "exercicio_orcamento": exercicio * 100,
     }
+    if codigo_orgao is not None:
+        params["codigo_orgao"] = str(codigo_orgao)
+    if codigo_unidade_orcamentaria is not None:
+        params["codigo_unidade_orcamentaria"] = str(codigo_unidade_orcamentaria)
     if competencia is not None:
         params["data_referencia_doc"] = parametros_competencia_tce(
             competencia, codigo_municipio,
         )["data_referencia_doc"]
-    elif endpoint != "orgaos":
+    elif endpoint not in {"orgaos", "unidades_orcamentarias"}:
         raise ValueError("Competencia obrigatoria para documentos financeiros.")
     return listar_registros(
         endpoint, params, preservar_decimais=True, falhar_ao_esgotar=True,

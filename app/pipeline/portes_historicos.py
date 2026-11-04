@@ -8,7 +8,7 @@ import re
 import sqlite3
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, insert, select, text, update
+from sqlalchemy import and_, func, insert, or_, select, text, update
 from app.core import orm
 from app.core.porte_models import PortePublicacao, PorteObservacao
 from app.utils import normalizar_cnpj
@@ -172,6 +172,37 @@ def publicacoes(fim: str | None = None, *, todas_versoes: bool = False) -> dict:
         items = [_publicacao(p) for p in session.scalars(stmt.order_by(PortePublicacao.competencia, PortePublicacao.importado_em))]
     return {"data_source": "LOCAL_DATABASE", "external_requests": False,
         "politica_temporal": POLITICA, "competencia_final": fim, "items": items}
+
+
+def raizes_classificadas_por_competencia(
+    raizes_por_competencia: dict[str, set[str]],
+) -> dict[str, set[str]]:
+    """Lista raízes com porte histórico conhecido nas publicações mensais ativas."""
+    filtros = [
+        and_(
+            PortePublicacao.competencia == mes,
+            PorteObservacao.raiz.in_(sorted(raizes)),
+        )
+        for mes, raizes in raizes_por_competencia.items()
+        if raizes
+    ]
+    if not filtros:
+        return {}
+    with orm.main_session() as session:
+        registros = session.execute(
+            select(PortePublicacao.competencia, PorteObservacao.raiz)
+            .join(PorteObservacao, PorteObservacao.versao == PortePublicacao.versao)
+            .where(
+                PortePublicacao.ativa.is_(True),
+                PorteObservacao.porte_codigo.is_not(None),
+                PorteObservacao.porte_codigo != "00",
+                or_(*filtros),
+            )
+        ).all()
+    resultado: dict[str, set[str]] = {}
+    for mes, raiz in registros:
+        resultado.setdefault(str(mes), set()).add(str(raiz))
+    return resultado
 
 
 def _observacao(session, p, raiz):

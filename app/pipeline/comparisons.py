@@ -10,6 +10,7 @@ import pandas as pd
 from app.core import database
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS, UF_PADRAO
 from app.pipeline import analitico, kpis
+from app.pipeline import tce_observability
 from app.pipeline.enrichment.fornecedores import (
     enriquecer_com_fornecedor,
     extrair_cnpjs_distintos,
@@ -242,27 +243,14 @@ def _montar_overview_local(
         for competencia in competencias_solicitadas
         if competencia not in publicacoes
     ]
-    if not competencias_publicadas:
-        raise ComparisonRequestError(
-            "COMPARISON_DATA_NOT_AVAILABLE",
-            "O municipio nao possui competencias publicadas no periodo solicitado.",
-            [
-                {
-                    "field": f"{lado}.filters",
-                    "reason": "no_published_competence",
-                    "value": {
-                        "municipality_ibge_code": codigo_ibge,
-                        "start_date": filtros["start_date"],
-                        "end_date": filtros["end_date"],
-                    },
-                }
-            ],
+    empenhos = (
+        tce_despesas_persistence.listar_empenhos_liquidos_publicados(
+            codigo_municipio_tce=codigo_tce,
+            data_inicial=inicio,
+            data_final=fim,
         )
-
-    empenhos = tce_despesas_persistence.listar_empenhos_liquidos_publicados(
-        codigo_municipio_tce=codigo_tce,
-        data_inicial=inicio,
-        data_final=fim,
+        if competencias_publicadas
+        else []
     )
     competencias_validas = set(competencias_publicadas)
     empenhos = [
@@ -300,8 +288,30 @@ def _montar_overview_local(
         else 0.0
     )
 
-    return {
+    publicacoes_metadados = [
+        {
+            "codigo_municipio_tce": codigo_tce,
+            "competencia": competencia,
+            "publicado_em": publicado_em,
+        }
+        for competencia, publicado_em in publicacoes.items()
+    ]
+    falhas = tce_despesas_persistence.listar_falhas_competencias(
+        codigo_municipio_tce=codigo_tce,
+        competencias=competencias_solicitadas,
+    )
+    metadados_carga = tce_observability.construir_metadados_carga(
+        data_inicial=inicio,
+        data_final=fim,
+        competencias_solicitadas=competencias_solicitadas,
+        publicacoes=publicacoes_metadados,
+        falhas=falhas,
+        registros=empenhos,
+        municipios_no_escopo=1,
+    )
+    resposta = {
         "fonte": "TCE-CE",
+        **metadados_carga,
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
         "status_exercicio": _status_exercicio(inicio, fim),
@@ -327,7 +337,13 @@ def _montar_overview_local(
         "competencias_reutilizadas": competencias_publicadas,
         "competencias_desatualizadas": [],
         "competencias_ausentes": competencias_ausentes,
-        "falhas_competencias": [],
+        "falhas_competencias": [
+            {
+                "competencia": item["competencia"],
+                "usou_versao_publicada": item["competencia"] in publicacoes,
+            }
+            for item in falhas
+        ],
         "politica_atualizacao": {
             "modo": "SOMENTE_BANCO",
             "atualizar_competencias": False,
@@ -338,7 +354,7 @@ def _montar_overview_local(
         "cobertura_cadastral": {
             "empenhos": int(len(base_analitica)),
             "empenhos_com_cache": registros_com_cache,
-            "percentual": cobertura_percentual,
+            "percentual": cobertura_percentual if len(base_analitica) else None,
         },
         "base_analitica": {
             "nome": "tce_empenhos_liquidos",
@@ -358,6 +374,9 @@ def _montar_overview_local(
         "unidade_monetaria": "CENTAVOS",
         **overview,
     }
+    if not metadados_carga["data_available"] or base_filtrada.empty:
+        resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
+    return resposta
 
 
 def _valor_numerico(valor: Any) -> int | float | None:
@@ -586,8 +605,112 @@ def consultar_comparacao_tce(payload: dict[str, Any]) -> dict[str, Any]:
     overview_direito = _montar_overview_local(payload["right"]["filters"], lado="right")
     label_esquerdo = payload["left"]["label"]
     label_direito = payload["right"]["label"]
-    return {
+    qualidade_esquerda = overview_esquerdo["quality"]
+    qualidade_direita = overview_direito["quality"]
+    alertas = {
+        (item["code"], item["message"]): item
+        for item in (
+            qualidade_esquerda["alerts"] + qualidade_direita["alerts"]
+        )
+    }
+    codigos_municipais_no_escopo = {
+        str(lado["municipio"]["codigo_tce"])
+        for lado in (overview_esquerdo, overview_direito)
+    }
+    codigos_municipais_com_dados = {
+        str(lado["municipio"]["codigo_tce"])
+        for lado in (overview_esquerdo, overview_direito)
+        if lado["data_available"]
+    }
+    respostas = {
         "fonte": "TCE-CE",
+        "data_available": (
+            overview_esquerdo["data_available"]
+            and overview_direito["data_available"]
+        ),
+        "data_as_of": max(
+            (
+                valor
+                for valor in (
+                    overview_esquerdo["data_as_of"],
+                    overview_direito["data_as_of"],
+                )
+                if valor is not None
+            ),
+            default=None,
+        ),
+        "last_successful_load_at": max(
+            (
+                valor
+                for valor in (
+                    overview_esquerdo["last_successful_load_at"],
+                    overview_direito["last_successful_load_at"],
+                )
+                if valor is not None
+            ),
+            default=None,
+        ),
+        "is_stale": overview_esquerdo["is_stale"] or overview_direito["is_stale"],
+        "stale_reason": list(dict.fromkeys(
+            overview_esquerdo["stale_reason"] + overview_direito["stale_reason"]
+        )),
+        "quality": {
+            "municipalities_with_data": len(codigos_municipais_com_dados),
+            "municipalities_in_scope": len(codigos_municipais_no_escopo),
+            "unknown_origin": {
+                "expenses": (
+                    qualidade_esquerda["unknown_origin"]["expenses"]
+                    + qualidade_direita["unknown_origin"]["expenses"]
+                ),
+                "value_centavos": (
+                    qualidade_esquerda["unknown_origin"]["value_centavos"]
+                    + qualidade_direita["unknown_origin"]["value_centavos"]
+                ),
+                "percent": None,
+            },
+            "historical_size_classification_coverage": {
+                "classified_expenses": (
+                    qualidade_esquerda["historical_size_classification_coverage"][
+                        "classified_expenses"
+                    ]
+                    + qualidade_direita["historical_size_classification_coverage"][
+                        "classified_expenses"
+                    ]
+                ),
+                "expenses_in_scope": (
+                    qualidade_esquerda["historical_size_classification_coverage"][
+                        "expenses_in_scope"
+                    ]
+                    + qualidade_direita["historical_size_classification_coverage"][
+                        "expenses_in_scope"
+                    ]
+                ),
+                "classification_unit": "CNPJ_BASICO",
+                "reference": "EXACT_MONTHLY_COMPETENCE",
+                "percent": None,
+            },
+            "partial_period": (
+                qualidade_esquerda["partial_period"]
+                or qualidade_direita["partial_period"]
+            ),
+            "missing_competencies": list(dict.fromkeys(
+                qualidade_esquerda["missing_competencies"]
+                + qualidade_direita["missing_competencies"]
+            )),
+            "competencies_with_incomplete_municipal_coverage": list(dict.fromkeys(
+                qualidade_esquerda[
+                    "competencies_with_incomplete_municipal_coverage"
+                ]
+                + qualidade_direita[
+                    "competencies_with_incomplete_municipal_coverage"
+                ]
+            )),
+            "alerts": list(alertas.values()),
+            "sides": {
+                "left": qualidade_esquerda,
+                "right": qualidade_direita,
+            },
+        },
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
         "comparison_mode": payload["comparison_mode"],
@@ -608,6 +731,25 @@ def consultar_comparacao_tce(payload: dict[str, Any]) -> dict[str, Any]:
             label_direito=label_direito,
         ),
     }
+    total_despesas = respostas["quality"]["historical_size_classification_coverage"][
+        "expenses_in_scope"
+    ]
+    if total_despesas:
+        respostas["quality"]["historical_size_classification_coverage"]["percent"] = round(
+            respostas["quality"]["historical_size_classification_coverage"][
+                "classified_expenses"
+            ]
+            * 100
+            / total_despesas,
+            6,
+        )
+        respostas["quality"]["unknown_origin"]["percent"] = round(
+            respostas["quality"]["unknown_origin"]["expenses"] * 100 / total_despesas,
+            6,
+        )
+    if not respostas["data_available"]:
+        respostas = tce_observability.tornar_percentuais_indisponiveis(respostas)
+    return respostas
 
 
 __all__ = ["ComparisonRequestError", "consultar_comparacao_tce"]

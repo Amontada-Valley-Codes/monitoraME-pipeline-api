@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:0.8.7-pg16
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci-only-password
@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Set up Python 3.14
         uses: actions/setup-python@v7
@@ -90,7 +90,7 @@ jobs:
           rm -f .env
 
       - name: Build production Docker image
-        run: docker build --pull -t monitorame-pipeline-api:ci .
+        run: docker build --pull -t pipeline-api:ci .
 
   deploy:
     name: Deploy production
@@ -108,7 +108,7 @@ jobs:
 
     steps:
       - name: Check out validated source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Configure and verify SSH
         shell: bash
@@ -148,14 +148,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          deploy_sha="$GITHUB_SHA"
           ssh -i "$RUNNER_TEMP/vps_deploy_key" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            "cd /docker/monitorame-pipeline-api && test -s .env && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml config -q && APP_IMAGE=monitorame-pipeline-api:${GITHUB_SHA} docker compose -f compose.production.yaml up -d --build && bash -s" <<'REMOTE'
+            "bash -s -- '$deploy_sha'" <<'REMOTE'
           set -euo pipefail
-          container_id="$(APP_IMAGE=monitorame-pipeline-api:production docker compose -f compose.production.yaml ps -q api)"
+          deploy_sha="$1"
+          cd /docker/monitorame-pipeline-api
+
+          if [ ! -s .env ]; then
+            echo "Required production file /docker/monitorame-pipeline-api/.env is missing or empty." >&2
+            echo "The upload step restores tracked files only; restore .env from the VPS secret backup before deploying." >&2
+            exit 1
+          fi
+
+          export API_IMAGE="pipeline-api:${deploy_sha}"
+          export MIGRATION_IMAGE="pipeline-migrate:${deploy_sha}"
+          export PNCP_COLLECTION_IMAGE="pncp-worker-coleta:${deploy_sha}"
+          export PNCP_NORMALIZATION_IMAGE="pncp-worker-normalizacao:${deploy_sha}"
+          export PNCP_ENRICHMENT_IMAGE="pncp-worker-enriquecimento:${deploy_sha}"
+          export MATCHING_NLP_IMAGE="matching-nlp-worker:${deploy_sha}"
+
+          echo "Validating production Compose configuration."
+          docker compose -f compose.production.yaml config -q
+          echo "Building and deploying production services."
+          docker compose -f compose.production.yaml up -d --build
+
+          container_id="$(docker compose -f compose.production.yaml ps -q api)"
           if [ -z "$container_id" ]; then
             echo "API container was not created." >&2
             exit 1

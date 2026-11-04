@@ -30,6 +30,7 @@ class OrmMetadataTest(unittest.TestCase):
         esperado = {
             "porte_publicacoes",
             "porte_observacoes",
+            "api_response_cache",
             "ibge_municipios",
             "tce_municipios",
             "fornecedores_me",
@@ -41,15 +42,30 @@ class OrmMetadataTest(unittest.TestCase):
             "pncp_contratacoes_atuais",
             "pncp_oportunidades",
             "pncp_enriquecimentos",
+            "pncp_itens",
+            "pncp_resultados_itens",
+            "pncp_documentos",
+            "pncp_recurso_versoes",
             "pncp_eventos",
             "pncp_matchings",
+            "pncp_taxonomia_categorias",
+            "pncp_taxonomia_cnaes",
+            "pncp_mapa_revisoes",
+            "pncp_mapa_cnae_categoria",
             "pncp_quarentena",
             "pncp_avaliacoes_qualidade",
             "pncp_sync_cursors",
             "pncp_source_controls",
+            "nlp_procurement_segments",
+            "nlp_procurement_embeddings",
+            "nlp_matching_batches",
+            "nlp_matching_results",
             "tce_despesa_ingestion_runs",
             "tce_empenhos",
             "tce_anulacoes_empenhos",
+            "tce_pagamento_ingestion_runs",
+            "tce_pagamentos",
+            "tce_orgaos_classificacao",
         }
 
         self.assertEqual(set(orm.MainBase.metadata.tables), esperado)
@@ -103,6 +119,12 @@ class OrmMetadataTest(unittest.TestCase):
             {"logs_aplicacao", "logs_ingestao"},
         )
 
+    def test_mapa_pncp_nao_tem_dependencias_com_tabelas_analytics_tce(self) -> None:
+        for nome in ("pncp_taxonomia_categorias", "pncp_taxonomia_cnaes", "pncp_mapa_revisoes", "pncp_mapa_cnae_categoria"):
+            tabela = orm.MainBase.metadata.tables[nome]
+            destinos = {fk.target_fullname.split(".", 1)[0] for fk in tabela.foreign_keys}
+            self.assertFalse(any(destino.startswith("tce_") for destino in destinos))
+
         tabela = log_models.LogIngestao.__table__
         self.assertIsInstance(tabela.c.parametros.type, JSONB)
         self.assertFalse(tabela.c.registros_processados.nullable)
@@ -117,12 +139,30 @@ class OrmMetadataTest(unittest.TestCase):
 class OrmEngineFactoryTest(unittest.TestCase):
     def setUp(self) -> None:
         orm.dispose_engines()
+        self.sslmode_env_patch = patch.dict(
+            os.environ,
+            {"DATABASE_SSLMODE": "require", "LOG_DATABASE_SSLMODE": "require"},
+        )
+        self.sslmode_env_patch.start()
+        self.sslmode_patch = patch.multiple(
+            orm,
+            DATABASE_SSLMODE="require",
+            LOG_DATABASE_SSLMODE="require",
+        )
+        self.sslmode_patch.start()
 
     def tearDown(self) -> None:
+        self.sslmode_patch.stop()
+        self.sslmode_env_patch.stop()
         orm.dispose_engines()
 
+    @patch("app.core.orm._registrar_medicao_banco")
     @patch("app.core.orm.create_engine")
-    def test_main_engine_usa_database_url_sslmode_e_cache(self, create_engine) -> None:
+    def test_main_engine_usa_database_url_sslmode_e_cache(
+        self,
+        create_engine,
+        registrar_medicao,
+    ) -> None:
         engine = MagicMock()
         create_engine.return_value = engine
 
@@ -132,6 +172,7 @@ class OrmEngineFactoryTest(unittest.TestCase):
         self.assertIs(primeiro, engine)
         self.assertIs(segundo, engine)
         create_engine.assert_called_once()
+        registrar_medicao.assert_called_once_with(engine)
         args, kwargs = create_engine.call_args
         self.assertEqual(args[0], _url_psycopg(os.environ["DATABASE_URL"]))
         self.assertEqual(kwargs["pool_size"], 10)

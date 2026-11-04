@@ -11,12 +11,22 @@ class ComposeSetupTest(unittest.TestCase):
     def test_compose_declara_postgres_persistente_e_healthcheck(self) -> None:
         compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
 
-        self.assertIn("postgres:16-alpine", compose)
         self.assertIn("volumes:", compose)
         self.assertNotIn("tmpfs:", compose)
         self.assertIn("postgres_data:/var/lib/postgresql/data", compose)
         self.assertIn("/var/lib/postgresql/data", compose)
         self.assertIn("pg_isready", compose)
+
+    def test_postgres_usa_imagem_com_pgvector_em_compose_e_ci(self) -> None:
+        imagem_pgvector = "pgvector/pgvector:0.8.7-pg16"
+        production = (ROOT / "compose.production.yaml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "production-readiness.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(imagem_pgvector, (ROOT / "compose.yaml").read_text(encoding="utf-8"))
+        self.assertIn(imagem_pgvector, production)
+        self.assertIn(imagem_pgvector, workflow)
 
     def test_compose_constroi_api_e_executa_migrations_antes_do_start(self) -> None:
         compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
@@ -40,11 +50,11 @@ class ComposeSetupTest(unittest.TestCase):
         env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 
         self.assertIn(
-            "DATABASE_URL=postgresql://monitorame:monitorame@localhost:5432/monitorame\n",
+            "DATABASE_URL=postgresql://monitorame:monitorame@localhost:15432/monitorame\n",
             env_example,
         )
         self.assertIn(
-            "LOG_DATABASE_URL=postgresql://monitorame:monitorame@localhost:5432/monitorame\n",
+            "LOG_DATABASE_URL=postgresql://monitorame:monitorame@localhost:15432/monitorame\n",
             env_example,
         )
         self.assertIn("DATABASE_SSLMODE=disable", env_example)

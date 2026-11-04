@@ -243,10 +243,10 @@ class CalcularOverviewMeMeiTest(unittest.TestCase):
         self.assertEqual(
             {item["codigo"]: item["valor_final_centavos"] for item in elementos},
             {
-                "30": 15_000,
+                "30": 10_000,
                 "32": 0,
                 "35": 0,
-                "39": 5_000,
+                "39": 3_000,
                 "40": 0,
                 "51": 0,
                 "52": 0,

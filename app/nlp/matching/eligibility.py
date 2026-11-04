@@ -1,0 +1,109 @@
+"""Gate de elegibilidade; ausência de dado é distinta de reprovação."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from app.nlp.matching.schemas import EligibilityStatus, MatchingEvidence, ProcurementProfile
+from app.nlp.profiles.schemas import CompanyProfile
+
+
+@dataclass(frozen=True)
+class EligibilityDecision:
+    status: EligibilityStatus
+    reason_codes: tuple[str, ...]
+    warning_codes: tuple[str, ...]
+    evidence: tuple[MatchingEvidence, ...]
+
+
+_OPEN_STATUSES = {
+    "ABERTA", "OPEN", "RECEBENDO_PROPOSTAS", "ENCERRANDO_EM_BREVE",
+}
+
+_CLOSED_STATUSES = {
+    "FECHADA", "CLOSED", "ENCERRADA", "HOMOLOGADA", "DESERTA",
+    "RESULTADO_PUBLICADO", "HOMOLOGADA_PARCIAL", "HOMOLOGADA_TOTAL",
+    "CANCELADA",
+}
+
+_INVALIDATION_MARKERS = (
+    ("REVOG", "OPPORTUNITY_REVOKED"),
+    ("ANUL", "OPPORTUNITY_ANNULLED"),
+    ("SUSPEN", "OPPORTUNITY_SUSPENDED"),
+)
+
+
+def avaliar_elegibilidade(
+    company: CompanyProfile,
+    opportunity: ProcurementProfile,
+    *,
+    as_of: datetime | None = None,
+) -> EligibilityDecision:
+    """Aplica regras conhecidas sem tratar ausência como incompatibilidade."""
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("as_of deve incluir timezone")
+    reasons: list[str] = []
+    warnings: list[str] = []
+
+    status = (opportunity.status or "").strip().upper().replace(" ", "_")
+    for marker, code in _INVALIDATION_MARKERS:
+        if marker in status:
+            reasons.append(code)
+    if opportunity.revoked is True:
+        reasons.append("OPPORTUNITY_REVOKED")
+    if opportunity.annulled is True:
+        reasons.append("OPPORTUNITY_ANNULLED")
+    if opportunity.suspended is True:
+        reasons.append("OPPORTUNITY_SUSPENDED")
+    if opportunity.revoked is None or opportunity.annulled is None or opportunity.suspended is None:
+        warnings.append("INVALIDATION_STATUS_INCOMPLETE")
+
+    if status in _CLOSED_STATUSES:
+        reasons.append("OPPORTUNITY_CLOSED")
+    elif status == "ABERTURA_FUTURA":
+        reasons.append("OPPORTUNITY_NOT_YET_OPEN")
+    elif status not in _OPEN_STATUSES:
+        warnings.append("OPEN_STATUS_UNCONFIRMED")
+
+    if opportunity.deadline is None:
+        warnings.append("DEADLINE_MISSING")
+    elif opportunity.deadline.tzinfo is None:
+        warnings.append("DEADLINE_TIMEZONE_MISSING")
+    elif opportunity.deadline <= now:
+        reasons.append("DEADLINE_EXPIRED")
+
+    if opportunity.accepted_company_sizes is None or opportunity.accepted_company_sizes_source is None:
+        warnings.append("COMPANY_SIZE_UNCONFIRMED")
+    elif company.company_size.value not in opportunity.accepted_company_sizes:
+        reasons.append("COMPANY_SIZE_NOT_ACCEPTED")
+    # Endereço da sede e preferências/modalidades não são prova de impedimento
+    # jurídico. Preferências explícitas só afetam ranking, nunca este gate.
+
+    evidence = (
+        MatchingEvidence(
+            criterion="eligibility_status",
+            score=0.0 if any(code in reasons for code in ("OPPORTUNITY_CLOSED", "OPPORTUNITY_NOT_YET_OPEN", "OPPORTUNITY_REVOKED", "OPPORTUNITY_ANNULLED", "OPPORTUNITY_SUSPENDED")) else (1.0 if status in _OPEN_STATUSES else None),
+            details=(
+                f"Situação usada no gate: {status or 'ausente'}; revogada={opportunity.revoked}; "
+                f"anulada={opportunity.annulled}; suspensa={opportunity.suspended}."
+            ),
+        ),
+        MatchingEvidence(
+            criterion="eligibility_deadline",
+            score=0.0 if "DEADLINE_EXPIRED" in reasons else (1.0 if opportunity.deadline and opportunity.deadline.tzinfo else None),
+            details=f"Prazo usado no gate: {opportunity.deadline.isoformat() if opportunity.deadline else 'ausente'}.",
+        ),
+        MatchingEvidence(
+            criterion="eligibility_company_size",
+            score=0.0 if "COMPANY_SIZE_NOT_ACCEPTED" in reasons else (1.0 if opportunity.accepted_company_sizes_source else None),
+            details=f"Porte da empresa: {company.company_size.value}; fonte do critério: {opportunity.accepted_company_sizes_source or 'não informada'}.",
+        ),
+    )
+    if reasons:
+        result = EligibilityStatus.INELIGIBLE
+    elif warnings:
+        result = EligibilityStatus.NOT_CONFIRMED
+    else:
+        result = EligibilityStatus.ELIGIBLE
+    return EligibilityDecision(result, tuple(dict.fromkeys(reasons)), tuple(dict.fromkeys(warnings)), evidence)

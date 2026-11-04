@@ -18,6 +18,71 @@ Os exemplos abaixo mostram a estrutura de sucesso das rotas registradas. Valores
 
 ## TCE-CE
 
+### Metadados comuns de carga analítica
+
+As respostas de overview estadual/municipal, KPI mensal por porte, indicadores
+analíticos, comparação e análise territorial compartilham estes campos:
+
+```json
+{
+  "data_available": true,
+  "data_as_of": "2025-01-31",
+  "last_successful_load_at": "2025-02-05T12:30:00+00:00",
+  "is_stale": true,
+  "stale_reason": ["LATEST_LOAD_FAILED"],
+  "quality": {
+    "municipalities_with_data": 1,
+    "municipalities_in_scope": 1,
+    "unknown_origin": {
+      "expenses": 2,
+      "value_centavos": 125000,
+      "percent": 20.0
+    },
+    "historical_size_classification_coverage": {
+      "classified_expenses": 8,
+      "expenses_in_scope": 10,
+      "classification_unit": "CNPJ_BASICO",
+      "reference": "EXACT_MONTHLY_COMPETENCE",
+      "percent": 80.0
+    },
+    "partial_period": false,
+    "missing_competencies": [],
+    "competencies_with_incomplete_municipal_coverage": [],
+    "alerts": [
+      {
+        "code": "LATEST_LOAD_FAILED",
+        "message": "A carga mais recente falhou; os valores preservam o último snapshot publicado."
+      }
+    ]
+  }
+}
+```
+
+`data_as_of` é o último dia coberto por uma competência publicada no recorte.
+`last_successful_load_at` é a publicação mais recente nesse escopo. `stale_reason`
+é uma lista de códigos estáveis (`LATEST_LOAD_FAILED`, `SNAPSHOT_EXPIRED` e/ou
+`PUBLICATION_TIMESTAMP_MISSING`);
+ausência de publicação é informada separadamente por `data_available` e por um
+alerta de qualidade. `is_stale` representa falha mais recente ou publicação
+fora da janela de atualização esperada. `quality.partial_period` é verdadeiro
+quando há competências ausentes ou as datas de início/fim não cobrem meses
+completos, ou há competências com menos municípios publicados que o catálogo
+local do estado. A cobertura histórica compara a raiz de CNPJ (`CNPJ_BASICO`)
+com um retrato publicado para a competência exata; o histórico mensal é uma
+amostra e não comprova vigência diária ou cobertura integral dos fornecedores.
+Os alertas têm códigos e mensagens seguros para exibição, sem documentos ou
+dados pessoais.
+
+O TTL usado para o alerta `SNAPSHOT_EXPIRED` é de uma hora para a competência
+do mês atual, 24 horas para os três meses anteriores e sete dias para as
+competências históricas.
+
+Quando não existe lote publicado, `data_available` é `false`, os valores
+monetários retornados são zero e taxas/percentuais são `null`; isso não afirma
+que o gasto foi zero. Uma competência publicada sem empenhos é dado disponível
+com movimento monetário conhecido igual a zero, mas percentuais sem denominador
+também são `null`.
+
 ### `GET /pipeline/tce/contratos`
 
 ```json
@@ -35,7 +100,7 @@ Os exemplos abaixo mostram a estrutura de sucesso das rotas registradas. Valores
 O overview sem município consolida o Ceará e considera somente ME no recorte principal. MEI integra os demais portes.
 
 ```json
-{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":null},"escopo_territorial":"CEARA_INTEIRO","competencias_solicitadas":[],"competencias_processadas":[],"cobertura":{},"politica_temporal":"COMPETENCIAS_PUBLICADAS","totais_brutos":{"empenhos":0},"base_analitica":{"nome":"tce_empenhos_liquidos","base_calculo":"DESPESA_FINAL"},"kpi":"overview_me","escopo":{"porte":"ME","mei":"DEMAIS_PORTES"},"unidade_monetaria":"CENTAVOS","overview":{"kpis":{},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}}
+{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":null},"escopo_territorial":"CEARA_INTEIRO","competencias_solicitadas":[],"competencias_processadas":[],"cobertura":{},"politica_atualizacao":{"modo":"SOMENTE_BANCO","atualizar_competencias":false,"atualizar_fornecedores":false},"totais_brutos":{"empenhos":0},"base_analitica":{"nome":"tce_empenhos_liquidos","base_calculo":"empenhos_tce"},"kpi":"overview_me","escopo":{"portes_considerados":["ME"],"regra_participacao_me":"ME / (ME + MEI + EPP + DEMAIS)"},"unidade_monetaria":"CENTAVOS","ranking_municipios_me":[{"posicao":1,"codigo_municipio_tce":"001","municipio":"Amontada","compras_me_centavos":500000,"quantidade_empenhos":12,"percentual_total_me":25.0}],"kpis":{"total_compras_ME_centavos":2000000},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}
 ```
 
 ### `GET /pipeline/tce/overview/municipal`
@@ -122,15 +187,27 @@ O overview sem município consolida o Ceará e considera somente ME no recorte p
 
 ### `GET /pncp/editais`
 
+Retorna apenas os campos de resumo para montar listagens e cart?es.
+
 ```json
-{"dados":[{"data_quality_status":"VALID","sync_status":"SUCCEEDED","dados_semanticos":{},"id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisição de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false}],"paginacao":{"pagina":1,"tamanho_pagina":20,"total":1}}
+{"dados":[{"data_quality_status":"VALID","sync_status":"SUCCEEDED","id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisi??o de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false}],"paginacao":{"pagina":1,"tamanho_pagina":20,"total":1}}
 ```
 
 ### `GET /pncp/editais/{external_id}`
 
+Retorna os dados da contrata??o e o detalhe enriquecido, quando dispon?vel. O identificador pode conter barras, por exemplo `80881915000192-1-000105/2026`.
+
 ```json
-{"data_quality_status":"VALID","sync_status":"SUCCEEDED","dados_semanticos":{},"id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisição de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false,"detalhe":null,"itens":null,"anexos":null}
+{"data_quality_status":"VALID","sync_status":"SUCCEEDED","dados_semanticos":{},"id":"00000000000000000001","source":"PNCP","url_oficial":"https://pncp.gov.br/app/editais/00000000000000000001","orgao":null,"unidade":null,"objeto":"Aquisi??o de materiais","modalidade":null,"situacao":null,"prazo_proposta_final":null,"atualizado_em":null,"itens_disponiveis":false,"anexos_disponiveis":false,"detalhe":null}
 ```
+
+### `GET /pncp/editais/{external_id}/itens`
+
+Retorna itens estruturados, resultados por item, lotes identificados e cobertura da participa??o.
+
+### `GET /pncp/editais/{external_id}/anexos`
+
+Retorna o manifesto de documentos, URLs oficiais, disponibilidade e cobertura, sem baixar os arquivos.
 
 ## Formato de erro
 

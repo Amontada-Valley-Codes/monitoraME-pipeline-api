@@ -25,8 +25,12 @@ class PipelineTceDespesasTest(unittest.TestCase):
     @patch("app.pipeline.tce_despesas.cleaner.mapear_notas_empenhos")
     @patch("app.pipeline.tce_despesas.tce.buscar_notas_anulacoes_empenhos")
     @patch("app.pipeline.tce_despesas.tce.buscar_notas_empenhos")
+    @patch("app.pipeline.tce_despesas.tce.buscar_documentos_exercicio")
+    @patch("app.pipeline.tce_despesas.tce_orgaos.salvar_classificacoes")
     def test_coleta_mapeia_e_publica_os_dois_endpoints_como_um_lote(
         self,
+        salvar_classificacoes,
+        buscar_orgaos,
         buscar_empenhos,
         buscar_anulacoes,
         mapear_empenhos,
@@ -35,8 +39,12 @@ class PipelineTceDespesasTest(unittest.TestCase):
     ) -> None:
         buscar_empenhos.return_value = [{"bruto": "empenho"}]
         buscar_anulacoes.return_value = [{"bruto": "anulacao"}]
-        mapear_empenhos.return_value = [{"normalizado": "empenho"}]
+        mapear_empenhos.return_value = [{"exercicio_orcamento": 202500}]
         mapear_anulacoes.return_value = [{"normalizado": "anulacao"}]
+        buscar_orgaos.return_value = [{
+            "codigo_orgao": "02", "nome_orgao": "Prefeitura Municipal",
+            "codigo_tipo_unidade": "01",
+        }]
         esperado = MagicMock()
         publicar.return_value = esperado
 
@@ -52,6 +60,8 @@ class PipelineTceDespesasTest(unittest.TestCase):
         mapear_anulacoes.assert_called_once_with(buscar_anulacoes.return_value)
         self.assertEqual(publicar.call_args.kwargs["empenhos"], mapear_empenhos.return_value)
         self.assertEqual(publicar.call_args.kwargs["anulacoes"], mapear_anulacoes.return_value)
+        buscar_orgaos.assert_called_once_with("orgaos", codigo_municipio="010", exercicio=2025)
+        salvar_classificacoes.assert_called_once()
 
     @patch("app.pipeline.tce_despesas.persistence.registrar_lote_rejeitado")
     @patch("app.pipeline.tce_despesas.persistence.publicar_lote_tce")

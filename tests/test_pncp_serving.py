@@ -49,6 +49,7 @@ class PncpServingTest(unittest.TestCase):
         resultado = serving.obter_edital("2026-1")
 
         self.assertEqual(resultado["detalhe"], {"numero": "2026-1"})
-        self.assertEqual(resultado["itens"], [{"descricao": "Computador"}])
+        self.assertNotIn("itens", resultado)
+        self.assertNotIn("anexos", resultado)
         self.assertTrue(resultado["itens_disponiveis"])
 

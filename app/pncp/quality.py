@@ -13,13 +13,14 @@ from sqlalchemy.orm import Session
 from app.core.models import IngestionJob, PncpAvaliacaoQualidade, RawPncpRecord
 
 logger = logging.getLogger(__name__)
-RULE_VERSION = "pncp-semantica-1"
+RULE_VERSION = "pncp-semantica-2"
 # campo RAW, tipo, obrigatorio, destino; mesma regra para descoberta e atualizacao.
 REGRAS = (
     ("numeroControlePNCP", "identidade", True, "external_id"),
     ("orgaoEntidade.cnpj", "cnpj", False, "orgao.cnpj"),
     ("unidadeOrgao.codigoIbge", "ibge", False, "unidade.codigoIbge"),
     ("objetoCompra", "texto", False, "objeto"),
+    ("informacaoComplementar", "texto", False, "dados_semanticos.informacao_complementar"),
     ("valorTotalEstimado", "dinheiro", False, "dados_semanticos.valor_total_estimado"),
     ("valorTotalHomologado", "dinheiro", False, "dados_semanticos.valor_total_homologado"),
     ("orcamentoSigiloso", "booleano", False, "dados_semanticos.orcamento_sigiloso"),

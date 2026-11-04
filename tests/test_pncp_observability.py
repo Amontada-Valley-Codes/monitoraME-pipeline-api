@@ -13,8 +13,11 @@ class ObservabilityPncpTest(unittest.TestCase):
             type("R", (), {"mappings": lambda _: type("M", (), {"all": lambda _: [{"status":"FAILED", "total":2, "tentativas":5}]})()})(),
             type("R", (), {"mappings": lambda _: type("M", (), {"all": lambda _: [{"fluxo":"publicacao", "last_success_at":None, "lag_seconds":None, "pendentes":1}]})()})(),
             type("R", (), {"mappings": lambda _: type("M", (), {"one": lambda _: {"raw_total":3,"raw_backlog":1,"enrichment_backlog":0,"leases_expirados":2,"eventos_gerados":1}})()})(),
+            type("R", (), {"mappings": lambda _: type("M", (), {"one": lambda _: {"oportunidades":3,"oportunidades_com_itens":1,"itens":2,"itens_com_lote":2,"lotes_identificados":1,"itens_resultado_ausente":1,"itens_resultado_parcial":1,"itens_resultado_final":0,"resultados":1,"documentos":2,"documentos_temporarios":1,"documentos_removidos":0,"versoes":4}})()})(),
         ]
         dados = metricas_session(session)
         self.assertEqual(dados["jobs"]["FAILED"]["tentativas"], 5)
         self.assertEqual(dados["totais"]["raw_backlog"], 1)
         self.assertEqual(dados["fluxos"][0]["fluxo"], "publicacao")
+        self.assertEqual(dados["cobertura_participacao"]["itens_resultado_parcial"], 1)
+        self.assertEqual(dados["cobertura_participacao"]["lotes_identificados"], 1)

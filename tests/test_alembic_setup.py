@@ -19,6 +19,21 @@ def _carregar_migration(path: Path):
 
 
 class AlembicSetupTest(unittest.TestCase):
+    def test_migration_persiste_batches_e_resultados_de_matching_versionados(self) -> None:
+        migration = ROOT / "alembic" / "main" / "versions" / "0027_nlp_matching_results.py"
+        modulo = _carregar_migration(migration)
+        texto = migration.read_text(encoding="utf-8")
+
+        self.assertEqual(modulo.revision, "0027_nlp_matching_results")
+        self.assertEqual(modulo.down_revision, "0026_pncp_cnae_taxonomy")
+        self.assertIn('"nlp_matching_batches"', texto)
+        self.assertIn('"nlp_matching_results"', texto)
+        self.assertIn('"profiles"', texto)
+        self.assertIn('"model_version"', texto)
+        self.assertIn('"matching_version"', texto)
+        self.assertTrue(callable(modulo.upgrade))
+        self.assertTrue(callable(modulo.downgrade))
+
     def test_alembic_ini_declara_ambientes_principal_e_logs(self) -> None:
         config = configparser.RawConfigParser()
         config.read(ROOT / "alembic.ini")

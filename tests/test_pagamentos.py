@@ -80,18 +80,55 @@ class PagamentosTest(unittest.TestCase):
     def test_duplicatas_e_orfaos_nao_produzem_total(self):
         for es, ps, erro in [
             ([empenho(), empenho()], [pagamento()], "empenho duplicada"),
-            ([empenho()], [pagamento(), pagamento()], "pagamento duplicada"),
+            ([empenho()], [pagamento(), pagamento(valor_nota_pagamento="1.00")], "Duplicidade conflitante"),
             ([empenho()], [pagamento(codigo_orgao="99")], "sem empenho"),
-            ([empenho()], [pagamento(estado_de_estornado=None)], "obrigatorio"),
-            ([empenho()], [pagamento(estado_de_estornado=2)], "desconhecido"),
             ([empenho(codigo_municipio="005")], [], "fora do recorte"),
         ]:
             with self.subTest(erro=erro), self.assertRaisesRegex(ValueError, erro):
                 conciliar(es, ps)
 
+    def test_duplicata_identica_de_api_e_contada_apenas_uma_vez(self):
+        rows, audit = conciliar([empenho()], [pagamento(), pagamento()])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["valor_centavos"], 1_000_000)
+        self.assertEqual(audit["excluidos"], {"duplicado_identico": 1})
+        self.assertEqual(audit["anomalias"][0]["codigo"], "PAGAMENTO_DUPLICADO_IDENTICO")
+
+    def test_estado_estorno_desconhecido_e_preservado_e_excluido_do_total(self):
+        rows, audit = conciliar([empenho()], [pagamento(estado_de_estornado=2)])
+        self.assertEqual(rows, [])
+        self.assertEqual(audit["excluidos"], {"estado_estorno_desconhecido": 1})
+        self.assertEqual(audit["anomalias"][0]["estado_de_estornado"], "2")
+        rows, audit = conciliar([empenho()], [pagamento(estado_de_estornado=None)])
+        self.assertEqual(rows, [])
+        self.assertIsNone(audit["anomalias"][0]["estado_de_estornado"])
+
     def test_cadastro_de_orgaos_incompleto_rejeitado(self):
         with self.assertRaisesRegex(ValueError, "identificar a Camara"):
             p.conciliar_pagamentos([], [], ORGAOS[1:], codigo_municipio="004", exercicio=2025)
+
+    def test_classificacao_nao_trata_tipo_unidade_como_codigo_universal(self):
+        orgaos = [
+            {"codigo_orgao": "01", "nome_orgao": "Camara Municipal", "codigo_tipo_unidade": "03"},
+            {"codigo_orgao": "02", "nome_orgao": "Secretaria de Educacao", "codigo_tipo_unidade": "02"},
+        ]
+        es = [empenho(codigo_orgao="01"), empenho(codigo_orgao="02")]
+        ps = [pagamento(codigo_orgao="01"), pagamento(codigo_orgao="02")]
+        rows, audit = p.conciliar_pagamentos(es, ps, orgaos, codigo_municipio="004", exercicio=2025)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(audit["orgaos_camara"], ["01"])
+        self.assertEqual(audit["orgaos_executivo_municipal"], ["02"])
+        self.assertEqual(audit["classificacoes_orgaos"][0]["regra"], "NOME_ORGAO_NORMALIZADO")
+
+    def test_classificacao_reconhece_variacoes_textuais_do_executivo(self):
+        for orgao in [
+            {"codigo_orgao": "03", "nome_orgao": "Controlodaria Geral do Municipio e Ouvidoria", "codigo_tipo_unidade": "03"},
+            {"codigo_orgao": "10", "nome_orgao": "Sec. de Agronomia, Pesca, Irrigacao e Desenv. Econ. e Rural", "codigo_tipo_unidade": "03"},
+        ]:
+            with self.subTest(codigo=orgao["codigo_orgao"]):
+                classificacao = p.classificar_orgao(orgao)
+                self.assertEqual(classificacao["classificacao"], "EXECUTIVO_MUNICIPAL")
+                self.assertEqual(classificacao["confianca"], "ALTA")
 
     def test_documentos_nao_cnpj_preservam_total(self):
         for tipo, doc in [("2", "02530104000133"), ("1", "2530104000133"),
@@ -116,6 +153,29 @@ class PagamentosTest(unittest.TestCase):
         self.assertTrue(result["classificacao_completa"])
         self.assertIsNone(cadastros["02530104000133"]["referencia_base_cadastral"])
         self.assertEqual(result["fornecedores_me"][0]["quantidade_pagamentos"], 2)
+
+    def test_agrega_por_cnpj_e_preserva_razoes_sociais_observadas(self):
+        es = [
+            empenho(numero_empenho="0001", nome_negociante="Fornecedor Original Ltda"),
+            empenho(numero_empenho="0002", nome_negociante="Fornecedor Atualizado Ltda",
+                    numero_documento_negociante="02530104000133"),
+        ]
+        ps = [
+            pagamento(numero_empenho="0001", numero_nota_pagamento="0002"),
+            pagamento(numero_empenho="0002", numero_nota_pagamento="0003"),
+        ]
+        rows, _ = conciliar(es, ps)
+        result = p.resumir_pagamentos(rows, {
+            "02530104000133": {"porte_codigo": "01", "situacao_classificacao": "ok"},
+        })
+        self.assertEqual(len(result["fornecedores_me"]), 1)
+        fornecedor = result["fornecedores_me"][0]
+        self.assertEqual(fornecedor["cnpj"], "02530104000133")
+        self.assertEqual(fornecedor["valor_pago_centavos"], 2_000_000)
+        self.assertEqual(fornecedor["quantidade_pagamentos"], 2)
+        self.assertEqual(fornecedor["nomes_observados"], [
+            "Fornecedor Atualizado Ltda", "Fornecedor Original Ltda",
+        ])
 
     @patch.object(p.fornecedores, "coletar_fornecedor")
     def test_cadastro_divergente_ou_desconhecido_nao_inventa_porte(self, coletar):
@@ -142,14 +202,54 @@ class PagamentosTest(unittest.TestCase):
         self.assertEqual(result["total_me_centavos"], 88188006)
         self.assertEqual(sum(result["controle_financeiro"]["por_categoria_centavos"].values()), 108328071)
 
+    def test_conferencia_portal_por_elemento_so_no_recorte_referenciado(self):
+        es, ps = [], []
+        for indice, (elemento, valor) in enumerate(p.REFERENCIA_PORTAL_ACARAU_2025.items()):
+            numero = f"{indice + 1:04d}"
+            es.append(empenho(numero_empenho=numero, codigo_elemento_despesa=f"3399{elemento}00"))
+            ps.append(pagamento(numero_empenho=numero, numero_nota_pagamento=numero,
+                                valor_nota_pagamento=f"{valor / 100:.2f}"))
+        coleta = {"codigo_municipio": "004", "exercicio": 2025, "referencia_final": "2026-09",
+                  "coleta_iniciada_em": "inicio", "coleta_concluida_em": "fim",
+                  "orgaos": ORGAOS, "empenhos": es, "pagamentos": ps}
+        resultado = p.consultar_pagamentos_prefeitura(
+            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
+            consultar_porte=False, coleta=coleta,
+        )
+        self.assertEqual(resultado["conferencia_portal"]["divergencia_centavos_por_elemento"],
+                         {elemento: 0 for elemento in p.REFERENCIA_PORTAL_ACARAU_2025})
+        self.assertTrue(resultado["conferencia_portal"]["bate"])
+        self.assertFalse(resultado["indicador_me_validado"])
+        self.assertEqual(resultado["controle_financeiro"]["total_centavos"], 13_531_152_944)
+        ps[0]["valor_nota_pagamento"] = "66318441.20"
+        divergente = p.consultar_pagamentos_prefeitura(
+            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
+            consultar_porte=False, coleta=coleta,
+        )
+        self.assertFalse(divergente["conferencia_portal"]["bate"])
+        self.assertFalse(divergente["indicador_me_validado"])
+
     @patch.object(p.tce, "buscar_documentos_exercicio")
     def test_coleta_ano_seguinte_exercicio_fixo_e_mes_vazio_nao_interrompe(self, buscar):
-        buscar.side_effect = lambda endpoint, **kw: ORGAOS if endpoint == "orgaos" else []
+        def responder(endpoint, **kwargs):
+            if endpoint == "orgaos":
+                return ORGAOS
+            if endpoint == "unidades_orcamentarias":
+                return [
+                    {"codigo_orgao": "77", "codigo_unidade_orcamentaria": "01"},
+                    {"codigo_orgao": "01", "codigo_unidade_orcamentaria": "01"},
+                ]
+            return []
+        buscar.side_effect = responder
         result = p.consultar_pagamentos_prefeitura(codigo_municipio="004", exercicio=2025, referencia_final="2026-09", consultar_porte=False)
         calls = buscar.call_args_list
-        self.assertEqual(len(calls), 34)
+        self.assertEqual(len(calls), 56)
         self.assertTrue(all(c.kwargs["exercicio"] == 2025 for c in calls))
-        self.assertEqual(calls[-1].kwargs["competencia"], "2026-09")
+        pagamentos = [c for c in calls if c.args[0] == "notas_pagamentos"]
+        self.assertEqual(len(pagamentos), 42)
+        self.assertTrue(any(c.kwargs["competencia"] == "2026-09" for c in pagamentos))
+        self.assertEqual({c.kwargs["codigo_orgao"] for c in pagamentos}, {"01", "77"})
+        self.assertTrue(all("codigo_unidade_orcamentaria" not in c.kwargs for c in pagamentos))
         self.assertEqual(result["referencias_pagamentos"], ["2025-01", "2026-09"])
         self.assertEqual(p._referencias("2025-12", "2026-01"), ["2025-12", "2026-01"])
         with self.assertRaises(ValueError):

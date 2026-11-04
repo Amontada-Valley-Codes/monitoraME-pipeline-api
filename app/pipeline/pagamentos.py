@@ -15,6 +15,7 @@ from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
 from app.pipeline.cleaners.tce_despesas import valor_para_centavos
 from app.pipeline.ingestion import fornecedores, tce
+from app.pipeline.persistence.tce_orgaos import classificar_orgao
 from app.utils import normalizar_cnpj, normalizar_texto, validar_cnpj
 
 CAMPOS_CHAVE = (
@@ -22,6 +23,15 @@ CAMPOS_CHAVE = (
     "codigo_unidade_orcamentaria", "data_emissao_empenho", "numero_empenho",
 )
 CATEGORIAS = ("ME", "EPP", "DEMAIS", "SEM_CLASSIFICACAO", "NAO_CNPJ")
+REFERENCIA_PORTAL_ACARAU_2025 = {
+    "39": 6_631_844_119,
+    "30": 2_953_129_365,
+    "51": 3_132_409_295,
+    "52": 516_692_530,
+    "32": 187_701_200,
+    "40": 1_048_364,
+    "35": 108_328_071,
+}
 
 
 def _texto(registro: dict, campo: str) -> str:
@@ -72,17 +82,38 @@ def conciliar_pagamentos(
     """Rejeita chaves repetidas e cruzamentos incompletos antes de calcular."""
     cadastro: dict[str, dict] = {}
     camaras = set()
+    executivo_municipal = set()
+    classificacoes_orgaos = []
     for orgao in orgaos:
-        codigo = _texto(orgao, "codigo_orgao")
+        classificacao = classificar_orgao(orgao)
+        codigo = str(classificacao["codigo_orgao"])
         if codigo in cadastro:
             raise ValueError(f"Orgao duplicado: {codigo}.")
         cadastro[codigo] = orgao
         nome = normalizar_texto(_texto(orgao, "nome_orgao"))
-        tipo = _texto(orgao, "codigo_tipo_unidade")
-        if tipo == "02" or "CAMARA" in nome:
+        tipo = str(orgao.get("codigo_tipo_unidade") or "").strip() or None
+        # codigo_tipo_unidade varia entre cadastros/anos. O nome e os dados
+        # vinculados identificam o Legislativo; o codigo do tipo e registrado
+        # como evidência, nunca tratado como regra universal.
+        eh_camara = classificacao["classificacao"] == "CAMARA"
+        classificacoes_orgaos.append({
+            "codigo_orgao": codigo,
+            "nome_orgao": orgao["nome_orgao"],
+            "codigo_tipo_unidade": tipo,
+            "classificacao": "CAMARA" if eh_camara else "EXECUTIVO_MUNICIPAL",
+            "regra": "NOME_ORGAO_NORMALIZADO",
+            "confianca": "ALTA" if eh_camara or any(
+                token in nome for token in ("PREFEITURA", "SECRETARIA", "GABINETE", "AUTARQUIA")
+            ) else "REVISAR",
+        })
+        if eh_camara:
             camaras.add(codigo)
+        elif classificacao["confianca"] == "ALTA":
+            executivo_municipal.add(codigo)
     if not camaras:
         raise ValueError("Cadastro nao permite identificar a Camara; revisar orgaos.")
+    if not executivo_municipal:
+        raise ValueError("Cadastro nao permite identificar orgaos do Executivo municipal; revisar orgaos.")
 
     indice = {}
     for empenho in empenhos:
@@ -93,33 +124,51 @@ def conciliar_pagamentos(
             raise ValueError(f"Chave de empenho duplicada: {chave}.")
         indice[chave] = empenho
 
-    vistos = set()
+    vistos: dict[tuple[str, ...], dict] = {}
     elegiveis = []
     excluidos = defaultdict(int)
+    anomalias = []
     for pagamento in pagamentos:
         chave = _chave(pagamento)
         chave_pagamento = (*chave, _texto(pagamento, "numero_sub_empenho"),
                            _texto(pagamento, "numero_nota_pagamento"))
-        if chave_pagamento in vistos:
-            raise ValueError(f"Chave de pagamento duplicada: {chave_pagamento}.")
-        vistos.add(chave_pagamento)
+        pagamento_anterior = vistos.get(chave_pagamento)
+        if pagamento_anterior is not None:
+            if pagamento_anterior != pagamento:
+                raise ValueError(f"Duplicidade conflitante de pagamento: {chave_pagamento}.")
+            excluidos["duplicado_identico"] += 1
+            anomalias.append({
+                "codigo": "PAGAMENTO_DUPLICADO_IDENTICO",
+                "chave_pagamento": list(chave_pagamento),
+                "referencia_documentacao": pagamento.get("data_referencia_doc"),
+            })
+            continue
+        vistos[chave_pagamento] = pagamento
         if chave not in indice:
             raise ValueError(f"Pagamento sem empenho correspondente: {chave_pagamento}.")
         if chave[2] not in cadastro:
             raise ValueError(f"Orgao ausente do cadastro: {chave[2]}.")
-        estado = _texto(pagamento, "estado_de_estornado")
-        if estado not in {"0", "1"}:
-            raise ValueError(f"Estado de estorno desconhecido: {estado}.")
+        estado_informado = pagamento.get("estado_de_estornado")
+        estado = "" if estado_informado is None else str(estado_informado).strip()
         valor = valor_para_centavos(pagamento.get("valor_nota_pagamento"), "valor_nota_pagamento")
         empenho = indice[chave]
         natureza = _texto(empenho, "codigo_elemento_despesa")
         if not re.fullmatch(r"[0-9]{8}", natureza):
             raise ValueError(f"Codigo de natureza invalido: {natureza}.")
         elemento = natureza[4:6]
-        motivo = ("camara" if chave[2] in camaras else "estornado" if estado == "1"
+        motivo = ("camara" if chave[2] in camaras else "estado_estorno_desconhecido" if estado not in {"0", "1"}
+                  else "estornado" if estado == "1"
                   else "fora_naturezas" if elemento not in NATUREZAS_DESPESA_MONITORADAS else None)
         if motivo:
             excluidos[motivo] += 1
+        if motivo == "estado_estorno_desconhecido":
+            anomalias.append({
+                "codigo": "ESTADO_ESTORNO_DESCONHECIDO",
+                "chave_pagamento": list(chave_pagamento),
+                "estado_de_estornado": estado or None,
+                "valor_centavos": valor,
+            })
+        if motivo:
             continue
         elegiveis.append({
             "chave_pagamento": list(chave_pagamento), "elemento": elemento,
@@ -134,8 +183,11 @@ def conciliar_pagamentos(
     return elegiveis, {
         "empenhos_coletados": len(empenhos), "pagamentos_coletados": len(pagamentos),
         "pagamentos_elegiveis": len(elegiveis), "excluidos": dict(excluidos),
+        "orgaos_executivo_municipal": sorted(executivo_municipal),
         "orgaos_camara": sorted(camaras), "chaves_duplicadas": 0,
         "pagamentos_sem_empenho": 0,
+        "classificacoes_orgaos": classificacoes_orgaos,
+        "anomalias": anomalias,
     }
 
 
@@ -194,15 +246,25 @@ def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) 
             me_por_elemento[elemento] += valor
             grupo = grupos.setdefault((elemento, cnpj), {
                 "elemento": elemento, "cnpj": cnpj, "nome": pagamento["nome"],
+                "_nomes_observados": {},
                 "valor_pago_centavos": 0, "quantidade_pagamentos": 0,
             })
+            nome = str(pagamento.get("nome") or "").strip()
+            nome_chave = normalizar_texto(nome)
+            if nome_chave:
+                grupo["_nomes_observados"].setdefault(nome_chave, nome)
             grupo["valor_pago_centavos"] += valor
             grupo["quantidade_pagamentos"] += 1
     total = sum(totais.values())
     assert sum(categorias.values()) == total
+    fornecedores_me = []
+    for grupo in grupos.values():
+        nomes = grupo.pop("_nomes_observados")
+        grupo["nomes_observados"] = [nomes[chave] for chave in sorted(nomes)]
+        fornecedores_me.append(grupo)
     return {
         "total_me_centavos": categorias["ME"], "me_por_elemento_centavos": me_por_elemento,
-        "fornecedores_me": sorted(grupos.values(), key=lambda g: (g["elemento"], g["cnpj"])),
+        "fornecedores_me": sorted(fornecedores_me, key=lambda g: (g["elemento"], g["cnpj"])),
         "controle_financeiro": {
             "total_centavos": total, "por_elemento_centavos": totais,
             "por_categoria_centavos": categorias, "reconciliado": True,
@@ -225,17 +287,78 @@ def coletar_documentos_prefeitura(
     orgaos = tce.buscar_documentos_exercicio(
         "orgaos", codigo_municipio=codigo_municipio, exercicio=exercicio,
     )
+    unidades = tce.buscar_documentos_exercicio(
+        "unidades_orcamentarias", codigo_municipio=codigo_municipio,
+        exercicio=exercicio,
+    )
+    unidades_por_orgao: dict[str, list[str]] = defaultdict(list)
+    for item in unidades:
+        codigo_orgao = str(item.get("codigo_orgao", "")).strip()
+        codigo_unidade = str(item.get("codigo_unidade_orcamentaria", ""))
+        if codigo_orgao and codigo_unidade.strip() and codigo_unidade not in unidades_por_orgao[codigo_orgao]:
+            unidades_por_orgao[codigo_orgao].append(codigo_unidade)
+    codigos_orgaos = sorted({str(item.get("codigo_orgao", "")).strip() for item in orgaos} - {""})
+    if not codigos_orgaos or not unidades_por_orgao:
+        raise RuntimeError(
+            f"Cadastro de órgãos/unidades vazio para {codigo_municipio}/{exercicio}; "
+            "pagamentos não foram tratados como competência vazia."
+        )
     empenhos, pagamentos = [], []
+    consultas_pagamentos = []
     for referencia in referencias:
         params = dict(codigo_municipio=codigo_municipio, exercicio=exercicio, competencia=referencia)
         if referencia[:4] == str(exercicio):
             empenhos.extend(tce.buscar_documentos_exercicio("notas_empenhos", **params))
-        pagamentos.extend(tce.buscar_documentos_exercicio("notas_pagamentos", **params))
+        for codigo_orgao in codigos_orgaos:
+            consultas_pagamentos.append((params, codigo_orgao))
+
+    def buscar_particao_pagamentos(consulta: tuple[dict, str]) -> tuple[list[dict], int, int]:
+        params, codigo_orgao = consulta
+        registros = tce.buscar_documentos_exercicio(
+            "notas_pagamentos", **params, codigo_orgao=codigo_orgao,
+        )
+        if len(registros) < 1000:
+            return registros, 1, 0
+        registros_unidades = []
+        unidades_orgao = unidades_por_orgao.get(codigo_orgao, [])
+        if not unidades_orgao:
+            raise RuntimeError(f"Órgão {codigo_orgao} sem unidades para subdividir a consulta.")
+        for codigo_unidade in unidades_orgao:
+            parcela = tce.buscar_documentos_exercicio(
+                "notas_pagamentos", **params, codigo_orgao=codigo_orgao,
+                codigo_unidade_orcamentaria=codigo_unidade,
+            )
+            if len(parcela) > 1000:
+                raise RuntimeError(
+                    f"Partição {codigo_orgao}/{codigo_unidade.strip()} excedeu 1000 notas; "
+                    "a coleta não pode ser considerada completa."
+                )
+            registros_unidades.extend(parcela)
+        return registros_unidades, len(unidades_orgao) + 1, 1
+
+    consultas_executadas = 0
+    orgaos_subdivididos = 0
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        for registros, chamadas, subdividido in executor.map(
+            buscar_particao_pagamentos, consultas_pagamentos,
+        ):
+            pagamentos.extend(registros)
+            consultas_executadas += chamadas
+            orgaos_subdivididos += subdividido
     return {
         "codigo_municipio": codigo_municipio, "exercicio": exercicio,
         "referencia_final": referencia_final, "coleta_iniciada_em": inicio,
         "coleta_concluida_em": datetime.now(timezone.utc).isoformat(),
-        "orgaos": orgaos, "empenhos": empenhos, "pagamentos": pagamentos,
+        "particionamento_pagamentos": {
+            "dimensoes": ["codigo_orgao", "codigo_unidade_orcamentaria_se_necessario"],
+            "orgaos": len(codigos_orgaos),
+            "unidades_orcamentarias": sum(len(items) for items in unidades_por_orgao.values()),
+            "consultas_planejadas": len(consultas_pagamentos),
+            "consultas_executadas": consultas_executadas,
+            "orgaos_subdivididos_por_limite": orgaos_subdivididos,
+        },
+        "orgaos": orgaos, "unidades_orcamentarias": unidades,
+        "empenhos": empenhos, "pagamentos": pagamentos,
     }
 
 
@@ -256,6 +379,24 @@ def consultar_pagamentos_prefeitura(
         codigo_municipio=codigo_municipio.strip(), exercicio=exercicio,
     )
     classificacoes = classificar_fornecedores(elegiveis) if consultar_porte else {}
+    resumo = resumir_pagamentos(elegiveis, classificacoes)
+    conferencia_portal = None
+    if codigo_municipio.strip() == "004" and exercicio == 2025 and referencia_final == "2026-09":
+        valores = resumo["controle_financeiro"]["por_elemento_centavos"]
+        divergencias = {
+            elemento: valores.get(elemento, 0) - esperado
+            for elemento, esperado in REFERENCIA_PORTAL_ACARAU_2025.items()
+        }
+        conferencia_portal = {
+            "referencia": "TCE-CE Portal da Transparencia, aba Prefeitura, conferida em 2026-10-19",
+            "recorte_referencias_pagamentos": ["2025-01", "2026-09"],
+            "valores_esperados_centavos": REFERENCIA_PORTAL_ACARAU_2025,
+            "divergencia_centavos_por_elemento": divergencias,
+            "total_esperado_centavos": sum(REFERENCIA_PORTAL_ACARAU_2025.values()),
+            "total_apurado_centavos": resumo["controle_financeiro"]["total_centavos"],
+            "divergencia_total_centavos": resumo["controle_financeiro"]["total_centavos"] - sum(REFERENCIA_PORTAL_ACARAU_2025.values()),
+        }
+        conferencia_portal["bate"] = not any(divergencias.values())
     return {
         "fonte": "TCE-CE/SIM", "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "unidade_monetaria": "CENTAVOS", "administracao": "PREFEITURA",
@@ -267,5 +408,13 @@ def consultar_pagamentos_prefeitura(
         "criterio_me": {"porte_codigo": "01", "excluir_mei": False},
         "referencia_base_cadastral": None, "porte_historico_comprovado": False,
         "consulta_cadastral_executada": consultar_porte,
-        "auditoria": auditoria, **resumir_pagamentos(elegiveis, classificacoes),
+        "indicador_me_validado": (
+            None if conferencia_portal is None
+            else bool(conferencia_portal["bate"] and resumo["classificacao_completa"])
+        ),
+        "particionamento_pagamentos": coleta.get("particionamento_pagamentos"),
+        "versao_regra_financeira": "tce-pagamentos-prefeitura.v2",
+        "fonte_referencia_financeira": "TCE-CE SIM e Portal da Transparencia",
+        "conferencia_portal": conferencia_portal,
+        "auditoria": auditoria, **resumo,
     }

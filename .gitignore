@@ -234,3 +234,9 @@ __marimo__/
 
 # PostgreSQL portatil exclusivo da homologacao de qualidade PNCP
 .local/pncp-qualidade-postgres/
+
+# Dataset local e relatórios do benchmark NLP
+.local/nlp/
+
+# Relatórios locais dos testes de carga dos indicadores
+.local/carga-indicadores/
