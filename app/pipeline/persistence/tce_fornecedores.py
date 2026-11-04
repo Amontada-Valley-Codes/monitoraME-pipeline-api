@@ -20,6 +20,7 @@ from app.pipeline.persistence.tce_despesas import (
     _expressoes_empenhos_publicados,
     _subconsulta_anulacoes_publicadas,
 )
+from app.pipeline.persistence.tce_orgaos import executivo_tce
 
 
 def _contexto_consulta(
@@ -41,6 +42,7 @@ def _contexto_consulta(
     valor_liquido = TceEmpenho.valor_empenhado_centavos - valor_anulado
     filtros = [
         TceDespesaIngestionRun.status == STATUS_PUBLICADO,
+        executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
         TceEmpenho.natureza_considerada.is_(True),
         TceEmpenho.data_empenho >= data_inicial,
         TceEmpenho.data_empenho <= data_final,

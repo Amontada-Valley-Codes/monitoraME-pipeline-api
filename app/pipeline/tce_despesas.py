@@ -8,6 +8,8 @@ import logging
 from app.pipeline.cleaners import tce_despesas as cleaner
 from app.pipeline.ingestion import tce
 from app.pipeline.persistence import tce_despesas as persistence
+from app.pipeline.persistence import tce_orgaos
+from app.core import orm
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,20 @@ def executar_ingestao_competencia_tce(
         )
         empenhos = cleaner.mapear_notas_empenhos(empenhos_brutos)
         anulacoes = cleaner.mapear_notas_anulacoes_empenhos(anulacoes_brutas)
+        exercicios = sorted({int(item["exercicio_orcamento"]) for item in empenhos})
+        cadastros = {
+            exercicio: tce.buscar_documentos_exercicio(
+                "orgaos", codigo_municipio=codigo_municipio_tce,
+                exercicio=exercicio // 100,
+            )
+            for exercicio in exercicios
+        }
+        with orm.main_session() as session:
+            for exercicio in exercicios:
+                tce_orgaos.salvar_classificacoes(
+                    session, codigo_municipio_tce=codigo_municipio_tce,
+                    exercicio_orcamento=exercicio, orgaos=cadastros[exercicio],
+                )
     except Exception as error:
         logger.error(
             "Falha na coleta ou normalização da competência do TCE-CE",

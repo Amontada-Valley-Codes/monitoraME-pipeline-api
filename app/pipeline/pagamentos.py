@@ -15,6 +15,7 @@ from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
 from app.pipeline.cleaners.tce_despesas import valor_para_centavos
 from app.pipeline.ingestion import fornecedores, tce
+from app.pipeline.persistence.tce_orgaos import classificar_orgao
 from app.utils import normalizar_cnpj, normalizar_texto, validar_cnpj
 
 CAMPOS_CHAVE = (
@@ -84,16 +85,17 @@ def conciliar_pagamentos(
     executivo_municipal = set()
     classificacoes_orgaos = []
     for orgao in orgaos:
-        codigo = _texto(orgao, "codigo_orgao")
+        classificacao = classificar_orgao(orgao)
+        codigo = str(classificacao["codigo_orgao"])
         if codigo in cadastro:
             raise ValueError(f"Orgao duplicado: {codigo}.")
         cadastro[codigo] = orgao
         nome = normalizar_texto(_texto(orgao, "nome_orgao"))
-        tipo = _texto(orgao, "codigo_tipo_unidade")
+        tipo = str(orgao.get("codigo_tipo_unidade") or "").strip() or None
         # codigo_tipo_unidade varia entre cadastros/anos. O nome e os dados
         # vinculados identificam o Legislativo; o codigo do tipo e registrado
         # como evidência, nunca tratado como regra universal.
-        eh_camara = any(token in nome for token in ("CAMARA", "LEGISLATIVO"))
+        eh_camara = classificacao["classificacao"] == "CAMARA"
         classificacoes_orgaos.append({
             "codigo_orgao": codigo,
             "nome_orgao": orgao["nome_orgao"],
@@ -106,7 +108,7 @@ def conciliar_pagamentos(
         })
         if eh_camara:
             camaras.add(codigo)
-        else:
+        elif classificacao["confianca"] == "ALTA":
             executivo_municipal.add(codigo)
     if not camaras:
         raise ValueError("Cadastro nao permite identificar a Camara; revisar orgaos.")
