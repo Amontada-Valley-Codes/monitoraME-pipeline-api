@@ -406,10 +406,12 @@ def buscar_itens_contratacao(
 
 
 def buscar_documentos_exercicio(
-    endpoint: str, *, codigo_municipio: str, exercicio: int, competencia: str | None = None,
+    endpoint: str, *, codigo_municipio: str, exercicio: int,
+    competencia: str | None = None, codigo_orgao: str | None = None,
+    codigo_unidade_orcamentaria: str | None = None,
 ) -> list[dict[str, Any]]:
     """Consulta SIM com exercicio fixo, inclusive referencias de anos posteriores."""
-    if endpoint not in {"orgaos", "notas_empenhos", "notas_pagamentos"}:
+    if endpoint not in {"orgaos", "unidades_orcamentarias", "notas_empenhos", "notas_pagamentos"}:
         raise ValueError("Endpoint nao suportado para conciliacao de pagamentos.")
     if isinstance(exercicio, bool) or not isinstance(exercicio, int) or not 1 <= exercicio <= 9999:
         raise ValueError("Exercicio deve ser um ano de quatro digitos.")
@@ -419,11 +421,15 @@ def buscar_documentos_exercicio(
         "codigo_municipio": str(codigo_municipio).strip(),
         "exercicio_orcamento": exercicio * 100,
     }
+    if codigo_orgao is not None:
+        params["codigo_orgao"] = str(codigo_orgao)
+    if codigo_unidade_orcamentaria is not None:
+        params["codigo_unidade_orcamentaria"] = str(codigo_unidade_orcamentaria)
     if competencia is not None:
         params["data_referencia_doc"] = parametros_competencia_tce(
             competencia, codigo_municipio,
         )["data_referencia_doc"]
-    elif endpoint != "orgaos":
+    elif endpoint not in {"orgaos", "unidades_orcamentarias"}:
         raise ValueError("Competencia obrigatoria para documentos financeiros.")
     return listar_registros(
         endpoint, params, preservar_decimais=True, falhar_ao_esgotar=True,

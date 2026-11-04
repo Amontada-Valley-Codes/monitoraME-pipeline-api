@@ -7,6 +7,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/monitorame_test")
 os.environ.setdefault("LOG_DATABASE_URL", "postgresql://localhost:5432/monitorame_logs_test")
@@ -153,27 +155,15 @@ class MetadadosCargaTceTest(unittest.TestCase):
 
 
 class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
-    @patch("app.pipeline.analisys.tce_despesas_pipeline.executar_ingestao_competencia_tce")
-    @patch("app.pipeline.analisys.fornecedores.obter_fornecedores_com_cache")
-    @patch("app.pipeline.analisys.database.listar_fornecedores_cache", return_value={})
-    @patch("app.pipeline.analisys.database.localizar_municipio_tce", return_value={
-        "codigo_municipio_tce": "010",
-        "nome": "Amontada",
-        "uf": "CE",
-    })
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados", return_value=[])
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_publicacoes_competencias", return_value={})
+    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
     def test_sem_carga_retorna_zero_monetario_taxas_nulas_sem_ingestao(
         self,
-        publicacoes,
-        falhas,
-        empenhos,
-        municipio,
-        cache_fornecedores,
-        obter_fornecedores,
-        ingerir,
+        montar_base,
     ) -> None:
+        montar_base.return_value = (
+            pd.DataFrame(columns=["ano_mes", "valor", "porte_fornecedor", "origem_geografica", "natureza_despesa_codigo"]),
+            {"data_available": False, "is_stale": False, "totais": {"pagamentos": 0, "despesas": 0}},
+        )
         resposta = analisys.consultar_overview_tce(
             data_inicial="2025-01-01",
             data_final="2025-01-31",
@@ -184,13 +174,9 @@ class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
         self.assertFalse(resposta["is_stale"])
         self.assertEqual(resposta["kpis"]["total_compras_ME_centavos"], 0)
         self.assertIsNone(resposta["kpis"]["percentual_participacao_me"])
-        publicacoes.assert_called_once()
-        falhas.assert_called_once()
-        empenhos.assert_not_called()
-        municipio.assert_called_once()
-        cache_fornecedores.assert_not_called()
-        obter_fornecedores.assert_not_called()
-        ingerir.assert_not_called()
+        montar_base.assert_called_once_with(
+            "2025-01-01", "2025-01-31", codigo_municipio="010",
+        )
 
     @patch("app.pipeline.analisys.tce_despesas_pipeline.executar_ingestao_competencia_tce")
     @patch("app.pipeline.analisys.database.localizar_municipio_tce", return_value={

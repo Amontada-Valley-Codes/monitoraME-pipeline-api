@@ -120,6 +120,16 @@ class PagamentosTest(unittest.TestCase):
         self.assertEqual(audit["orgaos_executivo_municipal"], ["02"])
         self.assertEqual(audit["classificacoes_orgaos"][0]["regra"], "NOME_ORGAO_NORMALIZADO")
 
+    def test_classificacao_reconhece_variacoes_textuais_do_executivo(self):
+        for orgao in [
+            {"codigo_orgao": "03", "nome_orgao": "Controlodaria Geral do Municipio e Ouvidoria", "codigo_tipo_unidade": "03"},
+            {"codigo_orgao": "10", "nome_orgao": "Sec. de Agronomia, Pesca, Irrigacao e Desenv. Econ. e Rural", "codigo_tipo_unidade": "03"},
+        ]:
+            with self.subTest(codigo=orgao["codigo_orgao"]):
+                classificacao = p.classificar_orgao(orgao)
+                self.assertEqual(classificacao["classificacao"], "EXECUTIVO_MUNICIPAL")
+                self.assertEqual(classificacao["confianca"], "ALTA")
+
     def test_documentos_nao_cnpj_preservam_total(self):
         for tipo, doc in [("2", "02530104000133"), ("1", "2530104000133"),
                           ("1", "02530104000134"), ("1", "02530104000133!")]:
@@ -208,16 +218,38 @@ class PagamentosTest(unittest.TestCase):
         )
         self.assertEqual(resultado["conferencia_portal"]["divergencia_centavos_por_elemento"],
                          {elemento: 0 for elemento in p.REFERENCIA_PORTAL_ACARAU_2025})
+        self.assertTrue(resultado["conferencia_portal"]["bate"])
+        self.assertFalse(resultado["indicador_me_validado"])
         self.assertEqual(resultado["controle_financeiro"]["total_centavos"], 13_531_152_944)
+        ps[0]["valor_nota_pagamento"] = "66318441.20"
+        divergente = p.consultar_pagamentos_prefeitura(
+            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
+            consultar_porte=False, coleta=coleta,
+        )
+        self.assertFalse(divergente["conferencia_portal"]["bate"])
+        self.assertFalse(divergente["indicador_me_validado"])
 
     @patch.object(p.tce, "buscar_documentos_exercicio")
     def test_coleta_ano_seguinte_exercicio_fixo_e_mes_vazio_nao_interrompe(self, buscar):
-        buscar.side_effect = lambda endpoint, **kw: ORGAOS if endpoint == "orgaos" else []
+        def responder(endpoint, **kwargs):
+            if endpoint == "orgaos":
+                return ORGAOS
+            if endpoint == "unidades_orcamentarias":
+                return [
+                    {"codigo_orgao": "77", "codigo_unidade_orcamentaria": "01"},
+                    {"codigo_orgao": "01", "codigo_unidade_orcamentaria": "01"},
+                ]
+            return []
+        buscar.side_effect = responder
         result = p.consultar_pagamentos_prefeitura(codigo_municipio="004", exercicio=2025, referencia_final="2026-09", consultar_porte=False)
         calls = buscar.call_args_list
-        self.assertEqual(len(calls), 34)
+        self.assertEqual(len(calls), 56)
         self.assertTrue(all(c.kwargs["exercicio"] == 2025 for c in calls))
-        self.assertEqual(calls[-1].kwargs["competencia"], "2026-09")
+        pagamentos = [c for c in calls if c.args[0] == "notas_pagamentos"]
+        self.assertEqual(len(pagamentos), 42)
+        self.assertTrue(any(c.kwargs["competencia"] == "2026-09" for c in pagamentos))
+        self.assertEqual({c.kwargs["codigo_orgao"] for c in pagamentos}, {"01", "77"})
+        self.assertTrue(all("codigo_unidade_orcamentaria" not in c.kwargs for c in pagamentos))
         self.assertEqual(result["referencias_pagamentos"], ["2025-01", "2026-09"])
         self.assertEqual(p._referencias("2025-12", "2026-01"), ["2025-12", "2026-01"])
         with self.assertRaises(ValueError):

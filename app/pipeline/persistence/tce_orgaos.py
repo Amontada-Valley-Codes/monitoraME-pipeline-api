@@ -24,8 +24,8 @@ def classificar_orgao(orgao: dict[str, Any]) -> dict[str, str | None]:
     camara = "CAMARA" in tokens or "LEGISLATIVO" in tokens
     certeza = any(token in tokens for token in (
         "CAMARA", "LEGISLATIVO", "PREFEITURA", "SECRETARIA", "GABINETE",
-        "AUTARQUIA", "FUNDO", "CONTROLADORIA", "PROCURADORIA", "INSTITUTO",
-    ))
+        "AUTARQUIA", "FUNDO", "PROCURADORIA", "INSTITUTO", "SEC",
+    )) or any(token.startswith("CONTROL") for token in tokens)
     return {
         "codigo_orgao": codigo,
         "nome_orgao": nome_original,

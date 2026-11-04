@@ -10,7 +10,15 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.core import database, orm
-from app.core.models import TcePagamento, TcePagamentoIngestionRun
+from app.core.config import NATUREZAS_DESPESA_MONITORADAS
+from app.core.models import (
+    TceDespesaIngestionRun,
+    TceEmpenho,
+    TceMunicipio,
+    TcePagamento,
+    TcePagamentoIngestionRun,
+    TceOrgaoClassificacao,
+)
 
 
 STATUS_EM_VALIDACAO = "EM_VALIDACAO"
@@ -58,6 +66,156 @@ def _run_publicado(
             TcePagamentoIngestionRun.status == STATUS_PUBLICADO,
         ).with_for_update()
     )
+
+
+def listar_pagamentos_para_analise(
+    *, codigo_municipio_tce: str, exercicio_orcamento: int,
+    data_inicial: date, data_final: date,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Le pagamentos publicados no intervalo civil e liga dimensoes ao empenho."""
+    database.init_db()
+    if data_inicial > data_final:
+        raise ValueError("data_inicial deve ser menor ou igual a data_final.")
+    competencias = []
+    cursor = date(data_inicial.year, data_inicial.month, 1)
+    fim = date(data_final.year, data_final.month, 1)
+    while cursor <= fim:
+        competencias.append(cursor.strftime("%Y-%m"))
+        cursor = date(cursor.year + (cursor.month == 12), cursor.month % 12 + 1, 1)
+    with orm.main_session() as session:
+        runs = session.scalars(select(TcePagamentoIngestionRun).where(
+            TcePagamentoIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
+            TcePagamentoIngestionRun.exercicio_orcamento == exercicio_orcamento,
+            TcePagamentoIngestionRun.competencia.in_(competencias),
+            TcePagamentoIngestionRun.status == STATUS_PUBLICADO,
+        )).all()
+        por_competencia = {run.competencia: run for run in runs}
+        ausentes = [item for item in competencias if item not in por_competencia]
+        if ausentes:
+            return [], ausentes
+        classificacoes = session.scalars(select(TceOrgaoClassificacao).where(
+            TceOrgaoClassificacao.codigo_municipio_tce == codigo_municipio_tce,
+            TceOrgaoClassificacao.exercicio_orcamento == exercicio_orcamento,
+        )).all()
+        executivo = {
+            item.codigo_orgao for item in classificacoes
+            if item.classificacao == "EXECUTIVO_MUNICIPAL" and item.confianca == "ALTA"
+        }
+        camara = {item.codigo_orgao for item in classificacoes if item.classificacao == "CAMARA"}
+        if not executivo or not camara:
+            raise ValueError("Classificacao de orgaos incompleta para calcular pagamentos da Prefeitura.")
+        referencia_inicial = data_inicial.year * 100 + data_inicial.month
+        referencia_final = data_final.year * 100 + data_final.month
+        pagamentos = session.scalars(select(TcePagamento).where(
+            TcePagamento.run_id.in_([run.id for run in runs]),
+            TcePagamento.codigo_orgao.in_(executivo),
+            TcePagamento.estado_de_estornado == "0",
+            TcePagamento.data_referencia_doc >= referencia_inicial,
+            TcePagamento.data_referencia_doc <= referencia_final,
+        )).all()
+        chaves = {item.chave_empenho for item in pagamentos}
+        empenhos = session.scalars(select(TceEmpenho).join(
+            TceDespesaIngestionRun, TceEmpenho.run_id == TceDespesaIngestionRun.id,
+        ).where(
+            TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
+            TceDespesaIngestionRun.status == "PUBLICADO",
+            TceEmpenho.exercicio_orcamento == exercicio_orcamento,
+            TceEmpenho.chave_empenho.in_(chaves),
+        )).all() if chaves else []
+        indice = {item.chave_empenho: item for item in empenhos}
+        ausentes_empenho = chaves - indice.keys()
+        if ausentes_empenho:
+            raise ValueError(f"Notas pagas sem empenho publicado ({len(ausentes_empenho)} chaves).")
+        resultado = []
+        for pagamento in pagamentos:
+            empenho = indice[pagamento.chave_empenho]
+            elemento = str(empenho.codigo_elemento_despesa or "")
+            codigo_elemento = elemento[4:6] if len(elemento) == 8 else elemento
+            if codigo_elemento not in NATUREZAS_DESPESA_MONITORADAS:
+                continue
+            competencia_data = date(
+                pagamento.data_referencia_doc // 100,
+                pagamento.data_referencia_doc % 100,
+                1,
+            )
+            resultado.append({
+                "run_id": pagamento.run_id,
+                "chave_pagamento": pagamento.chave_pagamento,
+                "chave_empenho": pagamento.chave_empenho,
+                "data_referencia": competencia_data.isoformat(),
+                "ano_mes": competencia_data.strftime("%Y-%m"),
+                "data_nota_pagamento": pagamento.data_nota_pagamento.isoformat(),
+                "valor_centavos": int(pagamento.valor_nota_pagamento_centavos),
+                "natureza_despesa_codigo": codigo_elemento,
+                "cnpj_fornecedor": empenho.cnpj_fornecedor,
+                "documento_fornecedor": empenho.documento_fornecedor,
+                "tipo_documento_fornecedor": empenho.tipo_documento_fornecedor,
+                "nome_fornecedor": empenho.nome_fornecedor,
+                "codigo_municipio_tce": codigo_municipio_tce,
+            })
+    return resultado, []
+
+
+def listar_pagamentos_municipais_para_analise(
+    *, codigo_municipio_tce: str, data_inicial: date, data_final: date,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Combina exercícios orçamentários publicados no período de pagamento."""
+    if data_inicial > data_final:
+        raise ValueError("data_inicial deve ser menor ou igual a data_final.")
+    database.init_db()
+    with orm.main_session() as session:
+        exercicios = session.execute(select(TcePagamentoIngestionRun.exercicio_orcamento).where(
+            TcePagamentoIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
+            TcePagamentoIngestionRun.status == STATUS_PUBLICADO,
+        ).distinct().order_by(TcePagamentoIngestionRun.exercicio_orcamento)).scalars().all()
+    if not exercicios:
+        ausentes = []
+        cursor = date(data_inicial.year, data_inicial.month, 1)
+        fim = date(data_final.year, data_final.month, 1)
+        while cursor <= fim:
+            ausentes.append({"exercicio_orcamento": "NAO_PUBLICADO", "competencia": cursor.strftime("%Y-%m")})
+            cursor = date(cursor.year + (cursor.month == 12), cursor.month % 12 + 1, 1)
+        return [], ausentes
+    registros = []
+    ausentes = []
+    for exercicio in exercicios:
+        pagamentos, faltantes = listar_pagamentos_para_analise(
+            codigo_municipio_tce=codigo_municipio_tce,
+            exercicio_orcamento=exercicio,
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
+        registros.extend(pagamentos)
+        ausentes.extend({"exercicio_orcamento": str(exercicio), "competencia": item}
+                        for item in faltantes)
+    return registros, ausentes
+
+
+def listar_pagamentos_estaduais_para_analise(
+    *, data_inicial: date, data_final: date, uf: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Lista pagamentos estaduais somente quando todos os lotes municipais existem."""
+    from app.core.models import IbgeMunicipio
+
+    database.init_db()
+    if data_inicial > data_final:
+        raise ValueError("data_inicial deve ser menor ou igual a data_final.")
+    with orm.main_session() as session:
+        municipios = session.execute(select(TceMunicipio.codigo_municipio_tce).join(
+            IbgeMunicipio,
+            IbgeMunicipio.codigo_municipio == TceMunicipio.codigo_municipio_ibge,
+        ).where(IbgeMunicipio.uf == uf.upper()).order_by(TceMunicipio.codigo_municipio_tce)).scalars().all()
+    if not municipios:
+        raise ValueError(f"Nenhum municipio TCE cadastrado para UF {uf}.")
+    registros = []
+    ausentes = []
+    for codigo in municipios:
+        pagamentos, faltantes = listar_pagamentos_municipais_para_analise(
+            codigo_municipio_tce=str(codigo), data_inicial=data_inicial, data_final=data_final,
+        )
+        registros.extend(pagamentos)
+        ausentes.extend({"codigo_municipio": str(codigo), **item} for item in faltantes)
+    return registros, ausentes
 
 
 def _deduplicar(registros: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
