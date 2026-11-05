@@ -557,6 +557,10 @@ O banco principal mantém:
 - `tce_despesa_ingestion_runs`, com o estado de cada carga mensal;
 - `tce_empenhos`, com as notas de empenho versionadas por lote;
 - `tce_anulacoes_empenhos`, com as anulações vinculadas aos empenhos.
+- `tce_despesa_calculo_runs` e `tce_despesas_calculadas`, com snapshots
+  imutáveis dos empenhos, anulações e pagamentos após o cálculo. Apenas uma
+  versão por município/exercício fica publicada; correções conservam o
+  histórico substituído.
 - `raw_pncp_records`, com versões originais JSONB do PNCP, e `ingestion_jobs`,
   cuja criação do job `normalize` é atômica com a gravação RAW.
 
@@ -575,6 +579,21 @@ o último dado conhecido é preservado e devolvido com
 O banco de logs mantém `logs_ingestao`, para auditoria das coletas, e
 `logs_aplicacao`, para alertas operacionais. Os dois bancos usam ambientes
 Alembic independentes.
+
+### Publicação de despesas calculadas
+
+O cálculo e sua publicação são separados das rotas HTTP somente leitura. A
+equipe de Análise de Dados entrega um snapshot JSON completo por município e
+exercício, e o pipeline o publica com:
+
+```bash
+python scripts/persistir_tce_despesas_calculadas.py --arquivo resultado.json
+```
+
+Reprocessar o mesmo conteúdo e versão do algoritmo não duplica registros.
+Correções criam uma nova versão vigente e preservam indefinidamente a anterior.
+O contrato de campos, vínculos, períodos, valores, porte e consultas está em
+[`docs/despesas-calculadas-tce.md`](docs/despesas-calculadas-tce.md).
 
 ## Observabilidade
 

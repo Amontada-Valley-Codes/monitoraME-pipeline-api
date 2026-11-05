@@ -218,6 +218,26 @@ class AlembicSetupTest(unittest.TestCase):
         self.assertEqual(modulo.down_revision, "0008_pncp_raw_records")
         self.assertIn("pncp_cursors", migration.read_text(encoding="utf-8"))
 
+    def test_migration_persiste_despesas_calculadas_com_historico(self) -> None:
+        migration = (
+            ROOT
+            / "alembic"
+            / "main"
+            / "versions"
+            / "0031_tce_despesas_calculadas.py"
+        )
+        modulo = _carregar_migration(migration)
+        texto = migration.read_text(encoding="utf-8")
+
+        self.assertEqual(modulo.revision, "0031_tce_despesas_calculadas")
+        self.assertEqual(modulo.down_revision, "0030_api_response_cache_sem_ttl")
+        self.assertIn('"tce_despesa_calculo_runs"', texto)
+        self.assertIn('"tce_despesas_calculadas"', texto)
+        self.assertIn("registro_pai_id", texto)
+        self.assertIn("status = 'PUBLICADO'", texto)
+        self.assertTrue(callable(modulo.upgrade))
+        self.assertTrue(callable(modulo.downgrade))
+
     def test_migration_adiciona_normalizacao_pncp(self) -> None:
         migration = ROOT / "alembic" / "main" / "versions" / "0010_pncp_normalizacao.py"
         self.assertIn("pncp_oportunidades", migration.read_text(encoding="utf-8"))
