@@ -81,6 +81,13 @@ def _competencias_entre(inicio: str, fim: str) -> list[str]:
     return competencias
 
 
+def _competencia_inicial_orcamentaria(data_inicial: date, exercicio_orcamento: int) -> str:
+    """Nao exige cobertura antes do ano do proprio exercicio orcamentario."""
+    inicio_solicitado = data_inicial.strftime("%Y-%m")
+    inicio_exercicio = f"{exercicio_orcamento // 100:04d}-01"
+    return max(inicio_solicitado, inicio_exercicio)
+
+
 def listar_pagamentos_para_analise(
     *, codigo_municipio_tce: str, exercicio_orcamento: int,
     data_inicial: date, data_final: date,
@@ -90,7 +97,9 @@ def listar_pagamentos_para_analise(
     database.init_db()
     if data_inicial > data_final:
         raise ValueError("data_inicial deve ser menor ou igual a data_final.")
-    competencia_inicial = data_inicial.strftime("%Y-%m")
+    competencia_inicial = _competencia_inicial_orcamentaria(
+        data_inicial, exercicio_orcamento,
+    )
     competencia_final_solicitada = data_final.strftime("%Y-%m")
     with orm.main_session() as session:
         runs = session.scalars(select(TcePagamentoIngestionRun).where(
@@ -132,36 +141,41 @@ def listar_pagamentos_para_analise(
             TcePagamento.data_referencia_doc <= referencia_final,
         )).all()
         chaves = {item.chave_empenho for item in pagamentos}
-        empenhos = session.scalars(select(TceEmpenho).join(
+        empenhos = session.execute(select(
+            TceEmpenho,
+            TceDespesaIngestionRun.competencia.label("competencia_empenho"),
+        ).join(
             TceDespesaIngestionRun, TceEmpenho.run_id == TceDespesaIngestionRun.id,
         ).where(
             TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
-            TceDespesaIngestionRun.status == "PUBLICADO",
+            TceDespesaIngestionRun.status == STATUS_PUBLICADO,
             TceEmpenho.exercicio_orcamento == exercicio_orcamento,
             TceEmpenho.chave_empenho.in_(chaves),
-        )).all() if chaves else []
-        indice = {item.chave_empenho: item for item in empenhos}
+        ).order_by(TceDespesaIngestionRun.competencia)).all() if chaves else []
+        indice: dict[str, tuple[TceEmpenho, str]] = {}
+        for empenho, competencia in empenhos:
+            # Um empenho pode reaparecer em snapshots mensais; sua referencia
+            # de origem e a primeira competencia documental publicada.
+            indice.setdefault(empenho.chave_empenho, (empenho, competencia))
         ausentes_empenho = chaves - indice.keys()
         if ausentes_empenho:
             raise ValueError(f"Notas pagas sem empenho publicado ({len(ausentes_empenho)} chaves).")
         resultado = []
         for pagamento in pagamentos:
-            empenho = indice[pagamento.chave_empenho]
+            empenho, competencia = indice[pagamento.chave_empenho]
             elemento = str(empenho.codigo_elemento_despesa or "")
             codigo_elemento = elemento[4:6] if len(elemento) == 8 else elemento
             if codigo_elemento not in NATUREZAS_DESPESA_MONITORADAS:
                 continue
-            competencia_data = date(
-                pagamento.data_referencia_doc // 100,
-                pagamento.data_referencia_doc % 100,
-                1,
-            )
+            competencia_data = date.fromisoformat(f"{competencia}-01")
             resultado.append({
+                "exercicio_orcamento": exercicio_orcamento,
                 "run_id": pagamento.run_id,
                 "chave_pagamento": pagamento.chave_pagamento,
                 "chave_empenho": pagamento.chave_empenho,
                 "data_referencia": competencia_data.isoformat(),
-                "ano_mes": competencia_data.strftime("%Y-%m"),
+                "ano_mes": competencia,
+                "data_referencia_doc_pagamento": pagamento.data_referencia_doc,
                 "data_nota_pagamento": pagamento.data_nota_pagamento.isoformat(),
                 "valor_centavos": int(pagamento.valor_nota_pagamento_centavos),
                 "natureza_despesa_codigo": codigo_elemento,

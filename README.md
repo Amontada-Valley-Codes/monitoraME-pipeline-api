@@ -65,7 +65,6 @@ Variáveis usadas pela aplicação:
 | `LOG_LEVEL` | Não | Nível dos logs operacionais (`DEBUG`, `INFO`, `WARNING`, `ERROR`); padrão `INFO`. |
 | `DATABASE_SSLMODE` | Não | Modo SSL do banco principal; use `disable` no PostgreSQL local. |
 | `LOG_DATABASE_SSLMODE` | Não | Modo SSL do banco de logs; use `disable` localmente. |
-| `API_RESPONSE_CACHE_TTL_SECONDS` | Não | Tempo em segundos de validade do cache JSON das consultas; padrão `3600`. |
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
@@ -99,10 +98,11 @@ As respostas JSON de sucesso das rotas `/pipeline/*` e `/pncp/*` são
 armazenadas na tabela `api_response_cache`, no banco principal. A chave considera
 método, caminho, query string e corpo da requisição; as consultas retornam
 `X-Cache: HIT` quando atendidas pelo cache e `X-Cache: MISS` quando calculadas.
+As entradas permanecem armazenadas sem TTL até serem substituídas explicitamente.
 Para recalcular uma resposta e substituir sua entrada atual, envie
-`X-Force-Refresh: true` ou `Cache-Control: no-cache`; a chamada retorna
-`X-Cache: MISS`. Erros e rotas de saúde não são armazenados. O TTL padrão é de
-uma hora e pode ser alterado por `API_RESPONSE_CACHE_TTL_SECONDS`.
+`X-Refresh-Force: true` (também aceito: `X-Force-Refresh: true`) ou
+`Cache-Control: no-cache`; a chamada retorna `X-Cache: MISS`. Erros e rotas de
+saúde não são armazenados.
 
 Inicie a aplicação completa e confira seu estado:
 
@@ -399,6 +399,8 @@ Município/competência sem publicação não é tratado como valor zero.
 `GET /pipeline/tce/overview` recebe `data_inicial` e `data_final`; sem `codigo_municipio`, consolida os lotes publicados do Ceara. O KPI e o detalhamento geografico consideram somente ME. MEI fica excluido do recorte de ME e agregado em `OUTROS_PORTES` junto com EPP e DEMAIS na participacao por porte. A participacao de ME usa ME sobre ME + MEI + EPP + DEMAIS; portes nao identificados ficam fora do denominador.
 
 O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de ME. Os demais valores monetarios do overview tambem sao finais em centavos. A resposta nao expoe valores brutos, anulacoes, valores liquidos nem medias.
+
+No overview estadual, `destino_recursos` classifica diretamente pela UF da sede do fornecedor: `NO_CEARA`, `FORA_DO_CEARA` e `NAO_IDENTIFICADA`. A categoria estadual não depende do município comprador nem exige que o município de sede esteja identificado quando a UF é conhecida. O overview municipal mantém a distinção entre fornecedor do município comprador e de outro município do Ceará.
 
 O parametro opcional `codigo_municipio` mantem o fluxo municipal existente. `GET /pipeline/tce/overview/municipal` tambem mantem seu contrato por portes.
 
