@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core import orm
@@ -137,14 +137,6 @@ def init_db() -> None:
     _schema_initialized = True
 
 
-def salvar_municipio_ibge(municipio: dict[str, Any], uf: str | None = None) -> None:
-    init_db()
-    registro = _montar_registro_municipio_ibge(municipio, uf)
-
-    with orm.main_session() as session:
-        session.merge(IbgeMunicipio(**registro))
-
-
 def salvar_municipios_ibge(municipios: list[dict[str, Any]], uf: str | None = None) -> int:
     init_db()
     registros: list[dict[str, Any]] = []
@@ -184,18 +176,6 @@ def localizar_municipio_ibge(codigo_municipio: str | int) -> dict[str, Any] | No
     init_db()
     with orm.main_session() as session:
         return _municipio_to_dict(session.get(IbgeMunicipio, str(codigo_municipio)))
-
-
-def localizar_municipio_por_nome_ibge(nome_municipio: str, uf: str) -> dict[str, Any] | None:
-    init_db()
-    with orm.main_session() as session:
-        municipio = session.scalars(
-            select(IbgeMunicipio).where(
-                func.lower(IbgeMunicipio.nome) == func.lower(nome_municipio),
-                IbgeMunicipio.uf == uf.upper(),
-            )
-        ).first()
-        return _municipio_to_dict(municipio)
 
 
 def salvar_municipios_tce(municipios: list[dict[str, Any]], uf: str) -> int:
@@ -362,12 +342,10 @@ __all__ = [
     "listar_municipios_ibge",
     "localizar_fornecedor_me",
     "localizar_municipio_ibge",
-    "localizar_municipio_por_nome_ibge",
     "localizar_municipio_tce",
     "localizar_municipio_tce_por_ibge",
     "salvar_fornecedor_me",
     "salvar_fornecedores_cache",
-    "salvar_municipio_ibge",
     "salvar_municipios_ibge",
     "salvar_municipios_tce",
 ]

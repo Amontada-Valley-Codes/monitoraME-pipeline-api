@@ -130,9 +130,3 @@ def localizar_municipio(codigo_ibge: str | int, uf: str = "CE") -> dict[str, Any
             return municipio
 
     return None
-
-
-def sincronizar_municipios(uf: str = "CE") -> int:
-    dados = buscar_dados_ibge(f"estados/{uf}/municipios", {"orderBy": "nome"})
-    municipios = dados if isinstance(dados, list) else []
-    return database.salvar_municipios_ibge(municipios, uf)

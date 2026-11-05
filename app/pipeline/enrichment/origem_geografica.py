@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import unicodedata
 
-import pandas as pd
-
-
 NIVEL_MESMO_MUNICIPIO = "Sediado no município comprador"
 NIVEL_OUTRO_MUNICIPIO_CE = "Outro município do Ceará"
 NIVEL_FORA_DO_ESTADO = "Fora do estado"
@@ -32,31 +29,9 @@ def classificar_origem_geografica(
     return NIVEL_MESMO_MUNICIPIO if mesmo_municipio else NIVEL_OUTRO_MUNICIPIO_CE
 
 
-def classificar_dataframe(
-    df: pd.DataFrame,
-    col_municipio_comprador: str = "municipio_comprador",
-    col_uf_fornecedor: str = "uf_fornecedor",
-    col_municipio_fornecedor: str = "municipio_fornecedor",
-    uf_comprador: str = "CE",
-    nova_coluna: str = "origem_geografica",
-) -> pd.DataFrame:
-    """
-    Aplica a classificacao de origem geografica linha a linha.
-    """
-    df = df.copy()
-    df[nova_coluna] = df.apply(
-        lambda r: classificar_origem_geografica(
-            r[col_municipio_comprador], r[col_uf_fornecedor], r[col_municipio_fornecedor], uf_comprador
-        ),
-        axis=1,
-    )
-    return df
-
-
 __all__ = [
     "NIVEL_FORA_DO_ESTADO",
     "NIVEL_MESMO_MUNICIPIO",
     "NIVEL_OUTRO_MUNICIPIO_CE",
-    "classificar_dataframe",
     "classificar_origem_geografica",
 ]

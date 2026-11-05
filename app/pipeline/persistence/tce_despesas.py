@@ -310,13 +310,6 @@ def _remover_lotes_expirados_session(session: Session, agora: datetime) -> int:
     return int(resultado.rowcount or 0)
 
 
-def remover_lotes_expirados(*, agora: datetime | None = None) -> int:
-    database.init_db()
-    instante = agora or _agora_utc()
-    with orm.main_session() as session:
-        return _remover_lotes_expirados_session(session, instante)
-
-
 def listar_publicacoes_competencias(
     *,
     codigo_municipio_tce: str,
@@ -570,57 +563,6 @@ def listar_cnpjs_fornecedores_publicados(
     with orm.main_session() as session:
         cnpjs = session.scalars(consulta).all()
     return [str(cnpj) for cnpj in cnpjs if cnpj]
-
-
-def listar_publicacoes_competencias_estado(
-    *,
-    competencias: Iterable[str],
-    uf: str,
-) -> list[dict[str, Any]]:
-    """Lista as particoes municipais publicadas no periodo para uma UF."""
-    competencias_unicas = tuple(dict.fromkeys(str(item) for item in competencias))
-    if not competencias_unicas:
-        return []
-    database.init_db()
-    consulta = (
-        select(
-            TceDespesaIngestionRun.codigo_municipio_tce,
-            TceMunicipio.codigo_municipio_ibge,
-            IbgeMunicipio.nome.label("municipio"),
-            IbgeMunicipio.uf,
-            TceDespesaIngestionRun.competencia,
-            TceDespesaIngestionRun.publicado_em,
-        )
-        .join(
-            TceMunicipio,
-            TceMunicipio.codigo_municipio_tce
-            == TceDespesaIngestionRun.codigo_municipio_tce,
-        )
-        .join(
-            IbgeMunicipio,
-            IbgeMunicipio.codigo_municipio == TceMunicipio.codigo_municipio_ibge,
-        )
-        .where(
-            TceDespesaIngestionRun.status == STATUS_PUBLICADO,
-            TceDespesaIngestionRun.competencia.in_(competencias_unicas),
-            IbgeMunicipio.uf == uf.upper(),
-        )
-        .order_by(
-            TceDespesaIngestionRun.competencia,
-            TceDespesaIngestionRun.codigo_municipio_tce,
-        )
-    )
-    with orm.main_session() as session:
-        registros = session.execute(consulta).mappings().all()
-    return [
-        {
-            **dict(item),
-            "publicado_em": item["publicado_em"].isoformat()
-            if item.get("publicado_em") is not None
-            else None,
-        }
-        for item in registros
-    ]
 
 
 def _texto_normalizado_sql(expressao: Any) -> Any:
@@ -906,43 +848,6 @@ def obter_empenho_publicado_por_chave(chave_empenho: str) -> dict[str, Any] | No
     return _serializar_registro_empenho(resultado)
 
 
-def listar_anulacoes_publicadas_por_empenho(
-    *,
-    chave_empenho: str,
-    codigo_municipio_tce: str,
-) -> list[dict[str, Any]]:
-    database.init_db()
-    consulta = (
-        select(
-            TceAnulacaoEmpenho.chave_anulacao,
-            TceAnulacaoEmpenho.numero_anulacao,
-            TceAnulacaoEmpenho.data_anulacao,
-            TceAnulacaoEmpenho.modalidade_anulacao,
-            TceAnulacaoEmpenho.descricao_anulacao,
-            TceAnulacaoEmpenho.valor_anulacao_centavos,
-        )
-        .join(TceDespesaIngestionRun, TceAnulacaoEmpenho.run_id == TceDespesaIngestionRun.id)
-        .join(TceEmpenho, TceEmpenho.chave_empenho == TceAnulacaoEmpenho.chave_empenho)
-        .where(
-            TceDespesaIngestionRun.status == STATUS_PUBLICADO,
-            TceDespesaIngestionRun.codigo_municipio_tce == codigo_municipio_tce,
-            executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),
-            TceAnulacaoEmpenho.chave_empenho == chave_empenho,
-        )
-        .order_by(TceAnulacaoEmpenho.data_anulacao, TceAnulacaoEmpenho.chave_anulacao)
-    )
-    with orm.main_session() as session:
-        registros = session.execute(consulta).mappings().all()
-    return [
-        {
-            **dict(item),
-            "data_anulacao": item["data_anulacao"].isoformat(),
-            "valor_anulacao_centavos": int(item["valor_anulacao_centavos"]),
-        }
-        for item in registros
-    ]
-
-
 def registrar_lote_rejeitado(
     *,
     codigo_municipio_tce: str,
@@ -1068,15 +973,12 @@ def publicar_lote_tce(
 __all__ = [
     "LoteTceValidado",
     "ResultadoPublicacaoTce",
-    "listar_anulacoes_publicadas_por_empenho",
     "listar_cnpjs_fornecedores_publicados",
     "listar_empenhos_liquidos_publicados",
     "listar_empenhos_publicados_paginados",
     "listar_publicacoes_competencias",
-    "listar_publicacoes_competencias_estado",
     "obter_empenho_publicado_por_chave",
     "publicar_lote_tce",
     "registrar_lote_rejeitado",
-    "remover_lotes_expirados",
     "validar_lote_tce",
 ]

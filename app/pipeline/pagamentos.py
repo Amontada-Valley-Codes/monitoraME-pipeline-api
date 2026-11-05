@@ -9,7 +9,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 import re
-from typing import Any
 
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial

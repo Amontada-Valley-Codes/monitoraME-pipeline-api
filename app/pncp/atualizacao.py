@@ -1,15 +1,13 @@
 """Fluxo independente de atualizacoes globais do PNCP."""
 from __future__ import annotations
 from datetime import datetime, timezone
-from hashlib import sha256
-import json
 from typing import Any
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core import orm
-from app.core.models import PncpContratacaoAtual, PncpCursor
-from app.pncp.ingestion import ClientePncp, PncpColetaError, UFS_NORDESTE
+from app.core.models import PncpContratacaoAtual
+from app.pncp.ingestion import ClientePncp, PncpColetaError
 from app.pncp.jobs import JobReivindicado, NovoJob
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela

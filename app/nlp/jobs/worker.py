@@ -1,1 +1,0 @@
-# Consumo dos lotes

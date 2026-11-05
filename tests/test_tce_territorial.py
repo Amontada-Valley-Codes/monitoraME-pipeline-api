@@ -22,7 +22,7 @@ os.environ.setdefault("UF_PADRAO", "CE")
 os.environ.setdefault("CODIGO_MUNICIPIO_TCE_PADRAO", "057")
 
 from app import main
-from app.pipeline import empenhos, territorial
+from app.pipeline import territorial
 
 
 def _registro(numero: str, bruto: int, anulado: int, documento: str) -> dict[str, object]:

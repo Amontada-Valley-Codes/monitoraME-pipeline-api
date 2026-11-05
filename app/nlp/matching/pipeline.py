@@ -6,7 +6,6 @@ import logging
 from typing import Any, Sequence
 
 from sqlalchemy import select, tuple_
-from sqlalchemy.orm import Session
 
 from app.core import orm
 from app.core.models import (

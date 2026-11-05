@@ -108,9 +108,6 @@ def resposta_erro_validacao(
     )
 
 
-resposta_erro_validacao_comparison = resposta_erro_validacao
-
-
 __all__ = [
     "COMPARISONS_PATH",
     "DESPESAS_PATH",
@@ -120,6 +117,5 @@ __all__ = [
     "obter_request_id",
     "resposta_erro",
     "resposta_erro_validacao",
-    "resposta_erro_validacao_comparison",
     "usa_erro_padronizado",
 ]

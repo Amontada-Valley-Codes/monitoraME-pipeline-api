@@ -27,7 +27,6 @@ SUCCEEDED = "SUCCEEDED"
 FAILED = "FAILED"
 QUARANTINED = "QUARANTINED"
 ACTIVE_STATUSES = (PENDING, RUNNING, RETRY_WAIT)
-BACKFILL = "backfill"
 
 
 @dataclass(frozen=True)
@@ -506,18 +505,10 @@ def _contar_fila_enriquecimento() -> dict[str, int]:
     return {"fila_enriquecimento_restante": int(total), "documentos_na_fila": int(documentos)}
 
 
-def executar_recuperador(*, parar: Callable[[], bool], interval_seconds: float = 30.0) -> None:
-    while not parar():
-        quantidade = recuperar_leases_expirados()
-        if quantidade:
-            logger.info("Leases PNCP recuperados", extra={"quantidade": quantidade})
-        time.sleep(interval_seconds)
-
-
 __all__ = [
-    "ACTIVE_STATUSES", "AgendadorPncp", "BACKFILL", "FAILED", "NovoJob", "PENDING", "RETRY_WAIT",
+    "ACTIVE_STATUSES", "AgendadorPncp", "FAILED", "NovoJob", "PENDING", "RETRY_WAIT",
     "RUNNING", "SUCCEEDED", "WorkerPncp", "agendar_job", "agendar_job_session",
-    "adiar_job_sem_tentativa_session", "concluir_job_session", "executar_recuperador", "falhar_job_session",
+    "adiar_job_sem_tentativa_session", "concluir_job_session", "falhar_job_session",
     "quarentenar_job_session", "replay_jobs", "replay_jobs_session",
     "recuperar_leases_expirados", "recuperar_leases_expirados_session",
     "renovar_lease", "renovar_lease_session", "reivindicar_proximo_job",

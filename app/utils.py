@@ -216,40 +216,6 @@ def achatar_registros(registros: Iterable[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(achatados)
 
 
-def achatar_lista_para_tabela(
-    df: pd.DataFrame,
-    coluna_lista: str,
-    chave_pai: str | list[str],
-) -> pd.DataFrame | None:
-    """
-    Extrai uma coluna que contem listas de dicts e transforma em tabela filha,
-    preservando a(s) chave(s) do registro pai para permitir JOIN de volta.
-    """
-    if coluna_lista not in df.columns:
-        return None
-
-    chaves_pai = [chave_pai] if isinstance(chave_pai, str) else list(chave_pai)
-    linhas = []
-    for _, linha in df.iterrows():
-        valor = linha[coluna_lista]
-        if not isinstance(valor, list):
-            continue
-        for item in valor:
-            if not isinstance(item, dict):
-                continue
-            achatado = flatten_registro(item)
-            for chave in chaves_pai:
-                achatado[chave] = linha[chave]
-            linhas.append(achatado)
-
-    if not linhas:
-        return None
-
-    filha = pd.DataFrame(linhas)
-    filha.columns = [to_snake_case(c) for c in filha.columns]
-    return filha
-
-
 def padronizar_nomes_colunas(df: pd.DataFrame) -> pd.DataFrame:
     """Renomeia todas as colunas para snake_case, resolvendo colisoes de nome."""
     novos_nomes = [to_snake_case(c) for c in df.columns]
