@@ -20,9 +20,7 @@ from app.core.logging import (
 from app.api.endpoints.health import health
 from app.api.endpoints.pipeline import (
     tce_analitico_indicadores,
-    tce_analise_territorial,
     tce_comparisons,
-    tce_contratos,
     tce_empenho_detalhe,
     tce_empenhos,
     tce_fornecedor_detalhe,
@@ -57,10 +55,6 @@ OPENAPI_TAGS = [
         "description": "Submissão autenticada de batches de matching e consulta de status/resultados para serviços internos.",
     },
     {
-        "name": "Contratos TCE-CE",
-        "description": "Consulta e processamento de contratos publicados pelo TCE-CE.",
-    },
-    {
         "name": "Indicadores TCE-CE",
         "description": "KPIs, séries e visões consolidadas de empenhos líquidos.",
     },
@@ -76,18 +70,6 @@ OPENAPI_TAGS = [
         "name": "Fornecedores TCE-CE",
         "description": "Consultas locais sobre fornecedores e seus empenhos publicados.",
     },
-    {
-        "name": "Análise territorial TCE-CE",
-        "description": "Distribuição geográfica, retenção local, concentração e rankings de despesas.",
-    },
-    {
-        "name": "Pagamentos TCE-CE",
-        "description": "Apuração de pagamentos municipais e subtotal de microempresas.",
-    },
-    {
-        "name": "Porte empresarial histórico",
-        "description": "Fotografias cadastrais mensais e histórico de porte por fornecedor.",
-    },
 ]
 
 __all__ = [
@@ -96,9 +78,7 @@ __all__ = [
     "health",
     "lifespan",
     "tce_analitico_indicadores",
-    "tce_analise_territorial",
     "tce_comparisons",
-    "tce_contratos",
     "tce_empenho_detalhe",
     "tce_empenhos",
     "tce_fornecedor_detalhe",

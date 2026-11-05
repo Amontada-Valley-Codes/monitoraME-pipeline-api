@@ -21,8 +21,7 @@ import pandas as pd
 from app import utils
 from app.pipeline.cleaners import ibge as ibge_cleaning
 from app.pipeline.cleaners import opencnpj as opencnpj_cleaning
-from app.pipeline.cleaners import tce as tce_cleaning
-from app.pipeline.ingestion import fornecedores, ibge, tce
+from app.pipeline.ingestion import fornecedores, ibge
 
 
 
@@ -40,106 +39,6 @@ def _fake_response(payload, status_code: int = 200) -> MagicMock:
     resposta.json.return_value = payload
     resposta.raise_for_status.return_value = None
     return resposta
-
-
-class LimparTceTest(unittest.TestCase):
-    """
-    Usa app.pipeline.ingestion.tce de verdade (só a chamada HTTP é mockada).
-
-    Os nomes de campo abaixo foram confirmados consultando ao vivo
-    api-dados-abertos.tce.ce.gov.br/sim/contratos — inclusive o typo real
-    da API ('modalide_contrato', sem o 'da') e o fato de 'numero_contrato'
-    vir como string puramente numerica (ex.: "2025000123").
-    """
-
-    @patch("app.pipeline.ingestion.tce.requests.get")
-    def test_pipeline_completo_a_partir_da_ingestao_real(self, mock_get) -> None:
-        registros_brutos = [
-            {
-                "codigo_municipio": "010",
-                "numero_contrato": "2025000123",
-                "data_contrato": "2025-01-15",
-                "tipo_contrato": "1",
-                "modalide_contrato": "Pregao Eletronico",
-                "data_inicio_vigencia_contrato": "2025-01-15",
-                "data_fim_vigencia_contrato": "2026-01-15",
-                "descricao_objeto_contrato": "  Prestacao de servicos de limpeza predial  ",
-                "valor_total_contrato": "50.000,00",
-                "cpf_gestor": "111.444.777-35",
-                "nome_fiscal_contrato": "Fulano Fiscal",
-                "cpf_fiscal_contrato": "111.444.777-35",
-                "data_referencia_doc": "2025-01-15",
-                "numero_processo_adm": "2025000045",
-                # confirmado ao vivo: quase sempre vazio (0% em 227 registros de amostra)
-                "numero_id_contrato_pncp": None,
-            },
-            # duplicata exata do primeiro contrato
-            {
-                "codigo_municipio": "010",
-                "numero_contrato": "2025000123",
-                "data_contrato": "2025-01-15",
-                "tipo_contrato": "1",
-                "modalide_contrato": "Pregao Eletronico",
-                "data_inicio_vigencia_contrato": "2025-01-15",
-                "data_fim_vigencia_contrato": "2026-01-15",
-                "descricao_objeto_contrato": "  Prestacao de servicos de limpeza predial  ",
-                "valor_total_contrato": "50.000,00",
-                "cpf_gestor": "111.444.777-35",
-                "nome_fiscal_contrato": "Fulano Fiscal",
-                "cpf_fiscal_contrato": "111.444.777-35",
-                "data_referencia_doc": "2025-01-15",
-                "numero_processo_adm": "2025000045",
-                "numero_id_contrato_pncp": None,
-            },
-            {
-                "codigo_municipio": "010",
-                "numero_contrato": "2025000456",
-                "data_contrato": "2025-02-01",
-                "tipo_contrato": "1",
-                "modalide_contrato": "Pregao Eletronico",
-                "data_inicio_vigencia_contrato": "2025-02-01",
-                "data_fim_vigencia_contrato": "2025-12-31",
-                "descricao_objeto_contrato": "Fornecimento de material de expediente",
-                "valor_total_contrato": "12.500,75",
-                "cpf_gestor": "111.444.777-35",
-                "nome_fiscal_contrato": "Fulano Fiscal",
-                "cpf_fiscal_contrato": "111.444.777-35",
-                "data_referencia_doc": "2025-02-01",
-                "numero_processo_adm": "2025000046",
-                # caso raro (confirmado ao vivo: ~10% em 2024-25, praticamente 0% antes) em
-                # que o TCE preencheu a referencia ao PNCP
-                "numero_id_contrato_pncp": "12345678000199-1-000005/2025",
-            },
-        ]
-        mock_get.return_value = _fake_response({"elements": registros_brutos})
-
-        registros = tce.buscar_contratos("2025-01-01", "2025-03-01", codigo_municipio="010")
-        self.assertEqual(len(registros), 3)  # ingestao real trouxe os 3 registros brutos
-
-        df = tce_cleaning.limpar(registros, chave_duplicata=["numero_contrato"])
-
-        self.assertEqual(len(df), 2)  # duplicata removida
-        # "codigo_municipio" e um identificador e nao pode virar numero, senao
-        # perde o zero a esquerda ("010" -> 10).
-        self.assertTrue((df["codigo_municipio"] == "010").all())
-        # "numero_contrato" e puramente numerico na API real ("2025000123") — sem a
-        # protecao de identificador, isso viraria Int64 e perderia o sentido de codigo.
-        self.assertEqual(df["numero_contrato"].tolist(), ["2025000123", "2025000456"])
-        self.assertEqual(sorted(df["valor_total_contrato"].tolist()), [12500.75, 50000.0])
-
-        primeiro = df[df["numero_contrato"] == "2025000123"].iloc[0]
-        self.assertEqual(primeiro["descricao_objeto_contrato"], "Prestacao de servicos de limpeza predial")
-        self.assertEqual(primeiro["data_contrato"], "2025-01-15")
-        # cpf_gestor casa com o padrao de CPF automaticamente (bate 'cpf' no nome da
-        # coluna) — normalizado para digitos e validado, sem eu precisar de codigo extra.
-        self.assertEqual(primeiro["cpf_gestor"], "11144477735")
-        self.assertTrue(primeiro["cpf_gestor_valido"])
-        # confirmado ao vivo: quase sempre vazio — aqui esta ausente pra este contrato;
-        # e coluna de texto, entao tratar_nulos preenche com o marcador padrao (nao dropa a linha)
-        self.assertEqual(primeiro["numero_id_contrato_pncp"], "nao_informado")
-
-        segundo = df[df["numero_contrato"] == "2025000456"].iloc[0]
-        self.assertEqual(segundo["numero_id_contrato_pncp"], "12345678000199-1-000005/2025")
 
 
 class LimparIbgeMunicipiosTest(unittest.TestCase):

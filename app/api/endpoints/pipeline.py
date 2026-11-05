@@ -7,7 +7,7 @@ from app.api.schemas.comparisons import CompanySize, SupplierOrigin, TceComparis
 from app.api.schemas.empenhos import EmpenhoSortField, SortOrder
 from app.api.schemas.fornecedores import SupplierDocumentType, SupplierSortField
 from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
-from app.pipeline import analisys, comparisons, empenhos, fornecedores, territorial
+from app.pipeline import analisys, comparisons, empenhos, fornecedores
 from app.pipeline.ingestion.fornecedores import FonteCadastralIndisponivelError
 from app.pipeline.ingestion import tce
 from app.pipeline.kpis import DadosInsuficientesKPI
@@ -76,45 +76,6 @@ def _erro_pipeline(error: Exception) -> HTTPException:
         },
     )
     return HTTPException(status_code=500, detail="Falha inesperada ao executar o pipeline.")
-
-
-@router.get(
-    "/tce/contratos",
-    tags=["Contratos TCE-CE"],
-    summary="Consulta contratos no TCE-CE",
-    description="Executa o fluxo de ingestao, limpeza e enriquecimento dos contratos publicados pelo TCE-CE.",
-    response_description=(
-        "Objeto com `dados` (contratos normalizados), `totais.contratos`, "
-        "`totais_brutos`, `parametros`, `fonte` e `limite_resposta`."
-    ),
-)
-def tce_contratos(
-    data_inicial: Annotated[str, _data_inicial_query()],
-    data_final: Annotated[str, _data_final_query()],
-    codigo_municipio: Annotated[
-        str,
-        Query(description="Codigo do municipio no TCE-CE."),
-    ] = CODIGO_MUNICIPIO_TCE_PADRAO,
-    enriquecer_fornecedores: Annotated[
-        bool,
-        Query(description="Enriquece os dados com informacoes cadastrais dos fornecedores."),
-    ] = False,
-    limite: Annotated[
-        int | None,
-        Query(description="Limite de contratos retornados.", ge=1, le=1000),
-    ] = 100,
-) -> dict[str, object]:
-    try:
-        _validar_periodo_api(data_inicial, data_final)
-        return analisys.consultar_tce_contratos(
-            data_inicial=data_inicial,
-            data_final=data_final,
-            codigo_municipio=codigo_municipio,
-            enriquecer_fornecedores=enriquecer_fornecedores,
-            limite=limite,
-        )
-    except Exception as error:
-        raise _erro_pipeline(error) from error
 
 
 @router.get(
@@ -591,54 +552,6 @@ def tce_fornecedor_empenhos(
 
 
 @router.get(
-    "/tce/analise-territorial",
-    tags=["Análise territorial TCE-CE"],
-    summary="Analisa a distribuicao territorial das compras municipais",
-    description=(
-        "Calcula retencao local, destino dos recursos, portes, elementos, evolucao, "
-        "concentracao e ranking usando apenas despesas publicadas e cadastros locais."
-    ),
-    response_description=(
-        "Objeto com município, cobertura, resumo financeiro em centavos, indicadores de "
-        "retenção, destino dos recursos, portes, elementos, evolução mensal, concentração, "
-        "ranking, metodologia e metadados de qualidade/defasagem."
-    ),
-    response_model=None,
-)
-def tce_analise_territorial(
-    request: Request,
-    response: Response,
-    start_date: Annotated[str, Query(pattern=DATA_ISO_PATTERN)],
-    end_date: Annotated[str, Query(pattern=DATA_ISO_PATTERN)],
-    uf: Annotated[str, Query(min_length=2, max_length=2)] = UF_PADRAO,
-    municipality_tce_code: Annotated[str, Query(pattern=r"^\d{3}$")] = CODIGO_MUNICIPIO_TCE_PADRAO,
-    company_sizes: Annotated[list[CompanySize] | None, Query()] = None,
-    supplier_origins: Annotated[list[SupplierOrigin] | None, Query()] = None,
-    expense_element_codes: Annotated[list[str] | None, Query()] = None,
-    ranking_limit: Annotated[int, Query(ge=1, le=100)] = 10,
-) -> dict[str, Any] | JSONResponse:
-    request_id = obter_request_id(request)
-    response.headers[REQUEST_ID_HEADER] = request_id
-    try:
-        return territorial.consultar_analise_territorial(
-            start_date=start_date,
-            end_date=end_date,
-            uf=uf,
-            municipality_tce_code=municipality_tce_code,
-            company_sizes=[item.value for item in company_sizes or []],
-            supplier_origins=[item.value for item in supplier_origins or []],
-            expense_element_codes=expense_element_codes or [],
-            ranking_limit=ranking_limit,
-        )
-    except Exception as error:
-        return _erro_empenhos(
-            error,
-            request_id=request_id,
-            mensagem_interna="Falha inesperada ao calcular a analise territorial.",
-        )
-
-
-@router.get(
     "/tce/analitico/indicadores",
     tags=["Indicadores TCE-CE"],
     summary="Calcula indicadores analiticos principais do TCE-CE",
@@ -681,31 +594,16 @@ def tce_analitico_indicadores(
         raise _erro_pipeline(error) from error
 
 
-@router.get(
-    "/tce/pagamentos/overview",
-    tags=["Pagamentos TCE-CE"],
-    summary="Pagamentos da Prefeitura e subtotal de Microempresas",
-    description=(
-        "Coleta empenhos do exercicio e pagamentos ate a referencia final, inclusive "
-        "anos posteriores. Exclui Camara e estornos; filtra sete elementos. "
-        "Retorna fornecedores ME, controle financeiro e pendencias cadastrais. "
-        "Consulta as fontes externas; porte atual nao comprova porte historico."
-    ),
-    response_description=(
-        "Objeto com total pago e subtotal de microempresas em centavos, fornecedores "
-        "classificados, pendências cadastrais, referências consultadas e trilha de `auditoria` da conciliação."
-    ),
-)
-def tce_pagamentos_overview(
-    codigo_municipio: Annotated[str, Query(pattern=r"^[0-9]{3}$")],
-    exercicio: Annotated[int, Query(ge=1900, le=9999)],
-    referencia_final: Annotated[str, Query(pattern=r"^[0-9]{4}-[0-9]{2}$")],
-) -> dict[str, Any]:
-    from app.pipeline.pagamentos import consultar_pagamentos_prefeitura
-    try:
-        return consultar_pagamentos_prefeitura(
-            codigo_municipio=codigo_municipio, exercicio=exercicio,
-            referencia_final=referencia_final,
-        )
-    except Exception as error:
-        raise _erro_pipeline(error) from error
+__all__ = [
+    "router",
+    "tce_analitico_indicadores",
+    "tce_comparisons",
+    "tce_empenho_detalhe",
+    "tce_empenhos",
+    "tce_fornecedor_detalhe",
+    "tce_fornecedor_empenhos",
+    "tce_fornecedores",
+    "tce_kpi_portes_por_mes",
+    "tce_overview",
+    "tce_overview_municipal",
+]

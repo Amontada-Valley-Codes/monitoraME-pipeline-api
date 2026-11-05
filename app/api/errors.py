@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse
 COMPARISONS_PATH = "/pipeline/tce/comparisons"
 DESPESAS_PATH = "/pipeline/tce/despesas"
 FORNECEDORES_PATH = "/pipeline/tce/fornecedores"
-TERRITORIAL_PATH = "/pipeline/tce/analise-territorial"
 REQUEST_ID_HEADER = "X-Request-ID"
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
@@ -48,13 +47,11 @@ def resposta_erro(
 
 def usa_erro_padronizado(path: str) -> bool:
     return (
-        path.startswith("/pipeline/tce/portes/")
-        or path == COMPARISONS_PATH
+        path == COMPARISONS_PATH
         or path == DESPESAS_PATH
         or path.startswith(f"{DESPESAS_PATH}/")
         or path == FORNECEDORES_PATH
         or path.startswith(f"{FORNECEDORES_PATH}/")
-        or path == TERRITORIAL_PATH
     )
 
 
@@ -81,7 +78,7 @@ def resposta_erro_validacao(
     code = "INVALID_REQUEST"
     message = "A requisicao possui campos invalidos."
     if request.url.path.startswith(
-        (DESPESAS_PATH, FORNECEDORES_PATH, TERRITORIAL_PATH)
+        (DESPESAS_PATH, FORNECEDORES_PATH)
     ) and details:
         campo = details[0]["field"]
         code, message = {
@@ -93,10 +90,6 @@ def resposta_erro_validacao(
             "sort_by": ("INVALID_SORT_FIELD", "sort_by possui um valor invalido."),
             "start_date": ("INVALID_DATE", "start_date deve usar o formato YYYY-MM-DD."),
             "end_date": ("INVALID_DATE", "end_date deve usar o formato YYYY-MM-DD."),
-            "ranking_limit": (
-                "INVALID_RANKING_LIMIT",
-                "ranking_limit deve estar entre 1 e 100.",
-            ),
         }.get(campo, ("INVALID_FILTER", "Um ou mais filtros possuem valores invalidos."))
 
     return resposta_erro(
@@ -113,7 +106,6 @@ __all__ = [
     "DESPESAS_PATH",
     "FORNECEDORES_PATH",
     "REQUEST_ID_HEADER",
-    "TERRITORIAL_PATH",
     "obter_request_id",
     "resposta_erro",
     "resposta_erro_validacao",

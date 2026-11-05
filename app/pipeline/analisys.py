@@ -6,10 +6,9 @@ from typing import Any
 import pandas as pd
 from app.core import database
 from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
-from app.pipeline import analitico, kpis, merge
+from app.pipeline import analitico, kpis
 from app.pipeline import tce_observability
 from app.pipeline import tce_despesas as tce_despesas_pipeline
-from app.pipeline.cleaners import tce as tce_cleaning
 from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor, extrair_cnpjs_distintos
 from app.pipeline.ingestion import fornecedores, tce
 from app.pipeline.persistence import tce_despesas as tce_despesas_persistence
@@ -95,30 +94,6 @@ def tabelas_para_json(
 
 def _totais_tabelas(tabelas: dict[str, pd.DataFrame]) -> dict[str, int]:
     return {nome: int(len(tabela)) for nome, tabela in tabelas.items()}
-
-
-def _ordenar_tce_contratos_por_data(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty or "data_contrato" not in df.columns:
-        return df
-
-    coluna_data_ordenacao = "_data_contrato_ordenacao"
-    ordenado = df.copy()
-    ordenado[coluna_data_ordenacao] = pd.to_datetime(ordenado["data_contrato"], errors="coerce", utc=True)
-
-    colunas_ordenacao = [coluna_data_ordenacao]
-    ascendentes = [True]
-    if "numero_contrato" in ordenado.columns:
-        colunas_ordenacao.append("numero_contrato")
-        ascendentes.append(True)
-    if "codigo_municipio" in ordenado.columns:
-        colunas_ordenacao.append("codigo_municipio")
-        ascendentes.append(True)
-
-    return (
-        ordenado.sort_values(colunas_ordenacao, ascending=ascendentes, na_position="last")
-        .drop(columns=[coluna_data_ordenacao])
-        .reset_index(drop=True)
-    )
 
 
 def _resolver_nome_municipio_tce(codigo_municipio: str) -> str:
@@ -320,70 +295,6 @@ def _atualizar_competencias_tce(
         ausentes=ausentes,
         falhas=falhas,
     )
-
-
-def montar_base_tce_contratos(
-    data_inicial: str,
-    data_final: str,
-    *,
-    codigo_municipio: str = CODIGO_MUNICIPIO_TCE_PADRAO,
-    enriquecer_fornecedores: bool = False,
-    throttle_fornecedores: float = 0.3,
-) -> tuple[pd.DataFrame, dict[str, Any]]:
-    contratos_brutos = tce.buscar_contratos(data_inicial, data_final, codigo_municipio=codigo_municipio)
-    contratados_brutos = tce.buscar_contratados(data_inicial, data_final, codigo_municipio=codigo_municipio)
-
-    df_contratos = tce_cleaning.limpar(contratos_brutos, chave_duplicata=["numero_contrato", "codigo_municipio"])
-    df_contratados = tce_cleaning.limpar(
-        contratados_brutos,
-        chave_duplicata=["numero_contrato", "codigo_municipio", "numero_documento_negociante"],
-    )
-
-    fornecedores_df = None
-    if enriquecer_fornecedores:
-        serie_cnpj = (
-            df_contratados["numero_documento_negociante"]
-            if "numero_documento_negociante" in df_contratados.columns
-            else None
-        )
-        cnpjs = extrair_cnpjs_distintos(serie_cnpj)
-        fornecedores_df = _coletar_fornecedores(cnpjs, throttle_fornecedores)
-
-    base = merge.montar_base_tce(df_contratos, df_contratados, fornecedores_df=fornecedores_df)
-    base = _ordenar_tce_contratos_por_data(base)
-    logger.info(
-        "Base de contratos do TCE-CE montada",
-        extra={
-            "contratos_raw_count": len(contratos_brutos),
-            "contratados_raw_count": len(contratados_brutos),
-            "output_count": len(base),
-            "supplier_enrichment": enriquecer_fornecedores,
-        },
-    )
-    metadados = {
-        "fonte": "TCE-CE",
-        "parametros": {
-            "data_inicial": data_inicial,
-            "data_final": data_final,
-            "codigo_municipio": codigo_municipio,
-            "enriquecer_fornecedores": enriquecer_fornecedores,
-        },
-        "totais_brutos": {
-            "contratos": len(contratos_brutos),
-            "contratados": len(contratados_brutos),
-        },
-    }
-    return base, metadados
-
-
-def consultar_tce_contratos(*, limite: int | None = 100, **kwargs: Any) -> dict[str, Any]:
-    base, metadados = montar_base_tce_contratos(**kwargs)
-    return {
-        **metadados,
-        "limite_resposta": limite,
-        "totais": {"contratos": int(len(base))},
-        "dados": dataframe_para_registros(base, limite=limite),
-    }
 
 
 def montar_base_analitica_tce(

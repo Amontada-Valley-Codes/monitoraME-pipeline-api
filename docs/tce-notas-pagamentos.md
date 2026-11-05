@@ -22,4 +22,4 @@ Antes de executar, aplique a migration do banco principal:
 .venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-O comando é uma unidade operacional mensal e pode ser agendado externamente por município, orçamento e competência. Ele não coleta empenhos, órgãos ou portes cadastrais. A rota `GET /pipeline/tce/pagamentos/overview` ainda consulta a fonte ao vivo e não consome esses snapshots.
+O comando é uma unidade operacional mensal e pode ser agendado externamente por município, orçamento e competência. Ele não coleta empenhos, órgãos ou portes cadastrais. O comando de auditoria de pagamentos consulta a fonte ao vivo e não consome esses snapshots.

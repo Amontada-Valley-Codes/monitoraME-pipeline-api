@@ -6,19 +6,19 @@ Implementacao do guia fornecido "Como reproduzir os valores do Portal da Transpa
 
 O fluxo anterior coleta `notas_empenhos` e `notas_anulacoes_empenhos`, publica empenhos liquidos e calcula o overview de ME + MEI. Nao coleta notas de pagamento nem identifica a Camara para esse indicador. Seu parametro mensal vincula o ano documental ao exercicio, o que nao atende a pagamentos de anos posteriores do mesmo orcamento. Por isso, o resultado desse overview nao pode ser apresentado como os pagamentos da Prefeitura descritos no guia.
 
-As rotas de empenhos mantem sua medida. A nova rota de pagamentos implementa o indicador do guia; consumidores que exibem valor pago devem usa-la. Este repositorio nao contem a interface publica que consome esses valores.
+As rotas de empenhos mantêm sua medida. O fluxo de auditoria de pagamentos implementa o indicador do guia e permanece disponível como comando administrativo.
 
 O normalizador cadastral compartilhado tambem foi corrigido: aceita `01`, `03`, `05`, preserva os equivalentes numericos e deixa o codigo desconhecido `2` sem classificacao, em vez de presumir ME. O novo fluxo usa o porte original e guarda o indicador MEI separadamente; nao passa pelo cleaner antigo que transforma optantes MEI em uma categoria de porte distinta.
 
-## Consulta
+## Execução da auditoria
 
-```http
-GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09
+```powershell
+.venv/Scripts/python.exe scripts/auditar_pagamentos_tce.py --municipio 004 --exercicio 2025 --referencia-final 2026-09 --saida .local/tce-pagamentos/acarau.json
 ```
 
-Use o prefixo de montagem da API da aplicacao antes de `/pipeline`. O exercicio e o ano do orcamento; a referencia final e o ultimo mes da documentacao consultada, nao a data limite de emissao do pagamento. O inicio e janeiro do exercicio e o termino precisa cobrir pelo menos dezembro desse ano.
+O exercício é o ano do orçamento; a referência final é o último mês da documentação consultada, não a data limite de emissão do pagamento. O início é janeiro do exercício e o término precisa cobrir pelo menos dezembro desse ano.
 
-O endpoint consulta as fontes externas em cada chamada. A execucao integral pode demorar varios minutos; nao usa os snapshots versionados de empenhos. A coleta bruta pode ser preservada pelo comando de auditoria. A ingestao incremental mensal de notas de pagamento e documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md), mas esta rota ainda nao consome os snapshots persistidos nem persiste portes.
+O comando consulta as fontes externas em cada execução e pode demorar vários minutos; não usa os snapshots versionados de empenhos. A coleta bruta pode ser preservada para reprodução offline. A ingestão incremental mensal de notas de pagamento é documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md), mas a auditoria não consome os snapshots persistidos nem persiste portes.
 
 - `total_me_centavos`, `me_por_elemento_centavos` e `fornecedores_me`: valores para o recorte publico ME.
 - `controle_financeiro`: totais antes do porte, por elemento e por categoria exclusiva (ME, EPP, Demais, sem classificacao e documento nao CNPJ).
@@ -64,7 +64,7 @@ A referencia comparada e a do documento fornecido (portal consultado em 19/10/20
 
 ## Conferencia cadastral executada
 
-A configuracao local ainda apontava para `kitana.opencnpj.com`, incompat?vel com a rota usada pelo adaptador atual. As 300 primeiras consultas retornaram "nao encontrado"; esses resultados ficaram pendentes e nao foram tratados como Demais ou ME. A variavel `OPENCNPJ_BASE_URL` do `.env` local foi corrigida para `https://api.opencnpj.org`, conforme `.env.example`, e somente o enriquecimento foi repetido sobre a coleta financeira salva. Esse ajuste local precisa estar presente tambem na configuracao do ambiente que executar a nova rota.
+A configuracao local ainda apontava para `kitana.opencnpj.com`, incompat?vel com a rota usada pelo adaptador atual. As 300 primeiras consultas retornaram "nao encontrado"; esses resultados ficaram pendentes e nao foram tratados como Demais ou ME. A variavel `OPENCNPJ_BASE_URL` do `.env` local foi corrigida para `https://api.opencnpj.org`, conforme `.env.example`, e somente o enriquecimento foi repetido sobre a coleta financeira salva. Esse ajuste local precisa estar presente tambem na configuracao do ambiente que executar a auditoria.
 
 Na consulta de 20/10/2026, os 300 CNPJs tiveram retorno cadastral correspondente: 155 ME, 37 EPP e 108 Demais. Nao restaram pendencias de porte nesta coleta. A concorrencia e limitada a quatro consultas e cada CNPJ e consultado uma unica vez.
 
@@ -84,7 +84,7 @@ O arquivo `.local/tce-pagamentos/acarau.json` guarda os 300 registros de classif
 
 A suite completa foi executada com bancos locais de teste e timeout de conexao de dois segundos: 236 testes, sendo 233 aprovados, dois ignorados por exigirem o piloto real de portes historicos e um erro de importacao no backfill PNCP local, que depende das constantes `PNCP_CONSULTA_BASE_URL` e `PNCP_GESTAO_BASE_URL` removidas da configuracao na branch atual. Os 14 testes novos de pagamentos passaram.
 
-A rota HTTP foi verificada na aplicacao usando a coleta e as classificacoes salvas como substitutos das fontes externas: resposta 200 com os totais financeiros e ME conferidos, respostas 422 para parametros ausentes ou invalidos e resposta 503 para indisponibilidade simulada da fonte. Essa verificacao nao iniciou o servidor nem validou conexoes de banco em uma implantacao. `git diff --check` tambem passou.
+O fluxo foi verificado usando a coleta e as classificacoes salvas como substitutos das fontes externas, incluindo parâmetros inválidos e indisponibilidade simulada da fonte. `git diff --check` também passou.
 
 ## Reproducao
 
@@ -138,4 +138,4 @@ A regra nominal inicial deixava os orgaos 03 (Controladoria/Ouvidoria, grafado `
 
 Na mesma execucao, os totais por elemento de todos os portes foram: 30 R$ 29.863.810,49; 32 R$ 1.937.198,26; 35 R$ 1.083.280,71; 39 R$ 65.481.674,75; 40 R$ 10.483,64; 51 R$ 31.285.160,58; 52 R$ 5.329.448,50. Contra a referencia do portal, a divergencia total permaneceu em -R$ 320.472,51 (30 +R$ 332.516,84; 32 +R$ 60.186,26; 35 R$ 0,00; 39 -R$ 836.766,44; 40 R$ 0,00; 51 +R$ 38.932,37; 52 -R$ 162.523,20). Portanto, a classificacao dos dois orgaos explicou parte da diferenca, mas a conciliacao financeira ainda falha.
 
-O subtotal ME corrente apos a reclassificacao foi: 30 R$ 2.650.825,02; 32 R$ 284.931,90; 35 R$ 881.880,06; 40 R$ 0,00; 51 R$ 6.881.189,50; 52 R$ 425.012,45. O cadastro historico continua nao comprovado, e as diferencas de Material de Consumo, Obras e Instalacoes e Material Permanente impedem validar todos os seis alvos. A rota retorna `indicador_me_validado=false` quando comparada com a referencia conhecida.
+O subtotal ME corrente apos a reclassificacao foi: 30 R$ 2.650.825,02; 32 R$ 284.931,90; 35 R$ 881.880,06; 40 R$ 0,00; 51 R$ 6.881.189,50; 52 R$ 425.012,45. O cadastro historico continua nao comprovado, e as diferencas de Material de Consumo, Obras e Instalacoes e Material Permanente impedem validar todos os seis alvos. O resultado retorna `indicador_me_validado=false` quando comparado com a referencia conhecida.

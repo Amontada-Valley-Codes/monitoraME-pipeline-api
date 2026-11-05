@@ -18,7 +18,6 @@ os.environ.setdefault("UF_PADRAO", "CE")
 os.environ.setdefault("CODIGO_MUNICIPIO_TCE_PADRAO", "010")
 
 from fastapi import HTTPException
-import pandas as pd
 
 from app import main
 from app.api.schemas.comparisons import CompanySize
@@ -89,7 +88,15 @@ class MainTest(unittest.TestCase):
         self.assertIn("/pncp/editais/{external_id:path}/itens", rotas)
         self.assertIn("/pncp/editais/{external_id:path}/anexos", rotas)
         self.assertIn("/pncp/editais/{external_id:path}", rotas)
-        self.assertIn("/pipeline/tce/contratos", rotas)
+        for rota_removida in (
+            "/pipeline/tce/analise-territorial",
+            "/pipeline/tce/pagamentos/overview",
+            "/pipeline/tce/portes/competencias",
+            "/pipeline/tce/portes/historico/{cnpj}",
+            "/pipeline/tce/portes/versoes/{versao}/{cnpj}",
+            "/pipeline/tce/contratos",
+        ):
+            self.assertNotIn(rota_removida, rotas)
         self.assertNotIn("/pipeline/tce/kpis/me-por-mes", rotas)
         self.assertIn("/pipeline/tce/kpis/portes-por-mes", rotas)
         self.assertIn("/pipeline/tce/overview", rotas)
@@ -106,7 +113,6 @@ class MainTest(unittest.TestCase):
             rotas,
         )
         self.assertIn("/pipeline/tce/analitico/indicadores", rotas)
-        self.assertIn("/pipeline/tce/analise-territorial", rotas)
 
     def test_openapi_agrupa_operacoes_por_recurso_e_finalidade(self) -> None:
         schema = main.app.openapi()
@@ -124,10 +130,6 @@ class MainTest(unittest.TestCase):
             schema["paths"]["/pipeline/tce/fornecedores"]["get"]["tags"],
             ["Fornecedores TCE-CE"],
         )
-        self.assertEqual(
-            schema["paths"]["/pipeline/tce/pagamentos/overview"]["get"]["tags"],
-            ["Pagamentos TCE-CE"],
-        )
         self.assertIn(
             "somente valor final em centavos",
             schema["paths"]["/pipeline/tce/despesas"]["get"]["responses"]["200"]["description"],
@@ -136,55 +138,6 @@ class MainTest(unittest.TestCase):
             "retornados separadamente",
             schema["paths"]["/pncp/editais/{external_id}"]["get"]["responses"]["200"]["description"],
         )
-
-    @patch("app.main.database.close_pool")
-    @patch("app.main.database.init_db")
-    @patch("app.pipeline.analisys.fornecedores.obter_fornecedores_com_cache")
-    @patch("app.pipeline.analisys.tce.buscar_contratados")
-    @patch("app.pipeline.analisys.tce.buscar_contratos")
-    def test_endpoint_tce_contratos_retorna_fluxo_serializado(
-        self,
-        buscar_contratos,
-        buscar_contratados,
-        coletar_fornecedores,
-        _init_db,
-        _close_pool,
-    ) -> None:
-        buscar_contratos.return_value = [
-            {
-                "codigo_municipio": "010",
-                "numero_contrato": "2025000123",
-                "data_contrato": "2025-01-15",
-                "valor_total_contrato": "1.000,00",
-            }
-        ]
-        buscar_contratados.return_value = [
-            {
-                "codigo_municipio": "010",
-                "numero_contrato": "2025000123",
-                "numero_documento_negociante": "11.444.777/0001-61",
-                "nome_negociante": "Fornecedor Teste",
-            }
-        ]
-        coletar_fornecedores.return_value = pd.DataFrame(
-            [{
-                "cnpj": "11444777000161",
-                "razao_social": "Fornecedor Teste",
-                "porte_padronizado": "ME",
-                "opencnpj_status": "ok",
-            }]
-        )
-
-        payload = main.tce_contratos(
-            data_inicial="2025-01-01",
-            data_final="2025-01-31",
-            codigo_municipio="010",
-            enriquecer_fornecedores=True,
-        )
-
-        self.assertEqual(payload["totais"], {"contratos": 1})
-        self.assertEqual(payload["dados"][0]["nome_negociante"], "Fornecedor Teste")
-        self.assertEqual(payload["dados"][0]["fornecedor_porte_padronizado"], "ME")
 
     @patch("app.main.database.close_pool")
     @patch("app.main.database.init_db")
@@ -221,7 +174,6 @@ class MainTest(unittest.TestCase):
 
     def test_endpoints_rejeitam_data_compacta(self) -> None:
         for endpoint in (
-            main.tce_contratos,
             main.tce_kpi_portes_por_mes,
             main.tce_overview,
             main.tce_analitico_indicadores,
