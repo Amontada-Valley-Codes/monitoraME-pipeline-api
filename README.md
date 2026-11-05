@@ -248,6 +248,8 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 
 ## Rotas do pipeline
 
+- `GET /public/municipios/{codigo_tce}/previa`: resumo municipal para a landing page, com código TCE-CE de três dígitos e datas explícitas (`data_inicial` e `data_final`). Usa somente dados TCE-CE publicados localmente; não aciona ingestão nem fontes externas. Liga pagamentos a empenhos e fornecedores para mostrar valor pago, compras distintas, fornecedores líderes e quanto foi para empresas sediadas no município. Valores são centavos; a contagem usa empenhos distintos com pagamento no período.
+
 - `GET /pipeline/tce/contratos`: consulta e enriquece contratos do TCE-CE.
 - `GET /pipeline/tce/kpis/portes-por-mes`: calcula a participação mensal por porte.
 - `GET /pipeline/tce/overview`: calcula o overview estadual de ME; MEI integra demais portes.

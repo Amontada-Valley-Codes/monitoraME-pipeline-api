@@ -109,6 +109,14 @@ O overview sem município consolida o Ceará e considera somente ME no recorte p
 {"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004","company_sizes":[]},"competencias_solicitadas":[],"competencias_processadas":[],"cobertura":{},"overview":{"kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_local":0.0,"percentual_compras_fora":0.0},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"evolucao_compras_por_portes":[],"destino_recursos":[]}}
 ```
 
+### `GET /public/municipios/{codigo_tce}/previa`
+
+Recebe o código TCE-CE de três dígitos no caminho e `data_inicial` e `data_final` no formato `YYYY-MM-DD`. A rota é pública, somente leitura, e usa dados locais publicados. `resumo_compras.valor_total_centavos` mede pagamentos publicados associados a empenhos, não o valor contratado. `quantidade_compras` conta empenhos distintos com pagamento no período. A contagem e o valor local classificam a sede do fornecedor; fornecedores sem endereço cadastral suficiente não são classificados como locais.
+
+```json
+{"municipio":{"codigo_ibge":"2304400","codigo_tce":"004","nome":"Fortaleza","uf":"CE"},"periodo":{"data_inicial":"2025-01-01","data_final":"2025-01-31"},"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"data_available":true,"is_stale":false,"competencias_publicadas":["2025-01"],"kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_fornecedores_locais":0.0,"percentual_recursos_fora_municipio":0.0},"participacao_por_porte_empresarial":[],"resumo_compras":{"medida":"PAGAMENTOS_PUBLICADOS_ASSOCIADOS_A_EMPENHOS","regra_contagem_compras":"EMPENHOS_UNICOS_COM_PAGAMENTO_NO_PERIODO","unidade_monetaria":"CENTAVOS","valor_total_centavos":0,"quantidade_compras":0,"quantidade_fornecedores_identificados":0,"quantidade_fornecedores_sem_documento":0,"compras_na_cidade":{"quantidade_compras":0,"valor_centavos":0,"percentual_do_valor_total":0.0},"fornecedores":[],"fornecedores_exibidos":0,"limite_fornecedores":10}}
+```
+
 ### `POST /pipeline/tce/comparisons`
 
 ```json

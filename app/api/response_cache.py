@@ -27,7 +27,7 @@ RESPONSE_CACHE_TTL_SECONDS = max(
 )
 MAX_CACHEABLE_REQUEST_BYTES = 1_000_000
 MAX_CACHEABLE_RESPONSE_BYTES = 5_000_000
-ROUTE_PREFIXES_CACHEAVEIS = ("/pipeline/", "/pncp/")
+ROUTE_PREFIXES_CACHEAVEIS = ("/pipeline/", "/pncp/", "/public/")
 
 
 def rota_tem_cache(request: Request) -> bool:

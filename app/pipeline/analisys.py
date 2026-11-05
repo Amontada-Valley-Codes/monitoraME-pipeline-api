@@ -854,6 +854,7 @@ def consultar_overview_municipal_tce(
     codigo_municipio: str,
     company_sizes: list[str] | None = None,
     throttle_fornecedores: float = 0.3,
+    incluir_resumo_compras: bool = False,
 ) -> dict[str, Any]:
     """Calcula o overview municipal para todos os portes ou para o recorte pedido."""
     del throttle_fornecedores
@@ -875,6 +876,8 @@ def consultar_overview_municipal_tce(
         base,
         portes_considerados=portes,
     )
+    if incluir_resumo_compras:
+        overview["resumo_compras"] = _resumir_compras_municipais(base, overview)
     resposta = {
         **metadados,
         "kpi": "overview_municipal_por_portes",
@@ -892,6 +895,103 @@ def consultar_overview_municipal_tce(
     if not metadados["data_available"] or not metadados["totais"]["despesas"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta
+
+
+def _resumir_compras_municipais(
+    base: pd.DataFrame,
+    overview: dict[str, Any],
+    *,
+    limite_fornecedores: int = 10,
+) -> dict[str, Any]:
+    """Relaciona valores pagos, fornecedores e compras atribuiveis a origem local."""
+    if base.empty:
+        total_centavos = 0
+        total_compras = 0
+        compras_locais = 0
+        ranking: list[dict[str, Any]] = []
+        fornecedores_identificados = 0
+        fornecedores_sem_identificacao = 0
+    else:
+        dados = base.copy()
+        dados["_valor_centavos"] = dados["valor"].map(kpis._valor_reais_para_centavos)
+        chaves_compras = dados["chave_empenho"].dropna().astype(str)
+        total_compras = int(chaves_compras.nunique())
+        locais = dados.loc[
+            dados["origem_geografica"].eq(kpis.ORIGEM_FORNECEDOR_LOCAL)
+        ]
+        compras_locais = int(locais["chave_empenho"].dropna().astype(str).nunique())
+
+        identificadores = dados["documento_fornecedor"].astype("string").str.strip()
+        tipos_documento = dados["tipo_documento_fornecedor"].astype("string").str.strip()
+        nomes = dados["nome_fornecedor"].astype("string").str.strip()
+        dados["_documento"] = identificadores.fillna("")
+        dados["_tipo_documento"] = tipos_documento.fillna("")
+        dados["_nome"] = nomes.fillna("").replace("", "Fornecedor não identificado")
+        dados["_chave_fornecedor"] = dados.apply(
+            lambda linha: (
+                f"{linha['_tipo_documento']}:{linha['_documento']}"
+                if linha["_documento"]
+                else f"NOME:{linha['_nome'].casefold()}"
+            ),
+            axis=1,
+        )
+        agrupados = (
+            dados.groupby("_chave_fornecedor", dropna=False)
+            .agg(
+                nome=("_nome", "first"),
+                documento=("_documento", "first"),
+                tipo_documento=("_tipo_documento", "first"),
+                municipio_sede=("municipio_sede_fornecedor", "first"),
+                uf_sede=("uf_sede_fornecedor", "first"),
+                origem=("origem_geografica", "first"),
+                valor_centavos=("_valor_centavos", "sum"),
+                quantidade_compras=("chave_empenho", "nunique"),
+            )
+            .sort_values(["valor_centavos", "quantidade_compras"], ascending=False)
+        )
+        ranking = [
+            {
+                "nome": str(linha.nome),
+                "documento": str(linha.documento) or None,
+                "tipo_documento": str(linha.tipo_documento) or None,
+                "municipio_sede": str(linha.municipio_sede) if pd.notna(linha.municipio_sede) else None,
+                "uf_sede": str(linha.uf_sede) if pd.notna(linha.uf_sede) else None,
+                "origem": str(linha.origem),
+                "valor_centavos": int(linha.valor_centavos),
+                "quantidade_compras": int(linha.quantidade_compras),
+            }
+            for linha in agrupados.head(limite_fornecedores).itertuples(index=False)
+        ]
+        fornecedores_identificados = int(
+            dados.loc[dados["_documento"].ne(""), "_chave_fornecedor"].nunique()
+        )
+        fornecedores_sem_identificacao = int(
+            dados.loc[dados["_documento"].eq(""), "_chave_fornecedor"].nunique()
+        )
+        total_centavos = int(overview["kpis"]["total_compras_centavos"])
+
+    destinos = {item["destino"]: item for item in overview.get("destino_recursos", [])}
+    destino_local = destinos.get("NO_MUNICIPIO_COMPRADOR", {})
+    valor_local = int(destino_local.get("valor_centavos", 0))
+    return {
+        "medida": "PAGAMENTOS_PUBLICADOS_ASSOCIADOS_A_EMPENHOS",
+        "regra_contagem_compras": "EMPENHOS_UNICOS_COM_PAGAMENTO_NO_PERIODO",
+        "unidade_monetaria": "CENTAVOS",
+        "valor_total_centavos": total_centavos,
+        "quantidade_compras": total_compras,
+        "quantidade_fornecedores_identificados": fornecedores_identificados,
+        "quantidade_fornecedores_sem_documento": fornecedores_sem_identificacao,
+        "compras_na_cidade": {
+            "quantidade_compras": compras_locais,
+            "valor_centavos": valor_local,
+            "percentual_do_valor_total": float(
+                destino_local.get("percentual", 0.0)
+            ),
+        },
+        "fornecedores": ranking,
+        "fornecedores_exibidos": len(ranking),
+        "limite_fornecedores": limite_fornecedores,
+    }
 
 
 def _consultar_overview_tce_estado(

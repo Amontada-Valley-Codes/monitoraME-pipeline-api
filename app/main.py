@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 
 OPENAPI_TAGS = [
     {
+        "name": "Dados públicos",
+        "description": "Resumos públicos para páginas de apresentação calculados sobre dados locais publicados.",
+    },
+    {
         "name": "Sistema",
         "description": "Verificações de disponibilidade da API e de seus componentes locais.",
     },
