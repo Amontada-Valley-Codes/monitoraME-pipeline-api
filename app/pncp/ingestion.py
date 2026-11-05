@@ -214,39 +214,6 @@ def agendar_propostas_abertas(*, data_final: datetime, modalidades: list[int] | 
     return jobs
 
 
-def coletar_propostas_abertas(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:
-    """Persiste todas as páginas de propostas abertas como RAW e agenda normalização."""
-    if job.source != FONTE or job.entity_type != TIPO or job.window_end is None:
-        raise ValueError("job nao representa uma consulta de propostas abertas PNCP")
-    try:
-        modalidade_texto = job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0]
-        modalidade = None if modalidade_texto == "todas" else int(modalidade_texto)
-    except (IndexError, ValueError) as exc:
-        raise ValueError("scope_key de propostas abertas invalido") from exc
-
-    data_final = job.window_end.date()
-    pagina = job.page or 1
-    total_registros = 0
-    while True:
-        resultado = cliente.buscar_propostas_abertas(data_final=data_final, modalidade=modalidade, pagina=pagina, tamanho_pagina=tamanho_pagina)
-        for item in resultado.itens:
-            external_id = item.get("numeroControlePNCP")
-            if not isinstance(external_id, str) or not external_id.strip():
-                raise PncpColetaError("contratacao sem numeroControlePNCP valido", endpoint=ENDPOINT_PROPOSTAS_ABERTAS)
-            with orm.main_session() as session:
-                salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(entity_type=TIPO, external_id=external_id, payload=item, collected_at=datetime.now(timezone.utc), run_id=f"job:{job.id}:pagina:{pagina}"))
-            total_registros += 1
-
-        if resultado.total_paginas is not None:
-            if not resultado.itens and pagina < resultado.total_paginas:
-                raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP", endpoint=ENDPOINT_PROPOSTAS_ABERTAS)
-            if pagina >= resultado.total_paginas:
-                return total_registros
-        elif len(resultado.itens) < tamanho_pagina:
-            return total_registros
-        pagina += 1
-
-
 def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:
     """Persiste todas as paginas; qualquer erro aborta o job sem confirmar janela."""
     if job.source != FONTE or job.entity_type != TIPO or job.window_start is None or job.window_end is None:

@@ -10,7 +10,6 @@ from typing import Callable
 
 
 HTTP_TRANSITORIOS = frozenset({408, 429, 500, 502, 503, 504})
-HTTP_PERMANENTES = frozenset({400, 401, 403})
 
 
 @dataclass(frozen=True)

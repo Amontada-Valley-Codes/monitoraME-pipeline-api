@@ -29,7 +29,6 @@ from app.pncp.ingestion import (
     agendar_backfill_anual,
     agendar_propostas_abertas,
     agendar_publicacao,
-    coletar_propostas_abertas,
     coletar_publicacao,
 )
 from app.pncp.jobs import WorkerPncp, agendar_job, replay_jobs
