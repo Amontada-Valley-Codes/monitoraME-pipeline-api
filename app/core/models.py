@@ -40,6 +40,16 @@ class TceMunicipio(MainBase):
     codigo_municipio_ibge: Mapped[str] = mapped_column(Text, unique=True)
 
 
+class TceEnriquecimentoMunicipio(MainBase):
+    __tablename__ = "tce_enriquecimento_municipios"
+
+    ano: Mapped[int] = mapped_column(Integer, primary_key=True)
+    codigo_municipio_tce: Mapped[str] = mapped_column(Text, primary_key=True)
+    concluido_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    total_cnpjs: Mapped[int] = mapped_column(Integer)
+    cnpjs_com_porte: Mapped[int] = mapped_column(Integer)
+
+
 class FornecedorMe(MainBase):
     __tablename__ = "fornecedores_me"
     __table_args__ = (

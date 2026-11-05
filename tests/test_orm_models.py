@@ -33,6 +33,7 @@ class OrmMetadataTest(unittest.TestCase):
             "api_response_cache",
             "ibge_municipios",
             "tce_municipios",
+            "tce_enriquecimento_municipios",
             "fornecedores_me",
             "fornecedores_cache",
             "raw_pncp_records",

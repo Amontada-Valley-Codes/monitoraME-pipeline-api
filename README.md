@@ -302,6 +302,22 @@ de um ou mais lotes.
 
 ### Enriquecimento cadastral de empenhos publicados
 
+Para processar um exercício município por município e retomar após uma falha,
+aplique a migration principal e execute:
+
+```bash
+docker compose run --rm api alembic upgrade head
+docker compose run --rm api tce-enriquecer --ano 2025 --retomar-municipios
+```
+
+O comando grava o cache cadastral a cada lote e registra no banco a conclusão
+de cada município. Execuções seguintes pulam os municípios concluídos para o
+mesmo ano. Falha de consulta ou fonte indisponível deixa o município pendente
+para uma nova tentativa. O registro de conclusão corresponde ao conjunto de
+empenhos publicados no momento da execução; novos empenhos publicados depois
+exigem reprocessar o município por meio de uma nova rotina ou limpar seu marco
+de conclusão antes de repetir este modo.
+
 Para enriquecer os fornecedores de empenhos já publicados em 2025 sem repetir
 a coleta no TCE, execute:
 
