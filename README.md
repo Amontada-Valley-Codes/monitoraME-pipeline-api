@@ -369,6 +369,43 @@ O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de M
 
 O parametro opcional `codigo_municipio` mantem o fluxo municipal existente. `GET /pipeline/tce/overview/municipal` tambem mantem seu contrato por portes.
 
+### Participação de ME por natureza (assinantes)
+
+As rotas próprias de assinante expõem a participação de ME agregada por natureza
+da despesa sem alterar os contratos públicos de overview:
+
+- `GET /pipeline/tce/overview/subscriber?data_inicial=2025-01-01&data_final=2025-12-31`
+- `GET /pipeline/tce/overview/municipal/subscriber?data_inicial=2025-01-01&data_final=2025-12-31&codigo_municipio_tce=004`
+
+A rota municipal também aceita `company_sizes` repetido, com os valores `ME`,
+`MEI`, `EPP`, `OTHER` e `UNKNOWN`. Sem filtro, são considerados todos os portes
+canônicos. O numerador é o valor final de ME e o denominador é a soma dos valores
+dos portes considerados (por padrão, ME + MEI + EPP + DEMAIS). Porte não
+identificado não entra no denominador. Percentuais usam escala de 0 a 100; se o
+denominador for zero, `percentual_me` é `null`.
+
+Os códigos de natureza são normalizados para dois dígitos e recebem a descrição
+canônica do catálogo `NATUREZAS_DESPESA_MONITORADAS`. Despesas sem classificação
+monitorada são retornadas na linha `codigo: null`, `descricao:
+"NAO_CLASSIFICADA"` (campos `codigo: null` e `classificacao:
+"NAO_CLASSIFICADA"`), para não misturá-las às naturezas conhecidas.
+
+Cada item de `participacao_me_por_natureza` contém `codigo`, `descricao`,
+`total_me_centavos`, `denominador_centavos`, `percentual_me` e `registros`. A
+resposta inclui `escopo` com fórmula e portes considerados, além dos parâmetros
+temporais e territoriais. Exemplo de item:
+
+```json
+{
+  "codigo": "30",
+  "descricao": "Material de consumo",
+  "total_me_centavos": 250000,
+  "denominador_centavos": 1000000,
+  "percentual_me": 25.0,
+  "registros": 18
+}
+```
+
 ### Comparação de overviews
 
 `POST /pipeline/tce/comparisons` recebe dois lados independentes e permite

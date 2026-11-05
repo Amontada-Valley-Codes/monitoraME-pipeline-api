@@ -634,6 +634,104 @@ def consultar_overview_municipal_tce(
     }
 
 
+def consultar_participacao_me_por_natureza_tce(
+    data_inicial: str,
+    data_final: str,
+    *,
+    codigo_municipio: str | None = None,
+    company_sizes: list[str] | None = None,
+    throttle_fornecedores: float = 0.3,
+) -> dict[str, Any]:
+    """Prepara o recorte analítico e agrega a participação de ME por natureza."""
+    filtros = list(dict.fromkeys(company_sizes or []))
+    invalidos = sorted(set(filtros) - set(PORTES_FILTRO_OVERVIEW_MUNICIPAL))
+    if invalidos:
+        raise ValueError(f"Portes empresariais invalidos: {', '.join(invalidos)}.")
+    portes = (
+        [
+            PORTES_FILTRO_OVERVIEW_MUNICIPAL[item]
+            for item in filtros
+            if PORTES_FILTRO_OVERVIEW_MUNICIPAL[item]
+            in kpis.PORTES_COMPRAS_CONSIDERADAS_OVERVIEW
+        ]
+        if filtros
+        else list(kpis.PORTES_COMPRAS_CONSIDERADAS_OVERVIEW)
+    )
+    if codigo_municipio is None:
+        # O recorte estadual é estritamente local e reutiliza as mesmas partições
+        # publicadas e os mesmos enriquecimentos do overview estadual.
+        competencias = _competencias_entre_datas(data_inicial, data_final)
+        publicacoes = tce_despesas_persistence.listar_publicacoes_competencias_estado(
+            competencias=competencias,
+            uf=UF_PADRAO,
+        )
+        if not publicacoes:
+            raise CompetenciasTceIndisponiveisError(
+                "Nenhuma competencia publicada para o Ceara no periodo solicitado."
+            )
+        empenhos = tce_despesas_persistence.listar_empenhos_liquidos_publicados(
+            codigo_municipio_tce=None,
+            data_inicial=date.fromisoformat(data_inicial),
+            data_final=date.fromisoformat(data_final),
+            uf=UF_PADRAO,
+        )
+        base_tce = pd.DataFrame(empenhos)
+        cnpjs = (
+            extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor"))
+            if not base_tce.empty
+            else []
+        )
+        caches = database.listar_fornecedores_cache(cnpjs) if cnpjs else {}
+        fornecedores_cache = []
+        for cnpj, cache in caches.items():
+            dados = dict(cache.get("dados_normalizados") or {})
+            dados.setdefault("cnpj", cnpj)
+            fornecedores_cache.append(dados)
+        if not base_tce.empty and fornecedores_cache:
+            base_tce = enriquecer_com_fornecedor(
+                base_tce, pd.DataFrame(fornecedores_cache), coluna_cnpj="cnpj_fornecedor"
+            )
+        base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
+        metadados: dict[str, Any] = {
+            "fonte": "TCE-CE",
+            "origem_dados": "BANCO_LOCAL",
+            "consultas_externas": False,
+            "parametros": {
+                "data_inicial": data_inicial,
+                "data_final": data_final,
+                "codigo_municipio": None,
+                "uf": UF_PADRAO,
+            },
+            "competencias_solicitadas": competencias,
+            "competencias_publicadas": sorted(
+                {str(item["competencia"]) for item in publicacoes}
+            ),
+            "totais_brutos": {"empenhos": len(empenhos)},
+        }
+    else:
+        base, metadados = montar_base_analitica_tce(
+            data_inicial,
+            data_final,
+            codigo_municipio=codigo_municipio,
+            throttle_fornecedores=throttle_fornecedores,
+        )
+    return {
+        **metadados,
+        "kpi": "participacao_me_por_natureza_despesa",
+        "escopo": {
+            "portes_considerados": portes,
+            "porte_numerador": "ME",
+            "regra_denominador": "ME + MEI + EPP + DEMAIS dentre os portes considerados",
+            "filtro_company_sizes": filtros,
+            "regra_natureza": "código de dois dígitos e descrição padronizada",
+        },
+        "unidade_monetaria": "CENTAVOS",
+        "participacao_me_por_natureza": kpis.calcular_participacao_me_por_natureza(
+            base, portes_considerados=portes
+        ),
+    }
+
+
 def _consultar_overview_tce_estado(
     data_inicial: str,
     data_final: str,

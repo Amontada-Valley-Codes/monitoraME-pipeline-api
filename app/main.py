@@ -29,6 +29,8 @@ from app.api.endpoints.pipeline import (
     tce_kpi_portes_por_mes,
     tce_overview,
     tce_overview_municipal,
+    tce_overview_subscriber,
+    tce_overview_municipal_subscriber,
 )
 from app.api.router import router
 from app.pipeline import analisys
@@ -97,6 +99,8 @@ __all__ = [
     "tce_kpi_portes_por_mes",
     "tce_overview",
     "tce_overview_municipal",
+    "tce_overview_subscriber",
+    "tce_overview_municipal_subscriber",
 ]
 
 

@@ -17,6 +17,7 @@ import pandas as pd
 
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
+from app.pipeline.naturezas_despesa import normalizar_codigo_natureza_despesa
 from app.utils import normalizar_chave_entidade, normalizar_cnpj
 
 class DadosInsuficientesKPI(ValueError):
@@ -784,6 +785,80 @@ def calcular_overview_me_mei(
         "evolucao_compras_consideradas": evolucao,
         "destino_recursos": destino_recursos,
     }
+
+
+def calcular_participacao_me_por_natureza(
+    base_analitica: pd.DataFrame,
+    *,
+    portes_considerados: list[str] | None = None,
+) -> list[dict[str, object]]:
+    """Agrega participação de ME por natureza, mantendo valores sem classificação."""
+    _validar_colunas(
+        base_analitica,
+        ["valor", "porte_fornecedor", "natureza_despesa_codigo", "natureza_despesa"],
+        "participação de ME por natureza da despesa",
+    )
+    portes = set(
+        PORTES_EMPRESARIAIS if portes_considerados is None else portes_considerados
+    )
+    base = base_analitica.copy()
+    base["_valor_centavos"] = base["valor"].map(_valor_reais_para_centavos)
+    codigos = base["natureza_despesa_codigo"].map(normalizar_codigo_natureza_despesa)
+    base["_natureza_codigo"] = codigos
+    base["_classificavel"] = codigos.isin(NATUREZAS_DESPESA_MONITORADAS)
+
+    resultado: list[dict[str, object]] = []
+    for codigo in sorted(NATUREZAS_DESPESA_MONITORADAS):
+        grupo = base.loc[base["_natureza_codigo"].eq(codigo)]
+        elegiveis = grupo.loc[grupo["porte_fornecedor"].isin(portes)]
+        if elegiveis.empty:
+            continue
+        total_me = _somar_centavos(
+            elegiveis.loc[elegiveis["porte_fornecedor"].eq("ME"), "_valor_centavos"]
+        )
+        denominador = _somar_centavos(elegiveis["_valor_centavos"])
+        resultado.append(
+            {
+                "codigo": codigo,
+                "descricao": NATUREZAS_DESPESA_MONITORADAS[codigo],
+                "total_me_centavos": total_me,
+                "denominador_centavos": denominador,
+                "percentual_me": (
+                    _percentual_0_a_100(total_me, denominador)
+                    if denominador != 0
+                    else None
+                ),
+                "registros": int(len(elegiveis)),
+            }
+        )
+
+    sem_classificacao = base.loc[~base["_classificavel"]]
+    sem_classificacao = sem_classificacao.loc[
+        sem_classificacao["porte_fornecedor"].isin(portes)
+    ]
+    if not sem_classificacao.empty:
+        total_me = _somar_centavos(
+            sem_classificacao.loc[
+                sem_classificacao["porte_fornecedor"].eq("ME"), "_valor_centavos"
+            ]
+        )
+        denominador = _somar_centavos(sem_classificacao["_valor_centavos"])
+        resultado.append(
+            {
+                "codigo": None,
+                "descricao": "NAO_CLASSIFICADA",
+                "total_me_centavos": total_me,
+                "denominador_centavos": denominador,
+                "percentual_me": (
+                    _percentual_0_a_100(total_me, denominador)
+                    if denominador != 0
+                    else None
+                ),
+                "registros": int(len(sem_classificacao)),
+                "classificacao": "NAO_CLASSIFICADA",
+            }
+        )
+    return resultado
 
 
 def calcular_overview_portes(
