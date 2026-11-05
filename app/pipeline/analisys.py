@@ -910,6 +910,42 @@ def _consultar_overview_tce_estado(
     overview = kpis.calcular_overview_me_mei(
         base, incluir_mei=False, ano_exercicio=ano_exercicio,
     )
+    base_estadual = base.loc[base["porte_fornecedor"].eq("ME")].copy()
+    if "exercicio_orcamentario" in base_estadual.columns:
+        base_estadual = base_estadual.loc[
+            base_estadual["exercicio_orcamentario"].eq(ano_exercicio * 100)
+        ]
+    ufs_fornecedores = (
+        base_estadual["uf_sede_fornecedor"].astype("string").str.strip().str.upper()
+        if "uf_sede_fornecedor" in base_estadual.columns
+        else pd.Series(pd.NA, index=base_estadual.index, dtype="string")
+    )
+    valores_centavos = base_estadual["valor"].map(kpis._valor_reais_para_centavos)
+    valores_centavos = valores_centavos.fillna(0).astype("int64")
+    valor_no_ceara = int(valores_centavos.loc[ufs_fornecedores.eq("CE").fillna(False)].sum())
+    valor_fora_ceara = int(
+        valores_centavos.loc[ufs_fornecedores.notna() & ufs_fornecedores.ne("") & ufs_fornecedores.ne("CE")].sum()
+    )
+    valor_nao_identificado = int(
+        valores_centavos.loc[ufs_fornecedores.isna() | ufs_fornecedores.eq("")].sum()
+    )
+    total_me_centavos = int(overview["kpis"]["total_compras_ME_centavos"])
+    overview["destino_recursos"] = [
+        {
+            "destino": destino,
+            "valor_centavos": valor_centavos,
+            "percentual": (
+                float(Decimal(valor_centavos) * Decimal(100) / Decimal(total_me_centavos))
+                if total_me_centavos
+                else 0.0
+            ),
+        }
+        for destino, valor_centavos in (
+            ("NO_CEARA", valor_no_ceara),
+            ("FORA_DO_CEARA", valor_fora_ceara),
+            ("NAO_IDENTIFICADA", valor_nao_identificado),
+        )
+    ]
     return {
         **metadados,
         "origem_dados": "BANCO_LOCAL",

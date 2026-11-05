@@ -400,6 +400,8 @@ Município/competência sem publicação não é tratado como valor zero.
 
 O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de ME. Os demais valores monetarios do overview tambem sao finais em centavos. A resposta nao expoe valores brutos, anulacoes, valores liquidos nem medias.
 
+No overview estadual, `destino_recursos` classifica diretamente pela UF da sede do fornecedor: `NO_CEARA`, `FORA_DO_CEARA` e `NAO_IDENTIFICADA`. A categoria estadual não depende do município comprador nem exige que o município de sede esteja identificado quando a UF é conhecida. O overview municipal mantém a distinção entre fornecedor do município comprador e de outro município do Ceará.
+
 O parametro opcional `codigo_municipio` mantem o fluxo municipal existente. `GET /pipeline/tce/overview/municipal` tambem mantem seu contrato por portes.
 
 ### Comparação de overviews
