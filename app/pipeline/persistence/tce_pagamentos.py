@@ -157,12 +157,12 @@ def listar_pagamentos_para_analise(
             # Um empenho pode reaparecer em snapshots mensais; sua referencia
             # de origem e a primeira competencia documental publicada.
             indice.setdefault(empenho.chave_empenho, (empenho, competencia))
-        ausentes_empenho = chaves - indice.keys()
-        if ausentes_empenho:
-            raise ValueError(f"Notas pagas sem empenho publicado ({len(ausentes_empenho)} chaves).")
         resultado = []
         for pagamento in pagamentos:
-            empenho, competencia = indice[pagamento.chave_empenho]
+            referencia_empenho = indice.get(pagamento.chave_empenho)
+            if referencia_empenho is None:
+                continue
+            empenho, competencia = referencia_empenho
             elemento = str(empenho.codigo_elemento_despesa or "")
             codigo_elemento = elemento[4:6] if len(elemento) == 8 else elemento
             if codigo_elemento not in NATUREZAS_DESPESA_MONITORADAS:
