@@ -969,16 +969,25 @@ def calcular_overview_portes(
         ]
         total_exercicio = _somar_centavos(compras_identificadas["_valor_centavos"])
         microempresas_acumuladas = 0
+        compras_consideradas_acumuladas = 0
         meses_documentais = base["ano_mes"].astype("string").str[-2:]
         for mes in range(1, 13):
+            compras_consideradas_mes = base.loc[
+                meses_documentais.eq(f"{mes:02d}"),
+                "_valor_centavos",
+            ]
             microempresas_mes = base.loc[
                 meses_documentais.eq(f"{mes:02d}")
                 & base["porte_fornecedor"].eq("ME"),
                 "_valor_centavos",
             ]
+            compras_consideradas_acumuladas += _somar_centavos(
+                compras_consideradas_mes
+            )
             microempresas_acumuladas += _somar_centavos(microempresas_mes)
             evolucao.append({
                 "periodo": f"{ano_exercicio:04d}-{mes:02d}",
+                "compras_consideradas_centavos": compras_consideradas_acumuladas,
                 "percentual_participacao_me": _percentual_0_a_100(
                     microempresas_acumuladas,
                     total_exercicio,

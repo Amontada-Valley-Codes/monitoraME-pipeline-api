@@ -631,7 +631,10 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         uf_comprador=UF_PADRAO,
     )
     if not base.empty:
-        base["exercicio_orcamento"] = base_tce["exercicio_orcamento"]
+        if "exercicio_orcamento" in base_tce.columns:
+            base["exercicio_orcamento"] = base_tce["exercicio_orcamento"]
+        else:
+            base["exercicio_orcamento"] = date.fromisoformat(data_inicial).year * 100
         base["valor"] = base_tce["valor_centavos"].map(
             lambda valor: Decimal(int(valor)) / Decimal(100)
         )
