@@ -89,10 +89,6 @@ class ApiResponseCache(MainBase):
     """Resposta JSON calculada para uma combinação de método, rota e filtros."""
 
     __tablename__ = "api_response_cache"
-    __table_args__ = (
-        Index("ix_api_response_cache_expires_at", "expires_at"),
-    )
-
     cache_key: Mapped[str] = mapped_column(Text, primary_key=True)
     request_method: Mapped[str] = mapped_column(Text)
     request_path: Mapped[str] = mapped_column(Text)
@@ -102,7 +98,7 @@ class ApiResponseCache(MainBase):
     cached_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RawPncpRecord(MainBase):

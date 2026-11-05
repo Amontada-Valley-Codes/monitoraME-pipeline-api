@@ -296,12 +296,12 @@ def _gerar_openapi_com_force_refresh() -> dict:
         tags=app.openapi_tags,
     )
     parametro_force_refresh = {
-        "name": "X-Force-Refresh",
+        "name": "X-Refresh-Force",
         "in": "header",
         "required": False,
         "description": (
             "Defina como true para ignorar o cache, recalcular a resposta e "
-            "atualizar a entrada armazenada."
+            "atualizar a entrada armazenada. X-Force-Refresh também é aceito."
         ),
         "schema": {"type": "boolean", "default": False},
     }
@@ -314,7 +314,7 @@ def _gerar_openapi_com_force_refresh() -> dict:
             parametros = operacao.setdefault("parameters", [])
             if not any(
                 item.get("in") == "header"
-                and item.get("name", "").lower() == "x-force-refresh"
+                and item.get("name", "").lower() == "x-refresh-force"
                 for item in parametros
             ):
                 parametros.append(parametro_force_refresh)
