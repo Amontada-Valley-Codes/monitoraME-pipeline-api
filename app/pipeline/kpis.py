@@ -121,6 +121,23 @@ def _somar_centavos(serie: pd.Series) -> int:
     return sum(int(valor) for valor in serie.dropna())
 
 
+def _filtrar_exercicio_orcamentario(
+    base: pd.DataFrame,
+    ano_exercicio: int | None,
+) -> pd.DataFrame:
+    if ano_exercicio is None or base.empty:
+        return base
+    if "exercicio_orcamento" not in base.columns:
+        raise DadosInsuficientesKPI(
+            "[INDISPONIVEL] overview: exercicio_orcamento ausente na base de pagamentos."
+        )
+    return base.loc[
+        pd.to_numeric(base["exercicio_orcamento"], errors="coerce").eq(
+            ano_exercicio * 100
+        )
+    ].copy()
+
+
 def _booleano_estrito(serie: pd.Series) -> pd.Series:
     return serie.map(lambda valor: bool(valor) if pd.notna(valor) else False)
 
@@ -630,6 +647,7 @@ def calcular_overview_me_mei(
     base_analitica: pd.DataFrame,
     *,
     incluir_mei: bool = True,
+    ano_exercicio: int | None = None,
 ) -> dict[str, object]:
     """Calcula o overview restrito a ME e MEI sobre empenhos líquidos.
 
@@ -650,6 +668,9 @@ def calcular_overview_me_mei(
         "overview ME e MEI",
     )
 
+    base_analitica = _filtrar_exercicio_orcamentario(
+        base_analitica, ano_exercicio,
+    )
     todos = base_analitica.copy()
     todos["_valor_centavos"] = todos["valor"].map(_valor_reais_para_centavos)
     todos["_porte_overview"] = todos["porte_fornecedor"].where(
@@ -730,27 +751,46 @@ def calcular_overview_me_mei(
     )
 
     evolucao: list[dict[str, object]] = []
-    periodos = sorted(
-        str(periodo)
-        for periodo in compras["ano_mes"].dropna().unique()
-        if str(periodo).strip()
-    )
-    for periodo in periodos:
-        mensal = compras.loc[compras["ano_mes"].astype("string").eq(periodo)]
-        mensal_microempresas = mensal.loc[
-            mensal["porte_fornecedor"].isin(portes_microempresas)
-        ]
-        evolucao.append(
-            {
-                "periodo": periodo,
-                "compras_consideradas_centavos": _somar_centavos(
-                    mensal["_valor_centavos"]
-                ),
-                "microempresas_centavos": _somar_centavos(
-                    mensal_microempresas["_valor_centavos"]
-                ),
-            }
+    if ano_exercicio is not None:
+        meses_documentais = compras["ano_mes"].astype("string").str[-2:]
+        for mes in range(1, 13):
+            mensal = compras.loc[meses_documentais.eq(f"{mes:02d}")]
+            mensal_microempresas = mensal.loc[
+                mensal["porte_fornecedor"].isin(portes_microempresas)
+            ]
+            evolucao.append(
+                {
+                    "periodo": f"{ano_exercicio:04d}-{mes:02d}",
+                    "compras_consideradas_centavos": _somar_centavos(
+                        mensal["_valor_centavos"]
+                    ),
+                    "microempresas_centavos": _somar_centavos(
+                        mensal_microempresas["_valor_centavos"]
+                    ),
+                }
+            )
+    else:
+        periodos = sorted(
+            str(periodo)
+            for periodo in compras["ano_mes"].dropna().unique()
+            if str(periodo).strip()
         )
+        for periodo in periodos:
+            mensal = compras.loc[compras["ano_mes"].astype("string").eq(periodo)]
+            mensal_microempresas = mensal.loc[
+                mensal["porte_fornecedor"].isin(portes_microempresas)
+            ]
+            evolucao.append(
+                {
+                    "periodo": periodo,
+                    "compras_consideradas_centavos": _somar_centavos(
+                        mensal["_valor_centavos"]
+                    ),
+                    "microempresas_centavos": _somar_centavos(
+                        mensal_microempresas["_valor_centavos"]
+                    ),
+                }
+            )
 
     destino_recursos = [
         {
@@ -845,6 +885,7 @@ def calcular_overview_portes(
     base_analitica: pd.DataFrame,
     *,
     portes_considerados: list[str],
+    ano_exercicio: int | None = None,
 ) -> dict[str, object]:
     """Calcula um overview territorial para um conjunto explicito de portes."""
     _validar_colunas(
@@ -858,10 +899,15 @@ def calcular_overview_portes(
         ],
         "overview por portes",
     )
+    base_analitica = _filtrar_exercicio_orcamentario(
+        base_analitica, ano_exercicio,
+    )
     base = base_analitica.loc[
         base_analitica["porte_fornecedor"].isin(portes_considerados)
     ].copy()
-    overview_me_mei = calcular_overview_me_mei(base)
+    overview_me_mei = calcular_overview_me_mei(
+        base, ano_exercicio=ano_exercicio,
+    )
     base["_valor_centavos"] = base["valor"].map(_valor_reais_para_centavos)
     total = _somar_centavos(base["_valor_centavos"])
 
@@ -911,24 +957,33 @@ def calcular_overview_portes(
         }
         for codigo in sorted(NATUREZAS_DESPESA_MONITORADAS)
     ]
-    evolucao = []
-    for periodo in sorted(
+    periodos_validos = sorted(
         str(item) for item in base["ano_mes"].dropna().unique() if str(item).strip()
-    ):
-        mensal = base.loc[base["ano_mes"].astype("string").eq(periodo)]
-        valor_mensal = _somar_centavos(mensal["_valor_centavos"])
-        valor_local = _somar_centavos(
-            mensal.loc[
-                mensal["_origem_overview"].eq(ORIGEM_FORNECEDOR_LOCAL),
+    )
+    if ano_exercicio is None and periodos_validos:
+        ano_exercicio = int(periodos_validos[0][:4])
+    evolucao = []
+    if ano_exercicio is not None:
+        compras_identificadas = base.loc[
+            base["porte_fornecedor"].isin(PORTES_COMPRAS_CONSIDERADAS_OVERVIEW)
+        ]
+        total_exercicio = _somar_centavos(compras_identificadas["_valor_centavos"])
+        microempresas_acumuladas = 0
+        meses_documentais = base["ano_mes"].astype("string").str[-2:]
+        for mes in range(1, 13):
+            microempresas_mes = base.loc[
+                meses_documentais.eq(f"{mes:02d}")
+                & base["porte_fornecedor"].eq("ME"),
                 "_valor_centavos",
             ]
-        )
-        evolucao.append({
-            "periodo": periodo,
-            "compras_consideradas_centavos": valor_mensal,
-            "valor_local_centavos": valor_local,
-            "percentual_local": _percentual_0_a_100(valor_local, valor_mensal),
-        })
+            microempresas_acumuladas += _somar_centavos(microempresas_mes)
+            evolucao.append({
+                "periodo": f"{ano_exercicio:04d}-{mes:02d}",
+                "percentual_participacao_me": _percentual_0_a_100(
+                    microempresas_acumuladas,
+                    total_exercicio,
+                ),
+            })
 
     return {
         "kpis": {

@@ -631,6 +631,7 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         uf_comprador=UF_PADRAO,
     )
     if not base.empty:
+        base["exercicio_orcamento"] = base_tce["exercicio_orcamento"]
         base["valor"] = base_tce["valor_centavos"].map(
             lambda valor: Decimal(int(valor)) / Decimal(100)
         )
@@ -691,6 +692,7 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
             )
     base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
     if not base.empty:
+        base["exercicio_orcamento"] = base_tce["exercicio_orcamento"]
         base["valor"] = base_tce["valor_centavos"].map(
             lambda valor: Decimal(int(valor)) / Decimal(100)
         )
@@ -871,9 +873,11 @@ def consultar_overview_municipal_tce(
         data_final,
         codigo_municipio=codigo_municipio,
     )
+    ano_exercicio = date.fromisoformat(data_inicial).year
     overview = kpis.calcular_overview_portes(
         base,
         portes_considerados=portes,
+        ano_exercicio=ano_exercicio,
     )
     resposta = {
         **metadados,
@@ -902,7 +906,10 @@ def _consultar_overview_tce_estado(
     base, metadados = montar_base_analitica_pagamentos_tce_estado_somente_banco(
         data_inicial, data_final,
     )
-    overview = kpis.calcular_overview_me_mei(base, incluir_mei=False)
+    ano_exercicio = date.fromisoformat(data_inicial).year
+    overview = kpis.calcular_overview_me_mei(
+        base, incluir_mei=False, ano_exercicio=ano_exercicio,
+    )
     return {
         **metadados,
         "origem_dados": "BANCO_LOCAL",
