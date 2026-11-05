@@ -248,7 +248,6 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 
 ## Rotas do pipeline
 
-- `GET /pipeline/tce/contratos`: consulta e enriquece contratos do TCE-CE.
 - `GET /pipeline/tce/kpis/portes-por-mes`: calcula a participação mensal por porte.
 - `GET /pipeline/tce/overview`: calcula o overview estadual de ME; MEI integra demais portes.
 - `GET /pipeline/tce/overview/municipal`: calcula o overview de um município por período, código TCE e portes opcionais.
@@ -259,7 +258,6 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}`: retorna cadastro, indicadores e gráficos do fornecedor.
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas`: pagina as despesas consideradas do fornecedor.
 - `GET /pipeline/tce/analitico/indicadores`: atualiza as competencias e calcula indicadores das despesas finais.
-- `GET /pipeline/tce/analise-territorial`: calcula retenção local, destino dos recursos, concentração e rankings usando somente dados publicados no banco local.
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
 
@@ -356,29 +354,7 @@ GET /pipeline/tce/overview/municipal?data_inicial=2025-01-01&data_final=2025-12-
 Os valores aceitos são `ME`, `MEI`, `EPP`, `OTHER` e `UNKNOWN`. No retorno,
 `OTHER` é apresentado como `DEMAIS` e `UNKNOWN` como `NAO_IDENTIFICADO`.
 
-### Análise territorial
-
-`GET /pipeline/tce/analise-territorial` é somente leitura e não consulta fontes
-externas. A rota recebe `start_date`, `end_date`, `municipality_tce_code`, `uf`,
-listas opcionais de `company_sizes`, `supplier_origins` e
-`expense_element_codes`, além de `ranking_limit`. O retorno inclui valores
-empenhado, anulado e líquido, retenção local, evasão municipal, retenção no
-Ceará, cobertura cadastral e geográfica, destinos dos recursos, portes,
-elementos, evolução mensal, concentração HHI e ranking de fornecedores.
-
-```http
-GET /pipeline/tce/analise-territorial?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057&ranking_limit=10
-```
-
-Todos os valores monetários são inteiros em centavos e os percentuais usam a
-escala de `0` a `100`. Competências ausentes aparecem explicitamente na
-cobertura e não são convertidas em meses com valor zero.
-
-O teste concorrente desse motor usa múltiplos municípios, mede média, p95, p99,
-throughput, erros, tempo SQL, CPU e memória, e gera relatórios JSON e Markdown.
-Consulte [o procedimento de teste de carga](docs/carga-indicadores.md).
-
-As rotas analíticas de overview, comparação, indicadores e análise territorial
+As rotas analíticas de overview, comparação e indicadores
 são somente leitura: usam o último lote `PUBLICADO` e cadastros já armazenados,
 sem iniciar ingestão nem consultar fontes externas. Se uma tentativa posterior
 falhar, o lote publicado anterior permanece disponível e a resposta sinaliza
@@ -852,13 +828,13 @@ python -m unittest discover -s tests
 
 ## Observações mensais de porte (PEN-003)
 
-Publicações versionadas, importação dos dados reais e contrato das rotas: [histórico mensal](docs/portes-mensais.md). O porte observado na fotografia não comprova vigência na data do empenho.
+Publicações versionadas e importação dos dados reais: [histórico mensal](docs/portes-mensais.md). O porte observado na fotografia não comprova vigência na data do empenho.
 
 
 
 ### Pagamentos da Prefeitura e Microempresas
 
-Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. A ingestao incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras, auditoria e reproducao do overview](docs/pagamentos-tce.md).
+Para reproduzir os valores pagos do portal do TCE, use `python scripts/auditar_pagamentos_tce.py`. O fluxo usa notas de pagamento, exclui Câmara e estornos e aplica porte cadastral ME. O overview da API continua medindo os snapshots publicados. A ingestão incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras e reprodução da auditoria](docs/pagamentos-tce.md).
 
 As rotas analíticas de despesas e fornecedores incluem somente órgãos municipais classificados como Executivo pelo cadastro `/orgaos` do TCE, por município e exercício. Após aplicar a migration `0029_tce_classificacao_orgaos`, classifique os exercícios já publicados com `python scripts/sincronizar_classificacoes_orgaos_tce.py` (ou limite a Acaraú com `--municipio 004`). A Câmara e órgãos ainda sem classificação de alta confiança ficam fora dos cálculos; as linhas brutas de empenhos e anulações permanecem preservadas. Novas ingestões atualizam as classificações automaticamente.
 

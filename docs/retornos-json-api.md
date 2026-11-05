@@ -21,7 +21,7 @@ Os exemplos abaixo mostram a estrutura de sucesso das rotas registradas. Valores
 ### Metadados comuns de carga analítica
 
 As respostas de overview estadual/municipal, KPI mensal por porte, indicadores
-analíticos, comparação e análise territorial compartilham estes campos:
+analíticos e comparação compartilham estes campos:
 
 ```json
 {
@@ -83,12 +83,6 @@ que o gasto foi zero. Uma competência publicada sem empenhos é dado disponíve
 com movimento monetário conhecido igual a zero, mas percentuais sem denominador
 também são `null`.
 
-### `GET /pipeline/tce/contratos`
-
-```json
-{"fonte":"TCE-CE","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004"},"totais_brutos":{},"totais":{"contratos":0},"limite_resposta":100,"dados":[]}
-```
-
 ### `GET /pipeline/tce/kpis/portes-por-mes`
 
 ```json
@@ -145,42 +139,10 @@ O overview sem município consolida o Ceará e considera somente ME no recorte p
 {"source":"TCE-CE","data_source":"LOCAL_DATABASE","external_requests":false,"filters":{"uf":"CE","municipality_tce_code":null,"start_date":"2025-01-01","end_date":"2025-01-31","company_sizes":[],"supplier_origins":[],"expense_element_codes":[],"search":null},"fornecedor":{"tipo_documento":"CNPJ","documento":"12345678000199","nome":"Empresa Exemplo Ltda"},"pagination":{"page":1,"page_size":50,"total_items":1,"total_pages":1,"has_previous":false,"has_next":false},"sorting":{"sort_by":"final_value","sort_order":"desc"},"items":[{"chave_despesa":"chave-exemplo","display_id":"EMP-2025-0001","numero_despesa":"0001","data_despesa":"2025-01-15","municipio_comprador":{"codigo_ibge":"2304400","codigo_tce":"004","nome":"Fortaleza","uf":"CE"},"fornecedor":{"documento":"12345678000199","cnpj":"12345678000199","nome":"Empresa Exemplo Ltda","porte":"ME","origem":"LOCAL"},"elemento_despesa":{"codigo_natureza":"339030","codigo_exibicao":"339030","codigo_elemento":"30","nome":"Material de consumo"},"valores":{"valor_final_centavos":125000}}]}
 ```
 
-### `GET /pipeline/tce/analise-territorial`
-
-```json
-{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"unidade_monetaria":"CENTAVOS","parametros":{"start_date":"2025-01-01","end_date":"2025-01-31","uf":"CE","municipality_tce_code":"004"},"municipio":{"codigo_tce":"004","nome":"Fortaleza","uf":"CE"},"cobertura":{"despesas":0,"despesas_com_cache_cadastral":0},"resumo_financeiro":{"valor_final_centavos":0,"quantidade_despesas":0},"indicadores_territoriais":{},"destino_recursos":[],"participacao_por_porte":[],"elementos_despesa":[],"evolucao_mensal":[],"concentracao_fornecedores":{},"ranking_fornecedores":[],"metodologia":{}}
-```
-
 ### `GET /pipeline/tce/analitico/indicadores`
 
 ```json
 {"fonte":"TCE-CE","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004"},"totais":{"empenhos":0,"indicadores":{}},"limite_resposta":100,"kpi":"indicadores_analiticos","indicadores":{"por_porte":[],"por_elemento":[],"por_fornecedor":[],"por_municipio":[],"evolucao_mensal":[],"concentracao_fornecedores":[]}}
-```
-
-### `GET /pipeline/tce/pagamentos/overview`
-
-```json
-{"fonte":"TCE-CE/SIM","medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","unidade_monetaria":"CENTAVOS","administracao":"PREFEITURA","codigo_municipio":"004","exercicio_orcamento":202500,"referencias_empenhos":[],"referencias_pagamentos":[],"coleta_iniciada_em":"2025-02-01T00:00:00","coleta_concluida_em":"2025-02-01T00:01:00","criterio_me":{"porte_codigo":"01","excluir_mei":false},"referencia_base_cadastral":null,"porte_historico_comprovado":false,"consulta_cadastral_executada":true,"auditoria":{},"total_me_centavos":0,"me_por_elemento_centavos":{},"fornecedores_me":[],"controle_financeiro":{},"classificacao_completa":true,"pendencias":[],"classificacoes":[]}
-```
-
-## Porte empresarial histórico
-
-### `GET /pipeline/tce/portes/competencias`
-
-```json
-{"data_source":"LOCAL_DATABASE","external_requests":false,"politica_temporal":"COMPETENCIA_EXATA_SEM_PREENCHIMENTO","competencia_final":"2025-01","items":[{"competencia":"2025-01","versao":"versao-exemplo","ativa":true,"fonte":"RECEITA_FEDERAL_DADOS_ABERTOS","procedencia":"RETRATO_MENSAL_PUBLICADO","observado_em":"2025-02-01T00:00:00","importado_em":"2025-02-02T00:00:00","referencia_extracao_comprovada":false,"vigencia_diaria_comprovada":false,"cobertura":{},"universo":"RAIZES_SELECIONADAS_NO_PIPELINE","artefatos":[]}]}
-```
-
-### `GET /pipeline/tce/portes/historico/{cnpj}`
-
-```json
-{"cnpj_consultado":"12345678000199","raiz":"12345678","unidade_cadastral":"CNPJ_BASICO","data_source":"LOCAL_DATABASE","external_requests":false,"politica_temporal":"COMPETENCIA_EXATA_SEM_PREENCHIMENTO","vigencia_diaria_comprovada":false,"competencias_sem_publicacao":[],"items":[{"competencia":"2025-01","versao":"versao-exemplo","status":"IDENTIFICADO","porte_codigo":"01","porte_observado":"ME","optante_mei":false,"simples_disponivel":true,"publicacao":{}}]}
-```
-
-### `GET /pipeline/tce/portes/versoes/{versao}/{cnpj}`
-
-```json
-{"cnpj_consultado":"12345678000199","raiz":"12345678","unidade_cadastral":"CNPJ_BASICO","data_source":"LOCAL_DATABASE","external_requests":false,"politica_temporal":"COMPETENCIA_EXATA_SEM_PREENCHIMENTO","vigencia_diaria_comprovada":false,"competencias_sem_publicacao":[],"items":[{"competencia":"2025-01","versao":"versao-exemplo","status":"IDENTIFICADO","porte_codigo":"01","porte_observado":"ME","optante_mei":false,"simples_disponivel":true,"publicacao":{}}]}
 ```
 
 ## PNCP
@@ -211,7 +173,7 @@ Retorna o manifesto de documentos, URLs oficiais, disponibilidade e cobertura, s
 
 ## Formato de erro
 
-Rotas com envelope de erro próprio (despesas, fornecedores, análise territorial, comparações, porte histórico e PNCP) retornam, por exemplo:
+Rotas com envelope de erro próprio (despesas, fornecedores, comparações e PNCP) retornam, por exemplo:
 
 ```json
 {"error":{"code":"NOT_FOUND","message":"Registro não encontrado.","details":[],"request_id":"req_exemplo"}}

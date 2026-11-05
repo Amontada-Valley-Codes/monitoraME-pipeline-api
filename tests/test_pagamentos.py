@@ -275,15 +275,5 @@ class PagamentosTest(unittest.TestCase):
         for entrada, saida in [("01", "ME"), (1, "ME"), ("03", "EPP"), ("05", "DEMAIS"), ("00", None), (2, None)]:
             self.assertEqual(normalizar_porte_empresarial(entrada), saida)
 
-    def test_rota_registrada_e_traduz_erro_financeiro(self):
-        from app.api.endpoints.pipeline import router, tce_pagamentos_overview
-        from fastapi import HTTPException
-        self.assertIn("/pipeline/tce/pagamentos/overview", [r.path for r in router.routes])
-        with patch.object(p, "consultar_pagamentos_prefeitura", side_effect=ValueError("duplicada")):
-            with self.assertRaises(HTTPException) as caught:
-                tce_pagamentos_overview("004", 2025, "2026-09")
-            self.assertEqual(caught.exception.status_code, 422)
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -22,8 +22,6 @@ class TceIndisponivelError(RuntimeError):
     """A fonte TCE-CE falhou; uma resposta vazia não pode ser presumida."""
 
 ENDPOINT_CONTRATACOES = "processos_administrativos_contratacoes"
-ENDPOINT_CONTRATOS = "contratos"
-ENDPOINT_CONTRATADOS = "contratados"
 ENDPOINT_ITENS = "itens_compoem_bens_servicos"
 ENDPOINT_NOTAS_EMPENHOS = "notas_empenhos"
 ENDPOINT_NOTAS_ANULACOES_EMPENHOS = "notas_anulacoes_empenhos"
@@ -323,52 +321,6 @@ def buscar_contratacoes(
         parametros=parametros,
         totais={"endpoint": ENDPOINT_CONTRATACOES},
         executar=executar,
-    )
-
-
-def buscar_contratos(
-    data_inicial: str,
-    data_final: str,
-    codigo_municipio: str = CODIGO_MUNICIPIO_PADRAO,
-) -> list[dict[str, Any]]:
-    parametros = {
-        "data_inicial": data_inicial,
-        "data_final": data_final,
-        "codigo_municipio": codigo_municipio,
-    }
-    return executar_com_log_ingestao(
-        fonte="TCE-CE",
-        etapa="buscar_contratos",
-        parametros=parametros,
-        totais={"endpoint": ENDPOINT_CONTRATOS},
-        executar=lambda: listar_registros(
-            ENDPOINT_CONTRATOS,
-            _params_periodo(data_inicial, data_final, codigo_municipio),
-            filtrar_por_codigo_despesa=False,
-        ),
-    )
-
-
-def buscar_contratados(
-    data_inicial: str,
-    data_final: str,
-    codigo_municipio: str = CODIGO_MUNICIPIO_PADRAO,
-) -> list[dict[str, Any]]:
-    parametros = {
-        "data_inicial": data_inicial,
-        "data_final": data_final,
-        "codigo_municipio": codigo_municipio,
-    }
-    return executar_com_log_ingestao(
-        fonte="TCE-CE",
-        etapa="buscar_contratados",
-        parametros=parametros,
-        totais={"endpoint": ENDPOINT_CONTRATADOS},
-        executar=lambda: listar_registros(
-            ENDPOINT_CONTRATADOS,
-            _params_periodo(data_inicial, data_final, codigo_municipio),
-            filtrar_por_codigo_despesa=False,
-        ),
     )
 
 

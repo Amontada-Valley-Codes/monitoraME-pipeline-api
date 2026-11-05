@@ -18,11 +18,17 @@ os.environ.setdefault("CODIGO_MUNICIPIO_TCE_PADRAO", "010")
 
 import pandas as pd
 
-from app.pipeline import merge
 from app.pipeline.cleaners import ibge as ibge_cleaning
 from app.pipeline.cleaners import opencnpj as opencnpj_cleaning
-from app.pipeline.cleaners import tce as tce_cleaning
-from app.pipeline.ingestion import fornecedores, ibge, tce
+from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor, extrair_cnpjs_distintos
+from app.pipeline.enrichment.municipios import buscar_municipios_uf, validar_e_enriquecer_municipio
+from app.pipeline.enrichment.origem_geografica import (
+    NIVEL_FORA_DO_ESTADO,
+    NIVEL_MESMO_MUNICIPIO,
+    NIVEL_OUTRO_MUNICIPIO_CE,
+    classificar_origem_geografica,
+)
+from app.pipeline.ingestion import fornecedores, ibge
 
 
 
@@ -90,7 +96,7 @@ class EnriquecerComFornecedorTest(unittest.TestCase):
             ]
         )
 
-        resultado = merge.enriquecer_com_fornecedor(df, fornecedores_df, coluna_cnpj="ni_fornecedor")
+        resultado = enriquecer_com_fornecedor(df, fornecedores_df, coluna_cnpj="ni_fornecedor")
 
         encontrado = resultado[resultado["contrato_id"] == 1].iloc[0]
         self.assertEqual(encontrado["fornecedor_porte_padronizado"], "ME")
@@ -116,7 +122,7 @@ class EnriquecerComFornecedorTest(unittest.TestCase):
             ]
         )
 
-        resultado = merge.enriquecer_com_fornecedor(
+        resultado = enriquecer_com_fornecedor(
             despesas,
             fornecedores_df,
             coluna_cnpj="cnpj_fornecedor",
@@ -144,14 +150,14 @@ class ExtrairCnpjsDistintosTest(unittest.TestCase):
         )
         fornecedores_adicionais = pd.Series(["98.765.432/0001-11", None])
 
-        resultado = merge.extrair_cnpjs_distintos(contratados, fornecedores_adicionais)
+        resultado = extrair_cnpjs_distintos(contratados, fornecedores_adicionais)
 
         self.assertEqual(resultado, ["11444777000161", "98765432000111"])
 
     def test_ignora_series_none(self) -> None:
         contratados = pd.Series(["11.444.777/0001-61"])
 
-        resultado = merge.extrair_cnpjs_distintos(contratados, None)
+        resultado = extrair_cnpjs_distintos(contratados, None)
 
         self.assertEqual(resultado, ["11444777000161"])
 
@@ -166,7 +172,7 @@ class ValidarEEnriquecerMunicipioTest(unittest.TestCase):
             ]
         )
 
-        resultado = merge.validar_e_enriquecer_municipio(
+        resultado = validar_e_enriquecer_municipio(
             df, municipios, coluna_codigo_municipio="codigo_ibge", coluna_uf="uf_informada"
         )
 
@@ -175,95 +181,6 @@ class ValidarEEnriquecerMunicipioTest(unittest.TestCase):
         self.assertEqual(por_id.loc["A", "municipio_uf"], "CE")
         self.assertTrue(por_id.loc["A", "codigo_ibge_uf_confere"])
         self.assertFalse(por_id.loc["B", "codigo_ibge_uf_confere"])
-
-
-def _df_tce_contratos() -> pd.DataFrame:
-    """
-    'contratos' isolado — nomes de campo confirmados ao vivo em
-    api-dados-abertos.tce.ce.gov.br/sim/contratos. Note que NAO tem CNPJ do
-    contratado: isso so existe no endpoint separado 'contratados'.
-    """
-    registros_brutos = [
-        {
-            "codigo_municipio": "010",  # codigo INTERNO do TCE-CE, nao e o codigo IBGE
-            "numero_contrato": "2025000123",
-            "data_contrato": "2025-01-15",
-            "modalide_contrato": "Pregao Eletronico",
-            "data_inicio_vigencia_contrato": "2025-01-15",
-            "data_fim_vigencia_contrato": "2026-01-15",
-            "descricao_objeto_contrato": "Prestacao de servicos de limpeza predial",
-            "valor_total_contrato": "50.000,00",
-            "cpf_gestor": "111.444.777-35",
-        }
-    ]
-    with patch("app.pipeline.ingestion.tce.requests.get") as mock_get:
-        mock_get.return_value = _fake_response({"elements": registros_brutos})
-        registros = tce.buscar_contratos("2025-01-01", "2025-03-01", codigo_municipio="010")
-    return tce_cleaning.limpar(registros)
-
-
-def _df_tce_contratados() -> pd.DataFrame:
-    """'contratados' isolado — e onde fica o CNPJ/CPF do contratado (`numero_documento_negociante`)."""
-    registros_brutos = [
-        {
-            "codigo_municipio": "010",
-            "numero_contrato": "2025000123",  # liga com 'contratos' por (numero_contrato, codigo_municipio)
-            "numero_documento_negociante": "11.444.777/0001-61",
-            "codigo_tipo_negociante": "PJ",
-            "nome_negociante": "Comércio Exemplo LTDA",
-            "cep_negociante": "62240000",
-        }
-    ]
-    with patch("app.pipeline.ingestion.tce.requests.get") as mock_get:
-        mock_get.return_value = _fake_response({"elements": registros_brutos})
-        registros = tce.buscar_contratados("2025-01-01", "2025-03-01", codigo_municipio="010")
-    return tce_cleaning.limpar(registros)
-
-
-class MontarBaseTceTest(unittest.TestCase):
-    def test_junta_contratados_e_enriquece_fornecedor_mas_nao_cruza_municipio_ibge(self) -> None:
-        df_contratos = _df_tce_contratos()
-        df_contratados = _df_tce_contratados()
-        fornecedores_df = _fornecedores_df_valido()
-
-        resultado = merge.montar_base_tce(df_contratos, df_contratados, fornecedores_df=fornecedores_df)
-
-        self.assertEqual(len(resultado), 1)
-        self.assertEqual(resultado.iloc[0]["nome_negociante"], "Comércio Exemplo LTDA")  # veio de 'contratados'
-        self.assertEqual(resultado.iloc[0]["fornecedor_porte_padronizado"], "ME")
-        self.assertNotIn("municipio_nome", resultado.columns)  # sem crosswalk TCE<->IBGE, nao inventa join
-
-    def test_sem_contratados_nao_enriquece_fornecedor(self) -> None:
-        # 'contratos' sozinho nao tem CNPJ do contratado — nao ha como enriquecer.
-        df_contratos = _df_tce_contratos()
-
-        resultado = merge.montar_base_tce(df_contratos, fornecedores_df=_fornecedores_df_valido())
-
-        self.assertEqual(len(resultado), 1)
-        self.assertNotIn("fornecedor_porte_padronizado", resultado.columns)
-
-
-class JuntarContratosEContratadosTest(unittest.TestCase):
-    def test_nao_junta_por_chave_parcial_quando_falta_codigo_municipio(self) -> None:
-        # Achado de revisao de codigo: com 'codigo_municipio' ausente em
-        # 'contratados', o join usava so 'numero_contrato' e colava o
-        # contratado errado num contrato de outro municipio.
-        df_contratos = pd.DataFrame(
-            [
-                {"numero_contrato": "100", "codigo_municipio": "010", "valor_total_contrato": 5000.0},
-                {"numero_contrato": "100", "codigo_municipio": "020", "valor_total_contrato": 9000.0},
-            ]
-        )
-        df_contratados = pd.DataFrame(
-            [
-                {"numero_contrato": "100", "nome_negociante": "Empresa do municipio 010"},
-            ]
-        )
-
-        resultado = merge.juntar_contratos_e_contratados(df_contratos, df_contratados)
-
-        self.assertNotIn("nome_negociante", resultado.columns)
-        self.assertEqual(len(resultado), 2)
 
 
 def _fake_response(payload, status_code: int = 200) -> MagicMock:
@@ -283,12 +200,12 @@ UFS_BRASIL = (
 
 class ClassificarOrigemGeograficaTest(unittest.TestCase):
     def test_caso_1_mesmo_municipio(self) -> None:
-        resultado = merge.classificar_origem_geografica("Fortaleza", "CE", "Fortaleza")
-        self.assertEqual(resultado, merge.NIVEL_MESMO_MUNICIPIO)
+        resultado = classificar_origem_geografica("Fortaleza", "CE", "Fortaleza")
+        self.assertEqual(resultado, NIVEL_MESMO_MUNICIPIO)
 
     def test_caso_2_outro_municipio_ce(self) -> None:
-        resultado = merge.classificar_origem_geografica("Fortaleza", "CE", "Sobral")
-        self.assertEqual(resultado, merge.NIVEL_OUTRO_MUNICIPIO_CE)
+        resultado = classificar_origem_geografica("Fortaleza", "CE", "Sobral")
+        self.assertEqual(resultado, NIVEL_OUTRO_MUNICIPIO_CE)
 
     def test_caso_3_fora_do_estado(self) -> None:
         # Cobre TODOS os estados do Brasil, exceto o CE (26 UFs) — garante
@@ -298,8 +215,8 @@ class ClassificarOrigemGeograficaTest(unittest.TestCase):
             if uf == "CE":
                 continue
             with self.subTest(uf=uf):
-                resultado = merge.classificar_origem_geografica("Fortaleza", uf, "Qualquer Município")
-                self.assertEqual(resultado, merge.NIVEL_FORA_DO_ESTADO)
+                resultado = classificar_origem_geografica("Fortaleza", uf, "Qualquer Município")
+                self.assertEqual(resultado, NIVEL_FORA_DO_ESTADO)
 
 
 class BuscarMunicipiosUfTest(unittest.TestCase):
@@ -312,7 +229,7 @@ class BuscarMunicipiosUfTest(unittest.TestCase):
         ]
         with patch("app.pipeline.enrichment.municipios.requests.get") as mock_get:
             mock_get.return_value = _fake_response(payload)
-            resultado = merge.buscar_municipios_uf("CE")
+            resultado = buscar_municipios_uf("CE")
 
         self.assertEqual(resultado, ["Fortaleza", "Juazeiro do Norte", "Sobral"])
         mock_get.assert_called_once_with(
@@ -323,7 +240,7 @@ class BuscarMunicipiosUfTest(unittest.TestCase):
     def test_uf_minuscula_e_normalizada_na_url(self) -> None:
         with patch("app.pipeline.enrichment.municipios.requests.get") as mock_get:
             mock_get.return_value = _fake_response([{"nome": "São Paulo"}])
-            merge.buscar_municipios_uf("sp")
+            buscar_municipios_uf("sp")
 
         mock_get.assert_called_once_with(
             "https://servicodados.ibge.gov.br/api/v1/localidades/estados/SP/municipios",

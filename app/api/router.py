@@ -8,6 +8,3 @@ router.include_router(pipeline.router)
 router.include_router(pncp.router)
 router.include_router(matching.router)
 router.include_router(matching.internal_router)
-
-from app.api.endpoints import portes
-router.include_router(portes.router)
