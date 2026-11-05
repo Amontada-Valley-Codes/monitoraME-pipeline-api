@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sys
+import time
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -24,7 +25,9 @@ from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
 from app.pncp.ingestion import (
     ClientePncp,
+    MODALIDADES_CONCORRENCIA,
     MODALIDADES_PRIORITARIAS,
+    MODALIDADES_PREGAO,
     UFS_NORDESTE,
     agendar_backfill_anual,
     agendar_propostas_abertas,
@@ -49,6 +52,8 @@ def _worker_coleta(tamanho_pagina: int, job_type: str = "incremental") -> Worker
             coletar_publicacao(job, cliente, tamanho_pagina=tamanho_pagina)
         elif job.scope_key.startswith("atualizacao:"):
             coletar_atualizacao(job, cliente, tamanho_pagina=tamanho_pagina)
+        elif job.scope_key.startswith("propostas-abertas:"):
+            coletar_propostas_abertas(job, cliente, tamanho_pagina=tamanho_pagina)
         else:
             raise ValueError(f"fluxo incremental desconhecido: {job.scope_key}")
 
@@ -85,17 +90,125 @@ def coletar(args: argparse.Namespace) -> int:
     return 0 if not ids or concluidos == len(ids) else 2
 
 
+def _acompanhar_coleta_modalidade(
+    *, job_id: int, modalidade: int | None, args: argparse.Namespace,
+    prazo: float,
+) -> tuple[bool, bool]:
+    ultima_saida: str | None = None
+    proxima_mensagem = 0.0
+    run_pattern = f"job:{job_id}:pagina:%"
+    while True:
+        with orm.main_session() as session:
+            linhas = session.execute(
+                text("""
+                    SELECT id, status, attempts, next_run_at, last_error
+                    FROM ingestion_jobs WHERE id = :job_id
+                """),
+                {"job_id": job_id},
+            ).mappings().all()
+            normalizacoes = session.execute(text("""
+                    SELECT job.status, count(*) AS total
+                    FROM ingestion_jobs AS job
+                    JOIN raw_pncp_records AS raw ON raw.id = job.raw_record_id
+                    WHERE job.job_type = 'normalize' AND raw.run_id LIKE :run_pattern
+                    GROUP BY job.status ORDER BY job.status
+                """), {"run_pattern": run_pattern}).mappings().all()
+        snapshot = json.dumps(
+            {"coleta": [dict(linha) for linha in linhas],
+             "normalizacao": [dict(linha) for linha in normalizacoes]},
+            ensure_ascii=False, default=str,
+        )
+        agora = time.monotonic()
+        if snapshot != ultima_saida or agora >= proxima_mensagem:
+            contagens_normalizacao = {
+                linha["status"]: int(linha["total"]) for linha in normalizacoes
+            }
+            print(json.dumps({
+                "fluxo": "propostas-abertas", "status": "ACOMPANHAMENTO_MODALIDADE",
+                "modalidade": modalidade or "todas", "job_id": job_id,
+                "estado_coleta": linhas[0]["status"] if linhas else "NAO_LOCALIZADO",
+                "normalizacao": contagens_normalizacao,
+                "jobs": [dict(linha) for linha in linhas],
+            }, ensure_ascii=False, default=str), flush=True)
+            ultima_saida = snapshot
+            proxima_mensagem = agora + 30
+
+        terminais = {"SUCCEEDED", "FAILED", "QUARANTINED"}
+        estados_normalizacao = {linha["status"] for linha in normalizacoes}
+        coleta_terminal = len(linhas) == 1 and linhas[0]["status"] in terminais
+        normalizacao_terminal = estados_normalizacao <= terminais
+        if coleta_terminal and normalizacao_terminal:
+            sucesso = linhas[0]["status"] == "SUCCEEDED" and all(
+                linha["status"] == "SUCCEEDED" for linha in normalizacoes
+            )
+            print(json.dumps({
+                "fluxo": "propostas-abertas", "status": "MODALIDADE_CONCLUIDA",
+                "modalidade": modalidade or "todas", "job_id": job_id,
+                "sucesso": sucesso, "estado_coleta": linhas[0]["status"],
+                "normalizacao": contagens_normalizacao,
+            }, ensure_ascii=False), flush=True)
+            return sucesso, False
+        if agora >= prazo:
+            print(json.dumps({
+                "fluxo": "propostas-abertas", "status": "MODALIDADE_TIMEOUT",
+                "modalidade": modalidade or "todas", "timeout_minutos": args.timeout_minutos,
+                "job_id": job_id,
+            }, ensure_ascii=False), flush=True)
+            return False, True
+        time.sleep(args.intervalo_acompanhamento)
+
+
 def coletar_propostas_em_aberto(args: argparse.Namespace) -> int:
-    jobs = agendar_propostas_abertas(
-        data_final=datetime.now(timezone.utc),
-        modalidades=args.modalidade,
-        tamanho_pagina=args.tamanho_pagina,
-    )
-    ids = [agendar_job(job)[0] for job in jobs]
-    worker = _worker_coleta(args.tamanho_pagina)
-    executados = sum(worker.executar_uma_vez() for _ in jobs)
-    print({"fluxo": "propostas-abertas", "jobs": ids, "executados": executados, "modalidades": args.modalidade or "todas"})
-    return 0 if executados == len(jobs) else 2
+    if args.intervalo_acompanhamento < 1 or args.intervalo_acompanhamento > 300:
+        raise ValueError("intervalo_acompanhamento deve estar entre 1 e 300 segundos")
+    if args.timeout_minutos < 1 or args.timeout_minutos > 10080:
+        raise ValueError("timeout_minutos deve estar entre 1 e 10080")
+
+    selecionou_categoria = args.concorrencia or args.pregao
+    if args.modalidade and selecionou_categoria:
+        raise ValueError("use --modalidade ou seletores de categoria, não ambos")
+    if selecionou_categoria:
+        modalidades_escolhidas: list[int] = []
+        if args.concorrencia:
+            modalidades_escolhidas.extend(MODALIDADES_CONCORRENCIA)
+        if args.pregao:
+            modalidades_escolhidas.extend(MODALIDADES_PREGAO)
+        modalidades: list[int | None] = list(dict.fromkeys(modalidades_escolhidas))
+    else:
+        modalidades = list(dict.fromkeys(args.modalidade)) or [None]
+    prazo = time.monotonic() + args.timeout_minutos * 60
+    resultados: list[dict[str, object]] = []
+    for modalidade in modalidades:
+        jobs = agendar_propostas_abertas(
+            data_final=datetime.now(timezone.utc),
+            modalidades=[modalidade] if modalidade is not None else None,
+            tamanho_pagina=args.tamanho_pagina,
+        )
+        job_id = agendar_job(jobs[0])[0]
+        print(json.dumps({
+            "fluxo": "propostas-abertas", "status": "MODALIDADE_INICIADA",
+            "modalidade": modalidade or "todas", "job_id": job_id,
+            "proxima_modalidade_apos_conclusao": True,
+        }, ensure_ascii=False), flush=True)
+
+        sucesso, timeout = _acompanhar_coleta_modalidade(
+            job_id=job_id, modalidade=modalidade, args=args, prazo=prazo,
+        )
+        resultados.append({"modalidade": modalidade or "todas", "job_id": job_id,
+                           "sucesso": sucesso})
+        if timeout:
+            print(json.dumps({"fluxo": "propostas-abertas",
+                              "status": "ACOMPANHAMENTO_EXPIRADO",
+                              "concluidas": resultados}, ensure_ascii=False), flush=True)
+            return 2
+
+    sucesso_total = all(item["sucesso"] for item in resultados)
+    print(json.dumps({
+        "fluxo": "propostas-abertas",
+        "status": "CONCLUIDO" if sucesso_total else "CONCLUIDO_COM_FALHAS",
+        "modalidades": resultados,
+    }, ensure_ascii=False), flush=True)
+    return 0 if sucesso_total else 2
 
 
 def normalizar(args: argparse.Namespace) -> int:
@@ -348,7 +461,11 @@ def main() -> int:
         comando.add_argument("--janela-dias", type=int, default=7)
     propostas = comandos.add_parser("coletar-propostas-abertas")
     propostas.add_argument("--modalidade", type=int, action="append", default=[])
+    propostas.add_argument("--concorrencia", action="store_true", help="Seleciona concorrências (4, 5 e 16)")
+    propostas.add_argument("--pregao", action="store_true", help="Seleciona pregões (6, 7 e 17)")
     propostas.add_argument("--tamanho-pagina", type=int, default=50)
+    propostas.add_argument("--intervalo-acompanhamento", type=int, default=10)
+    propostas.add_argument("--timeout-minutos", type=int, default=720)
     propostas.set_defaults(func=coletar_propostas_em_aberto)
     normalizador = comandos.add_parser("normalizar")
     normalizador.add_argument("--limite", type=int, default=100)

@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from app.pncp.atualizacao import coletar_atualizacao
-from app.pncp.ingestion import ClientePncp, coletar_publicacao
+from app.pncp.ingestion import ClientePncp, coletar_propostas_abertas, coletar_publicacao
 from app.pncp.jobs import WorkerPncp, recuperar_leases_expirados
 from app.pncp.normalization import normalizar_job
 from app.pncp.enrichment import ClienteEnriquecimentoPncp, enriquecer_job
@@ -27,6 +27,8 @@ def executar_coleta() -> None:
             coletar_publicacao(job, cliente)
         elif job.scope_key.startswith("atualizacao:"):
             coletar_atualizacao(job, cliente)
+        elif job.scope_key.startswith("propostas-abertas:"):
+            coletar_propostas_abertas(job, cliente)
         else:
             raise ValueError(f"fluxo PNCP desconhecido: {job.scope_key}")
 

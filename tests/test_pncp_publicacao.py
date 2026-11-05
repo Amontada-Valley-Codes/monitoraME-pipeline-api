@@ -29,6 +29,20 @@ class PublicacaoPncpTest(unittest.TestCase):
         with self.assertRaises(PncpColetaError):
             cliente.buscar_publicacoes(inicio=datetime.now().date(), fim=datetime.now().date(), modalidade=6, pagina=1, tamanho_pagina=10)
 
+    def test_204_retorna_pagina_vazia_sem_tentar_json(self) -> None:
+        resposta = MagicMock(status_code=204)
+        cliente = ClientePncp(session=MagicMock(), protecao=MagicMock())
+        cliente.session.get.return_value = resposta
+
+        pagina = cliente.buscar_propostas_abertas(
+            data_final=datetime.now().date(), pagina=1, tamanho_pagina=50, modalidade=16,
+        )
+
+        self.assertEqual(pagina.itens, [])
+        self.assertIsNone(pagina.total_paginas)
+        resposta.json.assert_not_called()
+        cliente.protecao.registrar_resultado.assert_called_once()
+
     def test_agenda_uma_janela_por_modalidade(self) -> None:
         inicio = datetime(2026, 10, 1, tzinfo=timezone.utc); fim = datetime(2026, 10, 2, tzinfo=timezone.utc)
         jobs = agendar_publicacao(inicio=inicio, fim=fim, modalidades=[6, 8])

@@ -148,11 +148,11 @@ O servico tambem permanece na rede Docker `monitorame_backend_internal`, com o
 alias `pipeline-api`, para chamadas internas do backend em
 `http://pipeline-api:8000`.
 
-O Compose de produção inicia os workers de normalização e enriquecimento. A
-coleta PNCP de teste é manual: dentro do container Pipeline, use
-`pncp coletar-amostra-abertas --limite 20` para importar no máximo 20
-contratações que ainda recebem propostas. O comando grava RAW e agenda a
-normalização automaticamente; veja
+O Compose de produção inicia os workers de coleta, normalização e enriquecimento.
+Para coletar todas as páginas de contratações que ainda recebem propostas, use
+`pncp coletar-propostas-abertas`; informe `--modalidade` repetidamente para
+restringir o escopo. O comando grava RAW e agenda a normalização
+automaticamente; veja
 [preparação do teste NLP na VPS](docs/preparacao-teste-nlp-vps.md). Os endpoints
 internos de matching recebem batches do Backend; o worker permanece leve sem
 trabalho e carrega o modelo apenas durante o processamento.
@@ -595,7 +595,8 @@ O contrato RAW, a política inicial de retenção e as garantias de idempotênci
 estão em [docs/pncp-raw.md](docs/pncp-raw.md).
 
 Na VPS, execute a CLI pelo container `api`. Para coletar oportunidades pelos
-fluxos persistentes de publicação ou atualização e processar a fila, use:
+fluxos persistentes de publicação, atualização ou propostas ainda abertas e
+processar a fila, use:
 
 ```bash
 docker compose -f compose.production.yaml exec api pncp coletar-publicacao --dias 1
@@ -603,10 +604,29 @@ docker compose -f compose.production.yaml exec api pncp status
 docker compose -f compose.production.yaml logs -f pncp-worker-coleta pncp-worker-normalizacao
 ```
 
+Para iniciar e acompanhar em primeiro plano a coleta completa de propostas
+abertas nas modalidades prioritárias, suba os workers e execute a CLI na mesma
+linha:
+
+```bash
+docker compose -f compose.production.yaml up -d pncp-worker-coleta pncp-worker-normalizacao && docker compose -f compose.production.yaml exec api pncp coletar-propostas-abertas --concorrencia --pregao
+```
+
+Na CLI, `--concorrencia` seleciona as modalidades 4, 5 e 16; `--pregao`
+seleciona 6, 7 e 17. Use ambos para coletar os dois grupos em sequência, ou
+repita `--modalidade` para indicar códigos específicos.
+
+A CLI agenda uma modalidade por vez e só passa à próxima quando a atual conclui
+(ou esgota as tentativas). Ela acompanha coleta e normalização, imprime estados
+e erros recentes e encerra com resumo. O timeout padrão é 12 horas; personalize
+com `--timeout-minutos`.
+
 Para um backfill, substitua `--dias 1` por `--ano 2026`; para atualizações,
 use `coletar-atualizacao` no lugar de `coletar-publicacao`. Os workers de coleta
-e normalização processam os jobs persistidos. `pncp coletar-amostra-abertas` é
-uma operação manual limitada e não substitui esses fluxos.
+e normalização processam os jobs persistidos. A coleta de propostas abertas
+usa o endpoint dedicado e pagina todos os resultados do escopo selecionado.
+Para uma amostra manual limitada, use `pncp coletar-amostra-abertas --limite 20`;
+ela não avança cursor e não substitui a coleta persistente.
 
 Para executar uma coleta de fumaça do PNCP no ambiente Compose isolado, use
 `docker compose -p monitorame-pncp-test`. O nome passado em `-p` é uma opção

@@ -24,6 +24,8 @@ FONTE = "PNCP"
 TIPO = "CONTRATACAO"
 UFS_NORDESTE = ("AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE")
 MODALIDADES_PRIORITARIAS = (4, 5, 6, 7, 16, 17, 18)
+MODALIDADES_CONCORRENCIA = (4, 5, 16)
+MODALIDADES_PREGAO = (6, 7, 17)
 
 
 class PncpColetaError(RuntimeError):
@@ -140,6 +142,12 @@ class ClientePncp:
                 retry_after=retry_after_para_timedelta(resposta.headers.get("Retry-After")) if status == 429 else None,
                 endpoint=endpoint,
             )
+        if status == 204:
+            self.protecao.registrar_resultado(
+                sucesso=True, status_code=status,
+                latency_seconds=time.monotonic() - inicio_chamada,
+            )
+            return PaginaContratacoes([], None)
         try:
             corpo = resposta.json()
         except ValueError as exc:
