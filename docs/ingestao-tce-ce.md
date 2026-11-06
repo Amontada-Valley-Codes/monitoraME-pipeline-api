@@ -4,6 +4,48 @@ Execute os comandos na raiz do repositório da VPS. Use sempre `compose.producti
 
 Substitua `2025` pelo exercício orçamentário desejado. O exercício pode ser histórico, por exemplo `2024`, e não é a mesma coisa que a competência documental dos pagamentos.
 
+## Agendamento semanal
+
+O Compose mantém dois processos próprios, separados da API HTTP:
+
+- `tce-scheduler`: avalia a agenda e cria, de forma idempotente, um lote por
+  domingo às `02:00` em `America/Fortaleza`;
+- `tce-worker`: reserva jobs no PostgreSQL com `FOR UPDATE SKIP LOCKED`, executa
+  a coleta fora da transação curta e mantém lease e heartbeat até a conclusão.
+
+Cada lote começa pela sincronização e validação do catálogo IBGE/TCE. Nenhum job
+de dados é criado se o catálogo não contiver exatamente os 184 municípios do
+Ceará. Com o catálogo válido, a cobertura inclui os exercícios 2024, 2025 e
+2026 para todos os municípios.
+
+Na primeira execução, são criados os jobs das competências ainda não publicadas.
+Nas execuções seguintes, as lacunas continuam sendo agendadas e as duas
+competências documentais mais recentes são reprocessadas como overlap. Assim, o
+histórico publicado não é baixado integralmente toda semana. Para pagamentos,
+cada exercício orçamentário permanece fixo e as competências documentais vão de
+janeiro daquele exercício até o mês corrente.
+
+Os jobs de fornecedores só são liberados depois de não existirem jobs ativos de
+despesas ou pagamentos no mesmo lote. Falhas transitórias usam retry com backoff;
+falhas esgotadas ficam em `FAILED` e exigem replay explícito.
+
+Para iniciar ou conferir os serviços:
+
+```bash
+docker compose -f compose.production.yaml up -d tce-scheduler tce-worker
+docker compose -f compose.production.yaml ps tce-scheduler tce-worker
+docker compose -f compose.production.yaml run --rm api python scripts/tce_jobs.py status
+```
+
+Para reativar conscientemente um job `FAILED`:
+
+```bash
+docker compose -f compose.production.yaml run --rm api python scripts/tce_jobs.py replay --job-id 123
+```
+
+O scheduler faz catch-up da última janela devida após reinício. A chave do lote
+impede duplicação quando mais de uma instância avalia o mesmo domingo.
+
 ## Ceará inteiro: empenhos, anulações e pagamentos
 
 Para coletar empenhos e anulações do exercício informado nos 184 municípios e, em seguida, pagamentos do mesmo exercício:
@@ -61,3 +103,20 @@ docker compose -f compose.production.yaml run --rm api python scripts/sincroniza
 ```
 
 Sem `--municipio`, o script sincroniza os escopos disponíveis para todos os municípios.
+
+## Separação entre ingestão e consulta
+
+Comandos de ingestão são os únicos fluxos autorizados a consultar TCE-CE, IBGE
+ou OpenCNPJ e persistir os resultados. A leitura usada pelas rotas e pelos
+indicadores segue o fluxo abaixo:
+
+```text
+snapshot publicado -> consultas de persistência -> transformação analítica -> KPI/API
+```
+
+Ausência de município, competência ou fornecedor no banco é um estado de dados;
+não dispara coleta implícita. Para atualizar uma fonte, execute o comando de
+ingestão ou enriquecimento correspondente antes de repetir a consulta. A
+auditoria avulsa de pagamentos também separa as etapas: primeiro coleta os
+documentos, depois sincroniza cadastros quando solicitado e, por fim, analisa o
+snapshot recebido.

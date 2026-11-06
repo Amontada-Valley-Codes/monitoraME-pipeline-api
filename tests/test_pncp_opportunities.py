@@ -4,7 +4,7 @@ import sys
 import unittest
 from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app.core.models import PncpEnriquecimento, PncpOportunidade
+from app.core.models import PncpOportunidade
 from app.pncp.opportunities import contrato_consumo, avaliar_matching_session
 
 class OpportunitiesPncpTest(unittest.TestCase):

@@ -8,10 +8,9 @@ import re
 import sqlite3
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, insert, or_, select, text, update
+from sqlalchemy import and_, insert, or_, select, text, update
 from app.core import orm
 from app.core.porte_models import PortePublicacao, PorteObservacao
-from app.utils import normalizar_cnpj
 
 PORTES = {"00": "NAO_INFORMADO", "01": "ME", "03": "EPP", "05": "DEMAIS"}
 FONTE = "RECEITA_FEDERAL_DADOS_ABERTOS"
@@ -26,16 +25,6 @@ def competencia(valor: str) -> str:
 
 def mes_atual() -> str:
     return datetime.now(ZoneInfo("America/Fortaleza")).strftime("%Y-%m")
-
-
-def meses(inicio: str, fim: str) -> list[str]:
-    competencia(inicio)
-    competencia(fim)
-    a = int(inicio[:4])*12 + int(inicio[5:])-1
-    b = int(fim[:4])*12 + int(fim[5:])-1
-    if b < a or b-a >= 120:
-        raise ValueError("Intervalo deve ser crescente e conter no maximo 120 meses.")
-    return [f"{n//12:04d}-{n%12+1:02d}" for n in range(a, b+1)]
 
 
 def _hash(path: Path) -> str:
@@ -153,27 +142,6 @@ def importar(resultado: str | Path, *, workspace: str | Path = ".") -> list[dict
     return saida
 
 
-def _publicacao(p: PortePublicacao) -> dict:
-    return {"competencia": p.competencia, "versao": p.versao, "ativa": p.ativa,
-        "fonte": p.fonte, "procedencia": "RETRATO_MENSAL_PUBLICADO",
-        "observado_em": p.observado_em.isoformat(), "importado_em": p.importado_em.isoformat(),
-        "referencia_extracao_comprovada": False, "vigencia_diaria_comprovada": False,
-        "cobertura": {"raizes_selecionadas": p.raizes_selecionadas, **p.manifesto["cobertura"]}, "universo": p.manifesto["universo"],
-        "artefatos": [{k:a.get(k) for k in ("nome","url","sha256","bytes","last_modified","membros_zip")}
-                     for a in p.manifesto["artefatos"]]}
-
-
-def publicacoes(fim: str | None = None, *, todas_versoes: bool = False) -> dict:
-    fim = competencia(fim or mes_atual())
-    with orm.main_session() as session:
-        stmt = select(PortePublicacao).where(PortePublicacao.competencia <= fim)
-        if not todas_versoes:
-            stmt = stmt.where(PortePublicacao.ativa.is_(True))
-        items = [_publicacao(p) for p in session.scalars(stmt.order_by(PortePublicacao.competencia, PortePublicacao.importado_em))]
-    return {"data_source": "LOCAL_DATABASE", "external_requests": False,
-        "politica_temporal": POLITICA, "competencia_final": fim, "items": items}
-
-
 def raizes_classificadas_por_competencia(
     raizes_por_competencia: dict[str, set[str]],
 ) -> dict[str, set[str]]:
@@ -203,54 +171,3 @@ def raizes_classificadas_por_competencia(
     for mes, raiz in registros:
         resultado.setdefault(str(mes), set()).add(str(raiz))
     return resultado
-
-
-def _observacao(session, p, raiz):
-    o = session.get(PorteObservacao, (p.versao, raiz))
-    if o is None:
-        status = "FORA_DA_AMOSTRA"
-    elif o.porte_codigo is None:
-        status = "AUSENTE_NA_FOTOGRAFIA"
-    elif o.porte_codigo == "00":
-        status = "PORTE_NAO_INFORMADO"
-    else:
-        status = "IDENTIFICADO"
-    return {"competencia": p.competencia, "versao": p.versao, "status": status,
-        "porte_codigo": o.porte_codigo if o else None, "porte_observado": PORTES.get(o.porte_codigo) if o else None,
-        "optante_mei": o.optante_mei if o else None,
-        "simples_disponivel": o is not None and o.simples is not None,
-        "publicacao": _publicacao(p)}
-
-
-def historico(cnpj: str, inicio: str | None = None, fim: str | None = None, *, versao: str | None = None) -> dict:
-    cnpj = normalizar_cnpj(cnpj)
-    if cnpj is None:
-        raise ValueError("CNPJ com formato invalido.")
-    raiz = cnpj[:8]
-    with orm.main_session() as session:
-        if versao:
-            p = session.get(PortePublicacao, versao)
-            if p is None:
-                raise LookupError("Versao nao encontrada.")
-            items = [_observacao(session, p, raiz)]
-            lacunas = []
-        else:
-            fim = competencia(fim or mes_atual())
-            primeiro = session.scalar(select(func.min(PortePublicacao.competencia)).where(
-                PortePublicacao.ativa.is_(True), PortePublicacao.competencia <= fim))
-            inicio = competencia(inicio or primeiro or fim)
-            intervalo = meses(inicio, fim)
-            registros = {p.competencia:p for p in session.scalars(select(PortePublicacao).where(
-                PortePublicacao.ativa.is_(True), PortePublicacao.competencia.in_(intervalo)))}
-            items, lacunas = [], []
-            for mes in intervalo:
-                if mes not in registros:
-                    lacunas.append(mes)
-                    items.append({"competencia":mes, "versao":None, "status":"SEM_PUBLICACAO",
-                                  "porte_observado":None, "porte_codigo":None, "optante_mei":None,
-                                  "simples_disponivel":False, "publicacao":None})
-                else:
-                    items.append(_observacao(session, registros[mes], raiz))
-    return {"cnpj_consultado": cnpj, "raiz": raiz, "unidade_cadastral": "CNPJ_BASICO",
-        "data_source": "LOCAL_DATABASE", "external_requests": False, "politica_temporal": POLITICA,
-        "vigencia_diaria_comprovada": False, "competencias_sem_publicacao": lacunas, "items": items}

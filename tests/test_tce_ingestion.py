@@ -312,48 +312,5 @@ class TceIngestionTest(unittest.TestCase):
         )
         self.assertFalse(listar_registros.call_args.kwargs.get("filtrar_por_codigo_despesa", False))
 
-    @patch("app.core.logging.log_database.registrar_log_ingestao")
-    @patch("app.pipeline.ingestion.tce.listar_registros")
-    def test_buscar_contratos_grava_log_de_sucesso(
-        self,
-        listar_registros,
-        registrar_log_ingestao,
-    ) -> None:
-        listar_registros.return_value = [{"numero_contrato": "2025000123"}]
-
-        registros = tce.buscar_contratos("2025-01-01", "2025-01-31", codigo_municipio="010")
-
-        self.assertEqual(registros, [{"numero_contrato": "2025000123"}])
-        chamada = registrar_log_ingestao.call_args.kwargs
-        self.assertEqual(chamada["fonte"], "TCE-CE")
-        self.assertEqual(chamada["etapa"], "buscar_contratos")
-        self.assertEqual(chamada["registros_processados"], 1)
-        self.assertEqual(chamada["falhas_ocorridas"], 0)
-        self.assertEqual(chamada["parametros"]["codigo_municipio"], "010")
-        self.assertLessEqual(chamada["data_inicio"], chamada["data_termino"])
-
-    @patch("app.pipeline.ingestion.tce.logger.warning")
-    @patch("app.pipeline.ingestion.tce.time.sleep")
-    @patch("app.core.logging.log_database.registrar_log_ingestao")
-    @patch("app.pipeline.ingestion.tce.requests.get")
-    def test_buscar_contratos_grava_log_de_falha_quando_tce_falha(
-        self,
-        get,
-        registrar_log_ingestao,
-        _sleep,
-        _warning,
-    ) -> None:
-        get.side_effect = requests.ReadTimeout("TCE-CE demorou")
-
-        registros = tce.buscar_contratos("2025-01-01", "2025-01-31", codigo_municipio="010")
-
-        self.assertEqual(registros, [])
-        chamada = registrar_log_ingestao.call_args.kwargs
-        self.assertEqual(chamada["etapa"], "buscar_contratos")
-        self.assertEqual(chamada["registros_processados"], 0)
-        self.assertEqual(chamada["falhas_ocorridas"], 1)
-        self.assertIn("TCE-CE demorou", chamada["erro"])
-
-
 if __name__ == "__main__":
     unittest.main()

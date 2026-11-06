@@ -16,6 +16,7 @@ from app.pipeline.enrichment.fornecedores import (
     extrair_cnpjs_distintos,
 )
 from app.pipeline.persistence import tce_despesas as tce_despesas_persistence
+from app.pipeline.persistence import tce_analytics
 
 
 _PORTES_FILTRO = {
@@ -308,6 +309,7 @@ def _montar_overview_local(
         falhas=falhas,
         registros=empenhos,
         municipios_no_escopo=1,
+        raizes_com_porte_historico=tce_analytics.carregar_raizes_historicas(empenhos),
     )
     resposta = {
         "fonte": "TCE-CE",

@@ -20,9 +20,7 @@ from app.core.logging import (
 from app.api.endpoints.health import health
 from app.api.endpoints.pipeline import (
     tce_analitico_indicadores,
-    tce_analise_territorial,
     tce_comparisons,
-    tce_contratos,
     tce_empenho_detalhe,
     tce_empenhos,
     tce_fornecedor_detalhe,
@@ -31,6 +29,8 @@ from app.api.endpoints.pipeline import (
     tce_kpi_portes_por_mes,
     tce_overview,
     tce_overview_municipal,
+    tce_overview_subscriber,
+    tce_overview_municipal_subscriber,
 )
 from app.api.router import router
 from app.pipeline import analisys
@@ -61,10 +61,6 @@ OPENAPI_TAGS = [
         "description": "Submissão autenticada de batches de matching e consulta de status/resultados para serviços internos.",
     },
     {
-        "name": "Contratos TCE-CE",
-        "description": "Consulta e processamento de contratos publicados pelo TCE-CE.",
-    },
-    {
         "name": "Indicadores TCE-CE",
         "description": "KPIs, séries e visões consolidadas de empenhos líquidos.",
     },
@@ -80,18 +76,6 @@ OPENAPI_TAGS = [
         "name": "Fornecedores TCE-CE",
         "description": "Consultas locais sobre fornecedores e seus empenhos publicados.",
     },
-    {
-        "name": "Análise territorial TCE-CE",
-        "description": "Distribuição geográfica, retenção local, concentração e rankings de despesas.",
-    },
-    {
-        "name": "Pagamentos TCE-CE",
-        "description": "Apuração de pagamentos municipais e subtotal de microempresas.",
-    },
-    {
-        "name": "Porte empresarial histórico",
-        "description": "Fotografias cadastrais mensais e histórico de porte por fornecedor.",
-    },
 ]
 
 __all__ = [
@@ -100,9 +84,7 @@ __all__ = [
     "health",
     "lifespan",
     "tce_analitico_indicadores",
-    "tce_analise_territorial",
     "tce_comparisons",
-    "tce_contratos",
     "tce_empenho_detalhe",
     "tce_empenhos",
     "tce_fornecedor_detalhe",
@@ -111,6 +93,8 @@ __all__ = [
     "tce_kpi_portes_por_mes",
     "tce_overview",
     "tce_overview_municipal",
+    "tce_overview_subscriber",
+    "tce_overview_municipal_subscriber",
 ]
 
 
@@ -300,12 +284,12 @@ def _gerar_openapi_com_force_refresh() -> dict:
         tags=app.openapi_tags,
     )
     parametro_force_refresh = {
-        "name": "X-Force-Refresh",
+        "name": "X-Refresh-Force",
         "in": "header",
         "required": False,
         "description": (
             "Defina como true para ignorar o cache, recalcular a resposta e "
-            "atualizar a entrada armazenada."
+            "atualizar a entrada armazenada. X-Force-Refresh também é aceito."
         ),
         "schema": {"type": "boolean", "default": False},
     }
@@ -318,7 +302,7 @@ def _gerar_openapi_com_force_refresh() -> dict:
             parametros = operacao.setdefault("parameters", [])
             if not any(
                 item.get("in") == "header"
-                and item.get("name", "").lower() == "x-force-refresh"
+                and item.get("name", "").lower() == "x-refresh-force"
                 for item in parametros
             ):
                 parametros.append(parametro_force_refresh)

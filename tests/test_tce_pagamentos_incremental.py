@@ -5,7 +5,8 @@ from pathlib import Path
 import sys
 import unittest
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -71,6 +72,47 @@ class FakeSession:
 
 
 class IngestaoIncrementalPagamentosTest(unittest.TestCase):
+    def test_analise_ignora_pagamento_sem_empenho_publicado(self):
+        run = SimpleNamespace(id=1, competencia="2025-01")
+        classificacoes = [
+            SimpleNamespace(codigo_orgao="01", classificacao="EXECUTIVO_MUNICIPAL", confianca="ALTA"),
+            SimpleNamespace(codigo_orgao="02", classificacao="CAMARA", confianca="ALTA"),
+        ]
+        pagamentos = [
+            SimpleNamespace(
+                chave_empenho=chave, run_id=1, chave_pagamento=f"pagamento-{chave}",
+                data_referencia_doc=202501, data_nota_pagamento=date(2025, 1, 15),
+                valor_nota_pagamento_centavos=valor,
+            )
+            for chave, valor in (("presente", 1000), ("ausente", 5000))
+        ]
+        empenho = SimpleNamespace(
+            chave_empenho="presente", codigo_elemento_despesa="33903000",
+            cnpj_fornecedor="12345678000100", documento_fornecedor="12345678000100",
+            tipo_documento_fornecedor="2", nome_fornecedor="Fornecedor",
+        )
+        sessao = MagicMock()
+        sessao.scalars.side_effect = [
+            SimpleNamespace(all=lambda: [run]),
+            SimpleNamespace(all=lambda: classificacoes),
+            SimpleNamespace(all=lambda: pagamentos),
+        ]
+        sessao.execute.return_value.all.return_value = [(empenho, "2025-01")]
+
+        with (
+            patch.object(persistence.database, "init_db"),
+            patch.object(persistence.orm, "main_session", return_value=nullcontext(sessao)),
+        ):
+            resultado, ausentes = persistence.listar_pagamentos_para_analise(
+                codigo_municipio_tce="004", exercicio_orcamento=202500,
+                data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
+            )
+
+        self.assertEqual(ausentes, [])
+        self.assertEqual(len(resultado), 1)
+        self.assertEqual(resultado[0]["chave_empenho"], "presente")
+        self.assertEqual(resultado[0]["valor_centavos"], 1000)
+
     def test_coleta_pagina_todas_as_notas_e_preserva_orcamento_202500_em_referencia_202602(self):
         paginas = [
             [{"numero": str(i)} for i in range(1000)],

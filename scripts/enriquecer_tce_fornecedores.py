@@ -9,7 +9,7 @@ import json
 import sys
 
 from app.core.config import UF_PADRAO
-from app.pipeline.ingestion.fornecedores import obter_fornecedores_com_cache
+from app.pipeline.ingestion.fornecedores import sincronizar_fornecedores
 from app.pipeline.persistence.tce_despesas import listar_cnpjs_fornecedores_publicados
 from app.utils import normalizar_cnpj
 
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         processados = 0
         for inicio in range(0, total, args.lote):
             lote = cnpjs[inicio : inicio + args.lote]
-            dados = obter_fornecedores_com_cache(
+            dados = sincronizar_fornecedores(
                 lote,
                 throttle_segundos=args.intervalo_segundos,
             )

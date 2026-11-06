@@ -19,6 +19,7 @@ os.environ.setdefault("UF_PADRAO", "CE")
 os.environ.setdefault("CODIGO_MUNICIPIO_TCE_PADRAO", "010")
 
 from app.pipeline import analisys, tce_observability
+from app.pipeline.persistence.tce_analytics import SnapshotDespesasTce
 
 
 class MetadadosCargaTceTest(unittest.TestCase):
@@ -104,9 +105,7 @@ class MetadadosCargaTceTest(unittest.TestCase):
         self.assertEqual(resposta["valores"]["total_centavos"], 0)
         self.assertIsNone(resposta["valores"]["participacao_percentual"])
 
-    @patch("app.pipeline.tce_observability.portes_historicos.raizes_classificadas_por_competencia")
-    def test_periodo_parcial_origem_desconhecida_e_porte_historico(self, portes) -> None:
-        portes.return_value = {"2025-01": {"11111111"}}
+    def test_periodo_parcial_origem_desconhecida_e_porte_historico(self) -> None:
         registros = [
             {
                 "cnpj_fornecedor": "11111111000111",
@@ -126,6 +125,7 @@ class MetadadosCargaTceTest(unittest.TestCase):
             data_final=date(2025, 1, 30),
             competencias_solicitadas=["2025-01", "2025-02"],
             registros=registros,
+            raizes_com_porte_historico={"2025-01": {"11111111"}},
         )
 
         self.assertTrue(metadados["quality"]["partial_period"])
@@ -178,40 +178,32 @@ class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
             "2025-01-01", "2025-01-31", codigo_municipio="010",
         )
 
-    @patch("app.pipeline.analisys.tce_despesas_pipeline.executar_ingestao_competencia_tce")
-    @patch("app.pipeline.analisys.database.localizar_municipio_tce", return_value={
-        "codigo_municipio_tce": "010",
-        "nome": "Amontada",
-        "uf": "CE",
-    })
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_falhas_competencias")
-    @patch("app.pipeline.analisys.tce_despesas_persistence.listar_publicacoes_competencias")
+    @patch("app.pipeline.analisys.tce_analytics.carregar_snapshot_despesas")
     def test_falha_recente_mantem_o_snapshot_publicado_anterior(
         self,
-        listar_publicacoes,
-        listar_falhas,
-        listar_empenhos,
-        _municipio,
-        ingerir,
+        carregar_snapshot,
     ) -> None:
         publicado_em = datetime.now(timezone.utc) - timedelta(minutes=5)
-        listar_publicacoes.return_value = {"2025-01": publicado_em}
-        listar_falhas.return_value = [{
-            "codigo_municipio_tce": "010",
-            "competencia": "2025-01",
-            "finalizado_em": publicado_em + timedelta(minutes=1),
-        }]
-        listar_empenhos.return_value = [{
-            "codigo_municipio_tce": "010",
-            "data_empenho": "2025-01-15",
-            "valor_empenhado_centavos": 12500,
-            "valor_anulado_centavos": 0,
-            "valor_liquido_centavos": 12500,
-            "documento_fornecedor": None,
-            "cnpj_fornecedor": None,
-            "tipo_documento_fornecedor": "NAO_IDENTIFICADO",
-        }]
+        carregar_snapshot.return_value = SnapshotDespesasTce(
+            publicacoes_por_competencia={"2025-01": publicado_em},
+            falhas=[{
+                "codigo_municipio_tce": "010",
+                "competencia": "2025-01",
+                "finalizado_em": publicado_em + timedelta(minutes=1),
+            }],
+            registros=[{
+                "codigo_municipio_tce": "010",
+                "data_empenho": "2025-01-15",
+                "valor_empenhado_centavos": 12500,
+                "valor_anulado_centavos": 0,
+                "valor_liquido_centavos": 12500,
+                "documento_fornecedor": None,
+                "cnpj_fornecedor": None,
+                "tipo_documento_fornecedor": "NAO_IDENTIFICADO",
+            }],
+            fornecedores_cache={},
+            municipio_comprador="Amontada",
+        )
 
         base, metadados = analisys.montar_base_analitica_tce_somente_banco(
             "2025-01-01",
@@ -224,8 +216,6 @@ class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
         self.assertTrue(metadados["is_stale"])
         self.assertIn("LATEST_LOAD_FAILED", metadados["stale_reason"])
         self.assertEqual(metadados["data_as_of"], "2025-01-31")
-        _municipio.assert_called_once()
-        ingerir.assert_not_called()
 
 
 if __name__ == "__main__":

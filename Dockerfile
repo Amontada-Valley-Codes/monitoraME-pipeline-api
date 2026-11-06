@@ -26,6 +26,7 @@ COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app docker/entrypoint.sh ./docker/entrypoint.sh
 
 RUN sed -i 's/\r$//' ./docker/entrypoint.sh \
+    && find ./scripts -type f -exec sed -i 's/\r$//' {} + \
     && chmod +x ./docker/entrypoint.sh
 RUN chmod +x ./scripts/pncp \
     && ln -s /app/scripts/pncp /usr/local/bin/pncp \

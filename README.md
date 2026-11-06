@@ -16,6 +16,8 @@ serão entregues em etapas próprias.
 - Classificação pelas sete naturezas de despesa monitoradas.
 - Indicadores por porte, natureza, origem geográfica e fornecedor.
 - Registro separado das execuções de ingestão.
+- Agendamento persistente do TCE-CE aos domingos às 02:00 para os 184 municípios
+  e exercícios 2024–2026, com retry, lease, heartbeat e replay explícito.
 
 ## Fontes de dados
 
@@ -38,7 +40,9 @@ app/
     ├── analitico.py     # base canônica de análise
     ├── analisys.py      # orquestração dos fluxos da API
     ├── kpis.py          # agregações e indicadores
-    └── tce_despesas.py  # ingestão mensal do TCE-CE
+    ├── tce_despesas.py  # ingestão mensal do TCE-CE
+    ├── tce_job_queue.py # fila persistente, lease, retry e replay
+    └── tce_schedule.py  # política semanal e handlers dos jobs
 ```
 
 ## Requisitos
@@ -65,8 +69,13 @@ Variáveis usadas pela aplicação:
 | `LOG_LEVEL` | Não | Nível dos logs operacionais (`DEBUG`, `INFO`, `WARNING`, `ERROR`); padrão `INFO`. |
 | `DATABASE_SSLMODE` | Não | Modo SSL do banco principal; use `disable` no PostgreSQL local. |
 | `LOG_DATABASE_SSLMODE` | Não | Modo SSL do banco de logs; use `disable` localmente. |
-| `API_RESPONSE_CACHE_TTL_SECONDS` | Não | Tempo em segundos de validade do cache JSON das consultas; padrão `3600`. |
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
+| `TCE_SCHEDULE_YEARS` | Não | Exercícios cobertos pelo scheduler; padrão `2024,2025,2026`. |
+| `TCE_SCHEDULE_WEEKDAY` / `TCE_SCHEDULE_HOUR` | Não | Dia (`6` = domingo) e hora local; padrões `6` e `2`. |
+| `TCE_SCHEDULE_TIMEZONE` | Não | Fuso da agenda semanal; padrão `America/Fortaleza`. |
+| `TCE_WORKER_CONCURRENCY` | Não | Jobs TCE executados em paralelo; padrão `2`. |
+| `TCE_JOB_MAX_ATTEMPTS` / `TCE_JOB_LEASE_SECONDS` | Não | Tentativas e duração renovável do lease; padrões `5` e `1800`. |
+| `TCE_INCREMENTAL_OVERLAP_MONTHS` | Não | Competências recentes reprocessadas semanalmente; padrão `2`. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
 | `PNCP_BASE_URL` | Não | Base pública de consultas do PNCP; padrão oficial. |
@@ -99,10 +108,11 @@ As respostas JSON de sucesso das rotas `/pipeline/*` e `/pncp/*` são
 armazenadas na tabela `api_response_cache`, no banco principal. A chave considera
 método, caminho, query string e corpo da requisição; as consultas retornam
 `X-Cache: HIT` quando atendidas pelo cache e `X-Cache: MISS` quando calculadas.
+As entradas permanecem armazenadas sem TTL até serem substituídas explicitamente.
 Para recalcular uma resposta e substituir sua entrada atual, envie
-`X-Force-Refresh: true` ou `Cache-Control: no-cache`; a chamada retorna
-`X-Cache: MISS`. Erros e rotas de saúde não são armazenados. O TTL padrão é de
-uma hora e pode ser alterado por `API_RESPONSE_CACHE_TTL_SECONDS`.
+`X-Refresh-Force: true` (também aceito: `X-Force-Refresh: true`) ou
+`Cache-Control: no-cache`; a chamada retorna `X-Cache: MISS`. Erros e rotas de
+saúde não são armazenados.
 
 Inicie a aplicação completa e confira seu estado:
 
@@ -261,9 +271,26 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}`: retorna cadastro, indicadores e gráficos do fornecedor.
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas`: pagina as despesas consideradas do fornecedor.
 - `GET /pipeline/tce/analitico/indicadores`: atualiza as competencias e calcula indicadores das despesas finais.
-- `GET /pipeline/tce/analise-territorial`: calcula retenção local, destino dos recursos, concentração e rankings usando somente dados publicados no banco local.
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
+
+### Ingestão semanal do TCE-CE
+
+Os serviços `tce-scheduler` e `tce-worker` mantêm a ingestão fora das rotas HTTP.
+Às 02:00 de cada domingo em `America/Fortaleza`, o scheduler cria um lote
+idempotente para os 184 municípios e os exercícios 2024–2026. O primeiro job
+valida o catálogo municipal; depois, a fila cria as competências ausentes e
+reprocessa o overlap recente. Reservas concorrentes usam PostgreSQL,
+`SKIP LOCKED`, lease renovável e token de posse.
+
+```bash
+docker compose up -d tce-scheduler tce-worker
+docker compose run --rm api python scripts/tce_jobs.py status
+```
+
+Falhas esgotadas permanecem em `FAILED`. O replay é uma decisão operacional
+explícita: `python scripts/tce_jobs.py replay --job-id ID`. Consulte o
+[procedimento completo](docs/ingestao-tce-ce.md).
 
 ### Ingestão manual de empenhos e anulações
 
@@ -313,11 +340,13 @@ docker compose run --rm api tce-enriquecer --ano 2025
 
 Por padrão, percorre todos os municípios da UF configurada em `UF_PADRAO`; use
 `--codigo-municipio 010` para limitar a um município. O comando busca CNPJs
-distintos dos lotes publicados, usa o cache cadastral existente e consulta o
-OpenCNPJ somente em cache miss ou expiração. O intervalo padrão entre consultas
-é 0,3 segundo e pode ser alterado com `--intervalo-segundos`. O resumo informa
-quantos fornecedores tiveram porte identificado. `2` indica CNPJs sem porte
-cadastral disponível; `1` indica falha operacional.
+distintos dos lotes publicados e executa explicitamente a sincronização
+cadastral: reaproveita entradas válidas e consulta o OpenCNPJ somente para
+entradas ausentes ou expiradas. O intervalo padrão entre consultas é 0,3
+segundo e pode ser alterado com `--intervalo-segundos`. As consultas analíticas
+e rotas HTTP nunca acionam essa sincronização. O resumo informa quantos
+fornecedores tiveram porte identificado. `2` indica CNPJs sem porte cadastral
+disponível; `1` indica falha operacional.
 
 Para enriquecer os fornecedores de todos os empenhos publicados, sem limitar
 por ano, use:
@@ -358,29 +387,7 @@ GET /pipeline/tce/overview/municipal?data_inicial=2025-01-01&data_final=2025-12-
 Os valores aceitos são `ME`, `MEI`, `EPP`, `OTHER` e `UNKNOWN`. No retorno,
 `OTHER` é apresentado como `DEMAIS` e `UNKNOWN` como `NAO_IDENTIFICADO`.
 
-### Análise territorial
-
-`GET /pipeline/tce/analise-territorial` é somente leitura e não consulta fontes
-externas. A rota recebe `start_date`, `end_date`, `municipality_tce_code`, `uf`,
-listas opcionais de `company_sizes`, `supplier_origins` e
-`expense_element_codes`, além de `ranking_limit`. O retorno inclui valores
-empenhado, anulado e líquido, retenção local, evasão municipal, retenção no
-Ceará, cobertura cadastral e geográfica, destinos dos recursos, portes,
-elementos, evolução mensal, concentração HHI e ranking de fornecedores.
-
-```http
-GET /pipeline/tce/analise-territorial?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057&ranking_limit=10
-```
-
-Todos os valores monetários são inteiros em centavos e os percentuais usam a
-escala de `0` a `100`. Competências ausentes aparecem explicitamente na
-cobertura e não são convertidas em meses com valor zero.
-
-O teste concorrente desse motor usa múltiplos municípios, mede média, p95, p99,
-throughput, erros, tempo SQL, CPU e memória, e gera relatórios JSON e Markdown.
-Consulte [o procedimento de teste de carga](docs/carga-indicadores.md).
-
-As rotas analíticas de overview, comparação, indicadores e análise territorial
+As rotas analíticas de overview, comparação e indicadores
 são somente leitura: usam o último lote `PUBLICADO` e cadastros já armazenados,
 sem iniciar ingestão nem consultar fontes externas. Se uma tentativa posterior
 falhar, o lote publicado anterior permanece disponível e a resposta sinaliza
@@ -402,7 +409,46 @@ Município/competência sem publicação não é tratado como valor zero.
 
 O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de ME. Os demais valores monetarios do overview tambem sao finais em centavos. A resposta nao expoe valores brutos, anulacoes, valores liquidos nem medias.
 
+No overview estadual, `destino_recursos` classifica diretamente pela UF da sede do fornecedor: `NO_CEARA`, `FORA_DO_CEARA` e `NAO_IDENTIFICADA`. A categoria estadual não depende do município comprador nem exige que o município de sede esteja identificado quando a UF é conhecida. O overview municipal mantém a distinção entre fornecedor do município comprador e de outro município do Ceará.
+
 O parametro opcional `codigo_municipio` mantem o fluxo municipal existente. `GET /pipeline/tce/overview/municipal` tambem mantem seu contrato por portes.
+
+### Participação de ME por natureza (assinantes)
+
+As rotas próprias de assinante expõem a participação de ME agregada por natureza
+da despesa sem alterar os contratos públicos de overview:
+
+- `GET /pipeline/tce/overview/subscriber?data_inicial=2025-01-01&data_final=2025-12-31`
+- `GET /pipeline/tce/overview/municipal/subscriber?data_inicial=2025-01-01&data_final=2025-12-31&codigo_municipio_tce=004`
+
+A rota municipal também aceita `company_sizes` repetido, com os valores `ME`,
+`MEI`, `EPP`, `OTHER` e `UNKNOWN`. Sem filtro, são considerados todos os portes
+canônicos. O numerador é o valor final de ME e o denominador é a soma dos valores
+dos portes considerados (por padrão, ME + MEI + EPP + DEMAIS). Porte não
+identificado não entra no denominador. Percentuais usam escala de 0 a 100; se o
+denominador for zero, `percentual_me` é `null`.
+
+Os códigos de natureza são normalizados para dois dígitos e recebem a descrição
+canônica do catálogo `NATUREZAS_DESPESA_MONITORADAS`. Despesas sem classificação
+monitorada são retornadas na linha `codigo: null`, `descricao:
+"NAO_CLASSIFICADA"` (campos `codigo: null` e `classificacao:
+"NAO_CLASSIFICADA"`), para não misturá-las às naturezas conhecidas.
+
+Cada item de `participacao_me_por_natureza` contém `codigo`, `descricao`,
+`total_me_centavos`, `denominador_centavos`, `percentual_me` e `registros`. A
+resposta inclui `escopo` com fórmula e portes considerados, além dos parâmetros
+temporais e territoriais. Exemplo de item:
+
+```json
+{
+  "codigo": "30",
+  "descricao": "Material de consumo",
+  "total_me_centavos": 250000,
+  "denominador_centavos": 1000000,
+  "percentual_me": 25.0,
+  "registros": 18
+}
+```
 
 ### Comparação de overviews
 
@@ -500,7 +546,19 @@ As rotas de fornecedores sao somente leitura e consideram despesas de lotes `PUB
 
 `GET /pipeline/tce/fornecedores` agrupa fornecedores por tipo e documento. Os valores retornados sao finais em centavos. `sort_by=final_value` ordena pelo valor final.
 
+A identidade agregada prioriza CNPJ validado pelos digitos verificadores. Empenhos com o mesmo CNPJ valido formam um unico fornecedor mesmo que o nome publicado pelo TCE varie; valores, despesas, municipios e datas sao agregados sobre todos esses empenhos. CPF, CNPJ invalido e documento ausente nao sao associados por semelhanca de nome: documentos presentes permanecem separados por tipo e valor normalizado, e registros sem documento nao aparecem na listagem. Assim, nomes iguais sem identificador confiavel nao fundem entidades distintas. O nome exibido prioriza razao social cadastral, depois nome fantasia e, por fim, o nome publicado pelo TCE.
+
+Casos representativos e impacto esperado:
+
+| Registros no TCE | Identidade da resposta | Efeito nos indicadores |
+| --- | --- | --- |
+| Mesmo CNPJ com razoes sociais ou grafias diferentes | Um fornecedor pelo CNPJ validado | Soma empenhos e valores uma vez; reduz a contagem de fornecedores duplicados sem alterar os totais das despesas. |
+| Mesmo nome com CNPJs validos diferentes | Dois fornecedores | Mantem entidades distintas e seus valores separados. |
+| Documento ausente ou CNPJ/CPF invalido | Sem correspondencia por nome; documento informado continua identificado por tipo e valor | Evita fusao especulativa; ausentes continuam fora da listagem, conforme o filtro existente. |
+
 `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}` retorna cadastro, totais finais, evolucao mensal, distribuicao pelos sete elementos e participacao no valor total filtrado. Nao retorna valores brutos, anulacoes, valores liquidos ou medias.
+
+No detalhe, `fornecedor.nome` segue a mesma precedencia da listagem e `fornecedor.razao_social` e `fornecedor.nome_fantasia` foram adicionados como campos opcionais para tornar a identificacao mais clara. A rota de despesas do detalhe usa o CNPJ validado como chave quando disponivel, garantindo que os vinculos agregados incluam todas as variacoes de nome daquele fornecedor. Nao ha alteracao de schema do banco; consumidores do Backend podem ler os novos campos sem remover os existentes.
 
 `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas` retorna a lista paginada das despesas do fornecedor com o mesmo contrato de `/pipeline/tce/despesas`.
 
@@ -545,24 +603,44 @@ O banco principal mantém:
 - `tce_despesa_ingestion_runs`, com o estado de cada carga mensal;
 - `tce_empenhos`, com as notas de empenho versionadas por lote;
 - `tce_anulacoes_empenhos`, com as anulações vinculadas aos empenhos.
+- `tce_despesa_calculo_runs` e `tce_despesas_calculadas`, com snapshots
+  imutáveis dos empenhos, anulações e pagamentos após o cálculo. Apenas uma
+  versão por município/exercício fica publicada; correções conservam o
+  histórico substituído.
 - `raw_pncp_records`, com versões originais JSONB do PNCP, e `ingestion_jobs`,
   cuja criação do job `normalize` é atômica com a gravação RAW.
 
-A resolução do código interno de município do TCE consulta primeiro
-`tce_municipios`, associada a `ibge_municipios`. Quando o código ainda não
-existe no cache, a aplicação consulta a lista do TCE uma vez e persiste os
-mapeamentos em lote para as consultas seguintes.
+A resolução do código interno de município do TCE consulta somente
+`tce_municipios`, associada a `ibge_municipios`. Catálogos ausentes são
+sincronizados pelos comandos de ingestão; uma leitura ou montagem analítica não
+consulta TCE ou IBGE como fallback.
 
 O cache cadastral completo de fornecedores mantém os dados normalizados e o
 payload bruto do OpenCNPJ. Registros encontrados valem por 30 dias, respostas
-`nao_encontrado` por sete dias e indisponibilidades por uma hora. A consulta ao
-OpenCNPJ ocorre apenas para CNPJs ausentes ou vencidos. Se a renovação falhar,
-o último dado conhecido é preservado e devolvido com
-`cache_desatualizado=true` até uma nova tentativa.
+`nao_encontrado` por sete dias e indisponibilidades por uma hora. Somente os
+comandos explícitos de sincronização consultam o OpenCNPJ para CNPJs ausentes
+ou vencidos. Leituras retornam apenas snapshots locais e sinalizam entradas
+expiradas com `cache_desatualizado=true`. Se uma renovação explícita falhar, o
+último dado conhecido é preservado até uma nova tentativa.
 
 O banco de logs mantém `logs_ingestao`, para auditoria das coletas, e
 `logs_aplicacao`, para alertas operacionais. Os dois bancos usam ambientes
 Alembic independentes.
+
+### Publicação de despesas calculadas
+
+O cálculo e sua publicação são separados das rotas HTTP somente leitura. A
+equipe de Análise de Dados entrega um snapshot JSON completo por município e
+exercício, e o pipeline o publica com:
+
+```bash
+python scripts/persistir_tce_despesas_calculadas.py --arquivo resultado.json
+```
+
+Reprocessar o mesmo conteúdo e versão do algoritmo não duplica registros.
+Correções criam uma nova versão vigente e preservam indefinidamente a anterior.
+O contrato de campos, vínculos, períodos, valores, porte e consultas está em
+[`docs/despesas-calculadas-tce.md`](docs/despesas-calculadas-tce.md).
 
 ## Observabilidade
 
@@ -821,13 +899,13 @@ python -m unittest discover -s tests
 
 ## Observações mensais de porte (PEN-003)
 
-Publicações versionadas, importação dos dados reais e contrato das rotas: [histórico mensal](docs/portes-mensais.md). O porte observado na fotografia não comprova vigência na data do empenho.
+Publicações versionadas e importação dos dados reais: [histórico mensal](docs/portes-mensais.md). O porte observado na fotografia não comprova vigência na data do empenho.
 
 
 
 ### Pagamentos da Prefeitura e Microempresas
 
-Para reproduzir os valores pagos do portal do TCE, use `GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09` (com o prefixo da API). Esse indicador usa notas de pagamento, exclui Camara e estornos e aplica porte cadastral ME. O overview anterior continua medindo empenhos liquidos. A ingestao incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras, auditoria e reproducao do overview](docs/pagamentos-tce.md).
+Para reproduzir os valores pagos do portal do TCE, use `python scripts/auditar_pagamentos_tce.py`. O fluxo usa notas de pagamento, exclui Câmara e estornos e aplica porte cadastral ME. O overview da API continua medindo os snapshots publicados. A ingestão incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras e reprodução da auditoria](docs/pagamentos-tce.md).
 
 As rotas analíticas de despesas e fornecedores incluem somente órgãos municipais classificados como Executivo pelo cadastro `/orgaos` do TCE, por município e exercício. Após aplicar a migration `0029_tce_classificacao_orgaos`, classifique os exercícios já publicados com `python scripts/sincronizar_classificacoes_orgaos_tce.py` (ou limite a Acaraú com `--municipio 004`). A Câmara e órgãos ainda sem classificação de alta confiança ficam fora dos cálculos; as linhas brutas de empenhos e anulações permanecem preservadas. Novas ingestões atualizam as classificações automaticamente.
 

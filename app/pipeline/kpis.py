@@ -17,6 +17,7 @@ import pandas as pd
 
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
+from app.pipeline.naturezas_despesa import normalizar_codigo_natureza_despesa
 from app.utils import normalizar_chave_entidade, normalizar_cnpj
 
 class DadosInsuficientesKPI(ValueError):
@@ -119,6 +120,23 @@ def _valor_reais_para_centavos(valor: object) -> object:
 
 def _somar_centavos(serie: pd.Series) -> int:
     return sum(int(valor) for valor in serie.dropna())
+
+
+def _filtrar_exercicio_orcamentario(
+    base: pd.DataFrame,
+    ano_exercicio: int | None,
+) -> pd.DataFrame:
+    if ano_exercicio is None or base.empty:
+        return base
+    if "exercicio_orcamento" not in base.columns:
+        raise DadosInsuficientesKPI(
+            "[INDISPONIVEL] overview: exercicio_orcamento ausente na base de pagamentos."
+        )
+    return base.loc[
+        pd.to_numeric(base["exercicio_orcamento"], errors="coerce").eq(
+            ano_exercicio * 100
+        )
+    ].copy()
 
 
 def _booleano_estrito(serie: pd.Series) -> pd.Series:
@@ -630,6 +648,7 @@ def calcular_overview_me_mei(
     base_analitica: pd.DataFrame,
     *,
     incluir_mei: bool = True,
+    ano_exercicio: int | None = None,
 ) -> dict[str, object]:
     """Calcula o overview restrito a ME e MEI sobre empenhos líquidos.
 
@@ -650,6 +669,9 @@ def calcular_overview_me_mei(
         "overview ME e MEI",
     )
 
+    base_analitica = _filtrar_exercicio_orcamentario(
+        base_analitica, ano_exercicio,
+    )
     todos = base_analitica.copy()
     todos["_valor_centavos"] = todos["valor"].map(_valor_reais_para_centavos)
     todos["_porte_overview"] = todos["porte_fornecedor"].where(
@@ -730,27 +752,46 @@ def calcular_overview_me_mei(
     )
 
     evolucao: list[dict[str, object]] = []
-    periodos = sorted(
-        str(periodo)
-        for periodo in compras["ano_mes"].dropna().unique()
-        if str(periodo).strip()
-    )
-    for periodo in periodos:
-        mensal = compras.loc[compras["ano_mes"].astype("string").eq(periodo)]
-        mensal_microempresas = mensal.loc[
-            mensal["porte_fornecedor"].isin(portes_microempresas)
-        ]
-        evolucao.append(
-            {
-                "periodo": periodo,
-                "compras_consideradas_centavos": _somar_centavos(
-                    mensal["_valor_centavos"]
-                ),
-                "microempresas_centavos": _somar_centavos(
-                    mensal_microempresas["_valor_centavos"]
-                ),
-            }
+    if ano_exercicio is not None:
+        meses_documentais = compras["ano_mes"].astype("string").str[-2:]
+        for mes in range(1, 13):
+            mensal = compras.loc[meses_documentais.eq(f"{mes:02d}")]
+            mensal_microempresas = mensal.loc[
+                mensal["porte_fornecedor"].isin(portes_microempresas)
+            ]
+            evolucao.append(
+                {
+                    "periodo": f"{ano_exercicio:04d}-{mes:02d}",
+                    "compras_consideradas_centavos": _somar_centavos(
+                        mensal["_valor_centavos"]
+                    ),
+                    "microempresas_centavos": _somar_centavos(
+                        mensal_microempresas["_valor_centavos"]
+                    ),
+                }
+            )
+    else:
+        periodos = sorted(
+            str(periodo)
+            for periodo in compras["ano_mes"].dropna().unique()
+            if str(periodo).strip()
         )
+        for periodo in periodos:
+            mensal = compras.loc[compras["ano_mes"].astype("string").eq(periodo)]
+            mensal_microempresas = mensal.loc[
+                mensal["porte_fornecedor"].isin(portes_microempresas)
+            ]
+            evolucao.append(
+                {
+                    "periodo": periodo,
+                    "compras_consideradas_centavos": _somar_centavos(
+                        mensal["_valor_centavos"]
+                    ),
+                    "microempresas_centavos": _somar_centavos(
+                        mensal_microempresas["_valor_centavos"]
+                    ),
+                }
+            )
 
     destino_recursos = [
         {
@@ -787,64 +828,85 @@ def calcular_overview_me_mei(
     }
 
 
-def calcular_ranking_municipios_overview_estadual(
+def calcular_participacao_me_por_natureza(
     base_analitica: pd.DataFrame,
     *,
-    total_me_centavos: int,
-    limite: int = 10,
+    portes_considerados: list[str] | None = None,
 ) -> list[dict[str, object]]:
-    """Ordena municípios pelo valor final de despesas de ME no estado."""
+    """Agrega participação de ME por natureza, mantendo valores sem classificação."""
     _validar_colunas(
         base_analitica,
-        ["codigo_municipio_tce", "municipio_comprador", "porte_fornecedor", "valor"],
-        "ranking municipal do overview estadual",
+        ["valor", "porte_fornecedor", "natureza_despesa_codigo", "natureza_despesa"],
+        "participação de ME por natureza da despesa",
     )
-    me = base_analitica.loc[
-        base_analitica["porte_fornecedor"].eq("ME")
-        & base_analitica["codigo_municipio_tce"].notna()
-        & base_analitica["municipio_comprador"].notna()
-    ].copy()
-    if me.empty:
-        return []
+    portes = set(
+        PORTES_EMPRESARIAIS if portes_considerados is None else portes_considerados
+    )
+    base = base_analitica.copy()
+    base["_valor_centavos"] = base["valor"].map(_valor_reais_para_centavos)
+    codigos = base["natureza_despesa_codigo"].map(normalizar_codigo_natureza_despesa)
+    base["_natureza_codigo"] = codigos
+    base["_classificavel"] = codigos.isin(NATUREZAS_DESPESA_MONITORADAS)
 
-    me["_valor_centavos"] = me["valor"].map(_valor_reais_para_centavos)
-    me = me.loc[me["_valor_centavos"].notna()]
-    agrupado = (
-        me.groupby(
-            ["codigo_municipio_tce", "municipio_comprador"],
-            as_index=False,
-            dropna=True,
+    resultado: list[dict[str, object]] = []
+    for codigo in sorted(NATUREZAS_DESPESA_MONITORADAS):
+        grupo = base.loc[base["_natureza_codigo"].eq(codigo)]
+        elegiveis = grupo.loc[grupo["porte_fornecedor"].isin(portes)]
+        if elegiveis.empty:
+            continue
+        total_me = _somar_centavos(
+            elegiveis.loc[elegiveis["porte_fornecedor"].eq("ME"), "_valor_centavos"]
         )
-        .agg(
-            compras_me_centavos=("_valor_centavos", "sum"),
-            quantidade_empenhos=("_valor_centavos", "size"),
+        denominador = _somar_centavos(elegiveis["_valor_centavos"])
+        resultado.append(
+            {
+                "codigo": codigo,
+                "descricao": NATUREZAS_DESPESA_MONITORADAS[codigo],
+                "total_me_centavos": total_me,
+                "denominador_centavos": denominador,
+                "percentual_me": (
+                    _percentual_0_a_100(total_me, denominador)
+                    if denominador != 0
+                    else None
+                ),
+                "registros": int(len(elegiveis)),
+            }
         )
-        .sort_values(
-            ["compras_me_centavos", "municipio_comprador"],
-            ascending=[False, True],
-            kind="stable",
-        )
-        .head(limite)
-    )
-    return [
-        {
-            "posicao": posicao,
-            "codigo_municipio_tce": str(linha.codigo_municipio_tce),
-            "municipio": str(linha.municipio_comprador),
-            "compras_me_centavos": int(linha.compras_me_centavos),
-            "quantidade_empenhos": int(linha.quantidade_empenhos),
-            "percentual_total_me": _percentual_0_a_100(
-                int(linha.compras_me_centavos), total_me_centavos
-            ),
-        }
-        for posicao, linha in enumerate(agrupado.itertuples(index=False), start=1)
+
+    sem_classificacao = base.loc[~base["_classificavel"]]
+    sem_classificacao = sem_classificacao.loc[
+        sem_classificacao["porte_fornecedor"].isin(portes)
     ]
+    if not sem_classificacao.empty:
+        total_me = _somar_centavos(
+            sem_classificacao.loc[
+                sem_classificacao["porte_fornecedor"].eq("ME"), "_valor_centavos"
+            ]
+        )
+        denominador = _somar_centavos(sem_classificacao["_valor_centavos"])
+        resultado.append(
+            {
+                "codigo": None,
+                "descricao": "NAO_CLASSIFICADA",
+                "total_me_centavos": total_me,
+                "denominador_centavos": denominador,
+                "percentual_me": (
+                    _percentual_0_a_100(total_me, denominador)
+                    if denominador != 0
+                    else None
+                ),
+                "registros": int(len(sem_classificacao)),
+                "classificacao": "NAO_CLASSIFICADA",
+            }
+        )
+    return resultado
 
 
 def calcular_overview_portes(
     base_analitica: pd.DataFrame,
     *,
     portes_considerados: list[str],
+    ano_exercicio: int | None = None,
 ) -> dict[str, object]:
     """Calcula um overview territorial para um conjunto explicito de portes."""
     _validar_colunas(
@@ -858,10 +920,15 @@ def calcular_overview_portes(
         ],
         "overview por portes",
     )
+    base_analitica = _filtrar_exercicio_orcamentario(
+        base_analitica, ano_exercicio,
+    )
     base = base_analitica.loc[
         base_analitica["porte_fornecedor"].isin(portes_considerados)
     ].copy()
-    overview_me_mei = calcular_overview_me_mei(base)
+    overview_me_mei = calcular_overview_me_mei(
+        base, ano_exercicio=ano_exercicio,
+    )
     base["_valor_centavos"] = base["valor"].map(_valor_reais_para_centavos)
     total = _somar_centavos(base["_valor_centavos"])
 
@@ -911,24 +978,42 @@ def calcular_overview_portes(
         }
         for codigo in sorted(NATUREZAS_DESPESA_MONITORADAS)
     ]
-    evolucao = []
-    for periodo in sorted(
+    periodos_validos = sorted(
         str(item) for item in base["ano_mes"].dropna().unique() if str(item).strip()
-    ):
-        mensal = base.loc[base["ano_mes"].astype("string").eq(periodo)]
-        valor_mensal = _somar_centavos(mensal["_valor_centavos"])
-        valor_local = _somar_centavos(
-            mensal.loc[
-                mensal["_origem_overview"].eq(ORIGEM_FORNECEDOR_LOCAL),
+    )
+    if ano_exercicio is None and periodos_validos:
+        ano_exercicio = int(periodos_validos[0][:4])
+    evolucao = []
+    if ano_exercicio is not None:
+        compras_identificadas = base.loc[
+            base["porte_fornecedor"].isin(PORTES_COMPRAS_CONSIDERADAS_OVERVIEW)
+        ]
+        total_exercicio = _somar_centavos(compras_identificadas["_valor_centavos"])
+        microempresas_acumuladas = 0
+        compras_consideradas_acumuladas = 0
+        meses_documentais = base["ano_mes"].astype("string").str[-2:]
+        for mes in range(1, 13):
+            compras_consideradas_mes = base.loc[
+                meses_documentais.eq(f"{mes:02d}"),
                 "_valor_centavos",
             ]
-        )
-        evolucao.append({
-            "periodo": periodo,
-            "compras_consideradas_centavos": valor_mensal,
-            "valor_local_centavos": valor_local,
-            "percentual_local": _percentual_0_a_100(valor_local, valor_mensal),
-        })
+            microempresas_mes = base.loc[
+                meses_documentais.eq(f"{mes:02d}")
+                & base["porte_fornecedor"].eq("ME"),
+                "_valor_centavos",
+            ]
+            compras_consideradas_acumuladas += _somar_centavos(
+                compras_consideradas_mes
+            )
+            microempresas_acumuladas += _somar_centavos(microempresas_mes)
+            evolucao.append({
+                "periodo": f"{ano_exercicio:04d}-{mes:02d}",
+                "compras_consideradas_centavos": compras_consideradas_acumuladas,
+                "percentual_participacao_me": _percentual_0_a_100(
+                    microempresas_acumuladas,
+                    total_exercicio,
+                ),
+            })
 
     return {
         "kpis": {

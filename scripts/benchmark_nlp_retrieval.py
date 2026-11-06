@@ -7,7 +7,7 @@ import math
 import statistics
 import sys
 from pathlib import Path
-from time import perf_counter, process_time
+from time import perf_counter
 from typing import Any
 
 import psutil

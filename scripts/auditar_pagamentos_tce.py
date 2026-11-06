@@ -5,7 +5,13 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app.pipeline.pagamentos import consultar_pagamentos_prefeitura, coletar_documentos_prefeitura
+from app.core import database
+from app.pipeline.ingestion.fornecedores import sincronizar_fornecedores
+from app.pipeline.ingestion.pagamentos_prefeitura import coletar_documentos_prefeitura
+from app.pipeline.pagamentos import (
+    conciliar_pagamentos,
+    consultar_pagamentos_prefeitura,
+)
 
 
 def main():
@@ -28,9 +34,20 @@ def main():
     if args.salvar_coleta:
         args.salvar_coleta.parent.mkdir(parents=True, exist_ok=True)
         args.salvar_coleta.write_text(json.dumps(coleta, ensure_ascii=False, default=str), encoding="utf-8")
+    fornecedores_cache = None
+    if not args.somente_financeiro:
+        elegiveis, _ = conciliar_pagamentos(
+            coleta["empenhos"], coleta["pagamentos"], coleta["orgaos"],
+            codigo_municipio=args.municipio.strip(), exercicio=args.exercicio,
+        )
+        cnpjs = sorted({item["cnpj"] for item in elegiveis if item["cnpj"]})
+        if not args.entrada:
+            sincronizar_fornecedores(cnpjs)
+        fornecedores_cache = database.listar_fornecedores_cache(cnpjs)
     resultado = consultar_pagamentos_prefeitura(
         codigo_municipio=args.municipio, exercicio=args.exercicio,
-        referencia_final=args.referencia_final, consultar_porte=not args.somente_financeiro, coleta=coleta,
+        referencia_final=args.referencia_final, consultar_porte=not args.somente_financeiro,
+        coleta=coleta, fornecedores_cache=fornecedores_cache,
     )
     texto = json.dumps(resultado, ensure_ascii=False, indent=2)
     if args.saida:

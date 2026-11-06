@@ -1,4 +1,4 @@
-﻿Implementação local concluída: consulte o [contrato das rotas mensais e validações](portes-mensais.md). O texto abaixo preserva os resultados e limites do piloto que fundamentou a implementação.
+﻿Implementação local concluída: consulte a [importação mensal e suas validações](portes-mensais.md). O texto abaixo preserva os resultados e limites do piloto que fundamentou a implementação.
 
 # PEN-003 — Resultado do piloto com dados reais
 

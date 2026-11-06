@@ -89,10 +89,6 @@ class ApiResponseCache(MainBase):
     """Resposta JSON calculada para uma combinação de método, rota e filtros."""
 
     __tablename__ = "api_response_cache"
-    __table_args__ = (
-        Index("ix_api_response_cache_expires_at", "expires_at"),
-    )
-
     cache_key: Mapped[str] = mapped_column(Text, primary_key=True)
     request_method: Mapped[str] = mapped_column(Text)
     request_path: Mapped[str] = mapped_column(Text)
@@ -102,7 +98,7 @@ class ApiResponseCache(MainBase):
     cached_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RawPncpRecord(MainBase):
@@ -745,6 +741,175 @@ class TcePagamento(MainBase):
     lote: Mapped[TcePagamentoIngestionRun] = relationship(back_populates="pagamentos")
 
 
+class TceDespesaCalculadaRun(MainBase):
+    """Publicacao imutavel de um resultado calculado por municipio/exercicio."""
+
+    __tablename__ = "tce_despesa_calculo_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PUBLICADO', 'SUBSTITUIDO')",
+            name="ck_tce_despesa_calculo_runs_status",
+        ),
+        CheckConstraint(
+            "quantidade_empenhos >= 0 AND quantidade_anulacoes >= 0 "
+            "AND quantidade_pagamentos >= 0",
+            name="ck_tce_despesa_calculo_runs_quantidades",
+        ),
+        CheckConstraint(
+            "exercicio_orcamento > 0 AND exercicio_orcamento % 100 = 0",
+            name="ck_tce_despesa_calculo_runs_exercicio",
+        ),
+        CheckConstraint(
+            "length(input_hash) = 64",
+            name="ck_tce_despesa_calculo_runs_hash",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    escopo_chave: Mapped[str] = mapped_column(Text)
+    codigo_municipio_tce: Mapped[str] = mapped_column(Text)
+    exercicio_orcamento: Mapped[int] = mapped_column(Integer)
+    algoritmo_versao: Mapped[str] = mapped_column(Text)
+    input_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    run_anterior_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("tce_despesa_calculo_runs.id", ondelete="RESTRICT"),
+    )
+    quantidade_empenhos: Mapped[int] = mapped_column(Integer)
+    quantidade_anulacoes: Mapped[int] = mapped_column(Integer)
+    quantidade_pagamentos: Mapped[int] = mapped_column(Integer)
+    fontes: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+    )
+    iniciado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    publicado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    substituido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("now()"),
+    )
+
+
+class TceDespesaCalculada(MainBase):
+    """Fato calculado versionado; dimensoes sao congeladas na publicacao."""
+
+    __tablename__ = "tce_despesas_calculadas"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "natureza",
+            "chave_registro",
+            name="uq_tce_despesas_calculadas_run_registro",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "id",
+            name="uq_tce_despesas_calculadas_run_id",
+        ),
+        ForeignKeyConstraint(
+            ["run_id", "registro_pai_id"],
+            ["tce_despesas_calculadas.run_id", "tce_despesas_calculadas.id"],
+            ondelete="RESTRICT",
+            name="fk_tce_despesas_calculadas_pai_mesmo_run",
+        ),
+        CheckConstraint(
+            "natureza IN ('EMPENHO', 'ANULACAO_EMPENHO', 'PAGAMENTO')",
+            name="ck_tce_despesas_calculadas_natureza",
+        ),
+        CheckConstraint(
+            "porte_fornecedor IN ('MEI', 'ME', 'EPP', 'DEMAIS', 'NAO_IDENTIFICADO')",
+            name="ck_tce_despesas_calculadas_porte",
+        ),
+        CheckConstraint(
+            "valor_centavos >= 0",
+            name="ck_tce_despesas_calculadas_valor",
+        ),
+        CheckConstraint(
+            "competencia_documento ~ '^[0-9]{4}-(0[1-9]|1[0-2])$' "
+            "AND competencia_analitica ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'",
+            name="ck_tce_despesas_calculadas_competencias",
+        ),
+        CheckConstraint(
+            "exercicio_orcamento > 0 AND exercicio_orcamento % 100 = 0",
+            name="ck_tce_despesas_calculadas_exercicio",
+        ),
+        CheckConstraint(
+            "length(conteudo_hash) = 64",
+            name="ck_tce_despesas_calculadas_hash",
+        ),
+        CheckConstraint(
+            "(natureza = 'EMPENHO' "
+            "AND registro_pai_id IS NULL "
+            "AND valor_empenhado_centavos IS NOT NULL "
+            "AND valor_anulado_centavos IS NOT NULL "
+            "AND valor_liquido_centavos IS NOT NULL "
+            "AND valor_empenhado_centavos >= 0 "
+            "AND valor_anulado_centavos >= 0 "
+            "AND valor_liquido_centavos = valor_empenhado_centavos - valor_anulado_centavos "
+            "AND valor_centavos = valor_liquido_centavos) "
+            "OR (natureza IN ('ANULACAO_EMPENHO', 'PAGAMENTO') "
+            "AND registro_pai_id IS NOT NULL "
+            "AND valor_empenhado_centavos IS NULL "
+            "AND valor_anulado_centavos IS NULL "
+            "AND valor_liquido_centavos IS NULL)",
+            name="ck_tce_despesas_calculadas_valores_natureza",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("tce_despesa_calculo_runs.id", ondelete="RESTRICT"),
+    )
+    registro_pai_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+    )
+    natureza: Mapped[str] = mapped_column(Text)
+    chave_registro: Mapped[str] = mapped_column(Text)
+    chave_empenho: Mapped[str] = mapped_column(Text)
+    conteudo_hash: Mapped[str] = mapped_column(Text)
+    fonte: Mapped[str] = mapped_column(Text)
+    source_run_id: Mapped[int | None] = mapped_column(BigInteger)
+    source_record_id: Mapped[int | None] = mapped_column(BigInteger)
+    competencia_documento: Mapped[str] = mapped_column(Text)
+    competencia_analitica: Mapped[str] = mapped_column(Text)
+    data_referencia: Mapped[date] = mapped_column(Date)
+    exercicio_orcamento: Mapped[int] = mapped_column(Integer)
+    codigo_municipio_tce: Mapped[str] = mapped_column(Text)
+    codigo_municipio_ibge: Mapped[str | None] = mapped_column(Text)
+    municipio: Mapped[str] = mapped_column(Text)
+    uf: Mapped[str] = mapped_column(Text)
+    codigo_orgao: Mapped[str] = mapped_column(Text)
+    nome_orgao: Mapped[str | None] = mapped_column(Text)
+    codigo_unidade_orcamentaria: Mapped[str] = mapped_column(Text)
+    tipo_documento_fornecedor: Mapped[str | None] = mapped_column(Text)
+    documento_fornecedor: Mapped[str | None] = mapped_column(Text)
+    cnpj_fornecedor: Mapped[str | None] = mapped_column(Text)
+    cpf_fornecedor: Mapped[str | None] = mapped_column(Text)
+    nome_fornecedor: Mapped[str | None] = mapped_column(Text)
+    municipio_fornecedor: Mapped[str | None] = mapped_column(Text)
+    uf_fornecedor: Mapped[str | None] = mapped_column(Text)
+    porte_fornecedor: Mapped[str] = mapped_column(Text)
+    fonte_porte: Mapped[str | None] = mapped_column(Text)
+    porte_observado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    natureza_despesa_codigo: Mapped[str] = mapped_column(Text)
+    natureza_despesa_descricao: Mapped[str | None] = mapped_column(Text)
+    valor_centavos: Mapped[int] = mapped_column(BigInteger)
+    valor_empenhado_centavos: Mapped[int | None] = mapped_column(BigInteger)
+    valor_anulado_centavos: Mapped[int | None] = mapped_column(BigInteger)
+    valor_liquido_centavos: Mapped[int | None] = mapped_column(BigInteger)
+    atributos: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+    )
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("now()"),
+    )
+
+
 Index("idx_ibge_municipios_uf_nome", IbgeMunicipio.uf, IbgeMunicipio.nome)
 Index("idx_fornecedores_cache_expira_em", FornecedorCache.expira_em)
 Index("idx_raw_pncp_records_entidade_identificador", RawPncpRecord.source, RawPncpRecord.entity_type, RawPncpRecord.external_id)
@@ -809,6 +974,50 @@ Index(
     TcePagamentoIngestionRun.expira_em,
 )
 Index("idx_tce_pagamentos_run", TcePagamento.run_id)
+Index(
+    "uq_tce_despesa_calculo_run_publicado_escopo",
+    TceDespesaCalculadaRun.escopo_chave,
+    unique=True,
+    postgresql_where=text("status = 'PUBLICADO'"),
+)
+Index(
+    "idx_tce_despesa_calculo_runs_escopo_historico",
+    TceDespesaCalculadaRun.escopo_chave,
+    TceDespesaCalculadaRun.publicado_em,
+)
+Index(
+    "idx_tce_despesa_calculo_runs_consulta",
+    TceDespesaCalculadaRun.codigo_municipio_tce,
+    TceDespesaCalculadaRun.exercicio_orcamento,
+    TceDespesaCalculadaRun.status,
+)
+Index(
+    "idx_tce_despesas_calculadas_consulta",
+    TceDespesaCalculada.run_id,
+    TceDespesaCalculada.natureza,
+    TceDespesaCalculada.competencia_analitica,
+)
+Index(
+    "idx_tce_despesas_calculadas_fornecedor",
+    TceDespesaCalculada.cnpj_fornecedor,
+    TceDespesaCalculada.competencia_analitica,
+)
+Index(
+    "idx_tce_despesas_calculadas_documento_fornecedor",
+    TceDespesaCalculada.tipo_documento_fornecedor,
+    TceDespesaCalculada.documento_fornecedor,
+    TceDespesaCalculada.competencia_analitica,
+)
+Index(
+    "idx_tce_despesas_calculadas_orgao_natureza",
+    TceDespesaCalculada.run_id,
+    TceDespesaCalculada.codigo_orgao,
+    TceDespesaCalculada.natureza_despesa_codigo,
+)
+Index(
+    "idx_tce_despesas_calculadas_empenho",
+    TceDespesaCalculada.chave_empenho,
+)
 
 
 __all__ = [
@@ -843,6 +1052,8 @@ __all__ = [
     "TceMunicipio",
     "TcePagamento",
     "TcePagamentoIngestionRun",
+    "TceDespesaCalculada",
+    "TceDespesaCalculadaRun",
 ]
 
 # Registra as tabelas de observacoes mensais no metadata Alembic.

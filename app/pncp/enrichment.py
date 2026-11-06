@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 import requests
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import orm
@@ -20,7 +19,6 @@ from app.pncp.jobs import JobReivindicado, NovoJob, agendar_job_session
 from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
 from app.pncp.protecao import PncpProtegidoError, ProtecaoPncp
 from app.pncp.participation import salvar_documentos_session, salvar_itens_session, salvar_resultados_session
-from app.core.models import PncpItem
 
 
 PRIORIDADE_ENRIQUECIMENTO = 40

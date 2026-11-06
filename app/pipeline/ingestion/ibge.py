@@ -98,13 +98,10 @@ def buscar_dados_ibge(path: str, params: dict[str, Any] | None = None, max_retri
     return [] if path.endswith("/municipios") else {}
 
 
-def listar_municipios(uf: str = "CE") -> list[dict[str, Any]]:
+def coletar_municipios(uf: str = "CE") -> list[dict[str, Any]]:
+    """Coleta o catalogo da fonte, sem consultar nem alterar o banco local."""
     dados = buscar_dados_ibge(f"estados/{uf}/municipios", {"orderBy": "nome"})
     municipios = dados if isinstance(dados, list) else []
-
-    if municipios:
-        _salvar_municipios(municipios, uf)
-
     logger.info(
         "Consulta de municípios do IBGE concluída",
         extra={
@@ -118,21 +115,43 @@ def listar_municipios(uf: str = "CE") -> list[dict[str, Any]]:
     return municipios
 
 
+def buscar_municipios_uf(uf: str = "CE") -> list[str]:
+    """Coleta e retorna somente os nomes oficiais dos municipios de uma UF."""
+    return sorted(
+        {
+            str(item["nome"]).strip()
+            for item in coletar_municipios(uf.upper())
+            if item.get("nome")
+        }
+    )
+
+
+def sincronizar_municipios(uf: str = "CE") -> list[dict[str, Any]]:
+    """Executa explicitamente coleta e persistencia do catalogo municipal."""
+    municipios = coletar_municipios(uf)
+    if municipios:
+        _salvar_municipios(municipios, uf)
+    return municipios
+
+
+def listar_municipios(uf: str = "CE") -> list[dict[str, Any]]:
+    """Lista exclusivamente o catalogo municipal ja persistido."""
+    return database.listar_municipios_ibge(uf)
+
+
 def localizar_municipio(codigo_ibge: str | int, uf: str = "CE") -> dict[str, Any] | None:
-    codigo = str(codigo_ibge)
-    municipio_salvo = _buscar_municipio_no_banco(codigo)
-
-    if municipio_salvo is not None:
-        return municipio_salvo
-
-    for municipio in listar_municipios(uf):
-        if str(municipio.get("id")) == codigo:
-            return municipio
-
-    return None
+    """Consulta exclusivamente o banco; ausencia nunca dispara sincronizacao."""
+    municipio = _buscar_municipio_no_banco(str(codigo_ibge))
+    if municipio is None:
+        return None
+    return municipio if str(municipio.get("uf", "")).upper() == uf.upper() else None
 
 
-def sincronizar_municipios(uf: str = "CE") -> int:
-    dados = buscar_dados_ibge(f"estados/{uf}/municipios", {"orderBy": "nome"})
-    municipios = dados if isinstance(dados, list) else []
-    return database.salvar_municipios_ibge(municipios, uf)
+__all__ = [
+    "buscar_dados_ibge",
+    "buscar_municipios_uf",
+    "coletar_municipios",
+    "listar_municipios",
+    "localizar_municipio",
+    "sincronizar_municipios",
+]

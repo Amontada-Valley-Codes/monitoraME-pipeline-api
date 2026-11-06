@@ -6,16 +6,14 @@ remove valores do controle financeiro. Valores publicos de fornecedores: ME.
 from __future__ import annotations
 
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from datetime import date
 import re
-from typing import Any
 
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
 from app.pipeline.cleaners.tce_despesas import valor_para_centavos
-from app.pipeline.ingestion import fornecedores, tce
 from app.pipeline.persistence.tce_orgaos import classificar_orgao
+from app.pipeline.referencias import referencias_entre
 from app.utils import normalizar_cnpj, normalizar_texto, validar_cnpj
 
 CAMPOS_CHAVE = (
@@ -54,15 +52,8 @@ def _chave(registro: dict) -> tuple[str, ...]:
 
 
 def _referencias(inicio: str, fim: str) -> list[str]:
-    def indice(valor: str) -> int:
-        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}", valor):
-            raise ValueError("Referencia deve usar YYYY-MM.")
-        data = date.fromisoformat(valor + "-01")
-        return data.year * 12 + data.month - 1
-    primeiro, ultimo = indice(inicio), indice(fim)
-    if primeiro > ultimo:
-        raise ValueError("Referencia inicial posterior a final.")
-    return [f"{i // 12:04d}-{i % 12 + 1:02d}" for i in range(primeiro, ultimo + 1)]
+    """Compatibilidade para consumidores do helper privado anterior."""
+    return referencias_entre(inicio, fim)
 
 
 def _cnpj(empenho: dict) -> str | None:
@@ -191,35 +182,43 @@ def conciliar_pagamentos(
     }
 
 
-def _classificar_cnpj(cnpj: str) -> dict:
-    instante = datetime.now(timezone.utc).isoformat()
-    dados = fornecedores.coletar_fornecedor(cnpj)
-    bruto = dados.get("opencnpj") or {}
-    status = dados.get("opencnpj_status", "indisponivel")
-    documento_retornado = normalizar_cnpj(bruto.get("cnpj"))
-    porte = None
-    if status == "ok" and documento_retornado == cnpj:
-        porte = normalizar_porte_empresarial(dados.get("porte"))
-        if porte not in {"ME", "EPP", "DEMAIS"}:
-            status = "porte_desconhecido"
-    elif status == "ok":
-        status = "cnpj_divergente"
+def _classificar_cnpj(cnpj: str, cache: dict | None) -> dict:
+    """Converte um snapshot cadastral local em classificacao analitica."""
+    dados = dict(cache.get("dados_normalizados") or {}) if cache else {}
+    status = str(cache.get("opencnpj_status") or "nao_consultado") if cache else "nao_consultado"
+    porte = normalizar_porte_empresarial(
+        dados.get("porte_padronizado") or dados.get("opencnpj_porte_empresa")
+    )
+    if status == "ok" and porte not in {"ME", "EPP", "DEMAIS"}:
+        status = "porte_desconhecido"
+    indicador_mei = (
+        dados["optante_mei"]
+        if "optante_mei" in dados
+        else dados.get("opencnpj_opcao_mei")
+    )
     return {
         "cnpj_completo": cnpj, "cnpj_basico": cnpj[:8],
-        "porte_original": dados.get("porte"),
+        "porte_original": dados.get("opencnpj_porte_empresa") or dados.get("porte_padronizado"),
         "porte_codigo": {"ME": "01", "EPP": "03", "DEMAIS": "05"}.get(porte),
-        "indicador_mei": bruto.get("opcao_mei"),
+        "indicador_mei": indicador_mei,
         "fonte_cadastral": "RECEITA_FEDERAL_VIA_OPENCNPJ",
-        "referencia_base_cadastral": None, "consultado_em": instante,
+        "referencia_base_cadastral": (
+            cache.get("observado_em").isoformat()
+            if cache and hasattr(cache.get("observado_em"), "isoformat")
+            else cache.get("observado_em") if cache else None
+        ),
+        "consultado_em": None,
         "situacao_classificacao": status,
     }
 
 
-def classificar_fornecedores(pagamentos: list[dict]) -> dict[str, dict]:
-    """Consulta cada CNPJ uma vez, com no maximo quatro requisicoes simultaneas."""
+def classificar_fornecedores(
+    pagamentos: list[dict],
+    caches: dict[str, dict],
+) -> dict[str, dict]:
+    """Classifica fornecedores a partir de snapshots recebidos pelo chamador."""
     cnpjs = sorted({p["cnpj"] for p in pagamentos if p["cnpj"]})
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        return dict(zip(cnpjs, executor.map(_classificar_cnpj, cnpjs)))
+    return {cnpj: _classificar_cnpj(cnpj, caches.get(cnpj)) for cnpj in cnpjs}
 
 
 def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) -> dict:
@@ -274,102 +273,12 @@ def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) 
     }
 
 
-def coletar_documentos_prefeitura(
-    *, codigo_municipio: str, exercicio: int, referencia_final: str,
-) -> dict:
-    codigo_municipio = codigo_municipio.strip()
-    if not re.fullmatch(r"[0-9]{3}", codigo_municipio):
-        raise ValueError("Codigo do municipio deve conter tres digitos.")
-    referencias = _referencias(f"{exercicio:04d}-01", referencia_final)
-    if referencia_final < f"{exercicio:04d}-12":
-        raise ValueError("Referencia final deve cobrir pelo menos dezembro do exercicio.")
-    inicio = datetime.now(timezone.utc).isoformat()
-    orgaos = tce.buscar_documentos_exercicio(
-        "orgaos", codigo_municipio=codigo_municipio, exercicio=exercicio,
-    )
-    unidades = tce.buscar_documentos_exercicio(
-        "unidades_orcamentarias", codigo_municipio=codigo_municipio,
-        exercicio=exercicio,
-    )
-    unidades_por_orgao: dict[str, list[str]] = defaultdict(list)
-    for item in unidades:
-        codigo_orgao = str(item.get("codigo_orgao", "")).strip()
-        codigo_unidade = str(item.get("codigo_unidade_orcamentaria", ""))
-        if codigo_orgao and codigo_unidade.strip() and codigo_unidade not in unidades_por_orgao[codigo_orgao]:
-            unidades_por_orgao[codigo_orgao].append(codigo_unidade)
-    codigos_orgaos = sorted({str(item.get("codigo_orgao", "")).strip() for item in orgaos} - {""})
-    if not codigos_orgaos or not unidades_por_orgao:
-        raise RuntimeError(
-            f"Cadastro de órgãos/unidades vazio para {codigo_municipio}/{exercicio}; "
-            "pagamentos não foram tratados como competência vazia."
-        )
-    empenhos, pagamentos = [], []
-    consultas_pagamentos = []
-    for referencia in referencias:
-        params = dict(codigo_municipio=codigo_municipio, exercicio=exercicio, competencia=referencia)
-        if referencia[:4] == str(exercicio):
-            empenhos.extend(tce.buscar_documentos_exercicio("notas_empenhos", **params))
-        for codigo_orgao in codigos_orgaos:
-            consultas_pagamentos.append((params, codigo_orgao))
-
-    def buscar_particao_pagamentos(consulta: tuple[dict, str]) -> tuple[list[dict], int, int]:
-        params, codigo_orgao = consulta
-        registros = tce.buscar_documentos_exercicio(
-            "notas_pagamentos", **params, codigo_orgao=codigo_orgao,
-        )
-        if len(registros) < 1000:
-            return registros, 1, 0
-        registros_unidades = []
-        unidades_orgao = unidades_por_orgao.get(codigo_orgao, [])
-        if not unidades_orgao:
-            raise RuntimeError(f"Órgão {codigo_orgao} sem unidades para subdividir a consulta.")
-        for codigo_unidade in unidades_orgao:
-            parcela = tce.buscar_documentos_exercicio(
-                "notas_pagamentos", **params, codigo_orgao=codigo_orgao,
-                codigo_unidade_orcamentaria=codigo_unidade,
-            )
-            if len(parcela) > 1000:
-                raise RuntimeError(
-                    f"Partição {codigo_orgao}/{codigo_unidade.strip()} excedeu 1000 notas; "
-                    "a coleta não pode ser considerada completa."
-                )
-            registros_unidades.extend(parcela)
-        return registros_unidades, len(unidades_orgao) + 1, 1
-
-    consultas_executadas = 0
-    orgaos_subdivididos = 0
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        for registros, chamadas, subdividido in executor.map(
-            buscar_particao_pagamentos, consultas_pagamentos,
-        ):
-            pagamentos.extend(registros)
-            consultas_executadas += chamadas
-            orgaos_subdivididos += subdividido
-    return {
-        "codigo_municipio": codigo_municipio, "exercicio": exercicio,
-        "referencia_final": referencia_final, "coleta_iniciada_em": inicio,
-        "coleta_concluida_em": datetime.now(timezone.utc).isoformat(),
-        "particionamento_pagamentos": {
-            "dimensoes": ["codigo_orgao", "codigo_unidade_orcamentaria_se_necessario"],
-            "orgaos": len(codigos_orgaos),
-            "unidades_orcamentarias": sum(len(items) for items in unidades_por_orgao.values()),
-            "consultas_planejadas": len(consultas_pagamentos),
-            "consultas_executadas": consultas_executadas,
-            "orgaos_subdivididos_por_limite": orgaos_subdivididos,
-        },
-        "orgaos": orgaos, "unidades_orcamentarias": unidades,
-        "empenhos": empenhos, "pagamentos": pagamentos,
-    }
-
-
 def consultar_pagamentos_prefeitura(
     *, codigo_municipio: str, exercicio: int, referencia_final: str,
-    consultar_porte: bool = True, coleta: dict | None = None,
+    coleta: dict, consultar_porte: bool = True,
+    fornecedores_cache: dict[str, dict] | None = None,
 ) -> dict:
-    if coleta is None:
-        coleta = coletar_documentos_prefeitura(
-            codigo_municipio=codigo_municipio, exercicio=exercicio, referencia_final=referencia_final,
-        )
+    """Transforma uma coleta fornecida sem acessar fontes externas ou persistir dados."""
     if (coleta["codigo_municipio"], coleta["exercicio"], coleta["referencia_final"]) != (
         codigo_municipio.strip(), exercicio, referencia_final,
     ):
@@ -378,7 +287,16 @@ def consultar_pagamentos_prefeitura(
         coleta["empenhos"], coleta["pagamentos"], coleta["orgaos"],
         codigo_municipio=codigo_municipio.strip(), exercicio=exercicio,
     )
-    classificacoes = classificar_fornecedores(elegiveis) if consultar_porte else {}
+    if consultar_porte and fornecedores_cache is None:
+        raise ValueError(
+            "fornecedores_cache e obrigatorio quando consultar_porte=True; "
+            "a consulta analitica nao executa ingestao nem leitura implicita."
+        )
+    classificacoes = (
+        classificar_fornecedores(elegiveis, fornecedores_cache or {})
+        if consultar_porte
+        else {}
+    )
     resumo = resumir_pagamentos(elegiveis, classificacoes)
     conferencia_portal = None
     if codigo_municipio.strip() == "004" and exercicio == 2025 and referencia_final == "2026-09":

@@ -6,19 +6,26 @@ Implementacao do guia fornecido "Como reproduzir os valores do Portal da Transpa
 
 O fluxo anterior coleta `notas_empenhos` e `notas_anulacoes_empenhos`, publica empenhos liquidos e calcula o overview de ME + MEI. Nao coleta notas de pagamento nem identifica a Camara para esse indicador. Seu parametro mensal vincula o ano documental ao exercicio, o que nao atende a pagamentos de anos posteriores do mesmo orcamento. Por isso, o resultado desse overview nao pode ser apresentado como os pagamentos da Prefeitura descritos no guia.
 
-As rotas de empenhos mantem sua medida. A nova rota de pagamentos implementa o indicador do guia; consumidores que exibem valor pago devem usa-la. Este repositorio nao contem a interface publica que consome esses valores.
+As rotas de empenhos mantêm sua medida. O fluxo de auditoria de pagamentos implementa o indicador do guia e permanece disponível como comando administrativo.
 
 O normalizador cadastral compartilhado tambem foi corrigido: aceita `01`, `03`, `05`, preserva os equivalentes numericos e deixa o codigo desconhecido `2` sem classificacao, em vez de presumir ME. O novo fluxo usa o porte original e guarda o indicador MEI separadamente; nao passa pelo cleaner antigo que transforma optantes MEI em uma categoria de porte distinta.
 
-## Consulta
+## Execução da auditoria
 
-```http
-GET /pipeline/tce/pagamentos/overview?codigo_municipio=004&exercicio=2025&referencia_final=2026-09
+```powershell
+.venv/Scripts/python.exe scripts/auditar_pagamentos_tce.py --municipio 004 --exercicio 2025 --referencia-final 2026-09 --saida .local/tce-pagamentos/acarau.json
 ```
 
-Use o prefixo de montagem da API da aplicacao antes de `/pipeline`. O exercicio e o ano do orcamento; a referencia final e o ultimo mes da documentacao consultada, nao a data limite de emissao do pagamento. O inicio e janeiro do exercicio e o termino precisa cobrir pelo menos dezembro desse ano.
+O exercício é o ano do orçamento; a referência final é o último mês da documentação consultada, não a data limite de emissão do pagamento. O início é janeiro do exercício e o término precisa cobrir pelo menos dezembro desse ano.
 
-O endpoint consulta as fontes externas em cada chamada. A execucao integral pode demorar varios minutos; nao usa os snapshots versionados de empenhos. A coleta bruta pode ser preservada pelo comando de auditoria. A ingestao incremental mensal de notas de pagamento e documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md), mas esta rota ainda nao consome os snapshots persistidos nem persiste portes.
+Sem `--entrada`, o comando coleta os documentos no TCE e executa explicitamente
+a sincronização cadastral dos fornecedores antes da análise; por isso pode
+demorar vários minutos. Com `--entrada`, não consulta TCE nem OpenCNPJ: usa a
+coleta fornecida e somente os cadastros já persistidos. A coleta bruta pode ser
+preservada para reprodução offline. A ingestão incremental mensal de notas de
+pagamento é documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md);
+a auditoria não publica esses snapshots versionados, embora a execução online
+atualize o cache cadastral de fornecedores.
 
 - `total_me_centavos`, `me_por_elemento_centavos` e `fornecedores_me`: valores para o recorte publico ME.
 - `controle_financeiro`: totais antes do porte, por elemento e por categoria exclusiva (ME, EPP, Demais, sem classificacao e documento nao CNPJ).
@@ -64,7 +71,7 @@ A referencia comparada e a do documento fornecido (portal consultado em 19/10/20
 
 ## Conferencia cadastral executada
 
-A configuracao local ainda apontava para `kitana.opencnpj.com`, incompat?vel com a rota usada pelo adaptador atual. As 300 primeiras consultas retornaram "nao encontrado"; esses resultados ficaram pendentes e nao foram tratados como Demais ou ME. A variavel `OPENCNPJ_BASE_URL` do `.env` local foi corrigida para `https://api.opencnpj.org`, conforme `.env.example`, e somente o enriquecimento foi repetido sobre a coleta financeira salva. Esse ajuste local precisa estar presente tambem na configuracao do ambiente que executar a nova rota.
+A configuracao local ainda apontava para `kitana.opencnpj.com`, incompat?vel com a rota usada pelo adaptador atual. As 300 primeiras consultas retornaram "nao encontrado"; esses resultados ficaram pendentes e nao foram tratados como Demais ou ME. A variavel `OPENCNPJ_BASE_URL` do `.env` local foi corrigida para `https://api.opencnpj.org`, conforme `.env.example`, e somente o enriquecimento foi repetido sobre a coleta financeira salva. Esse ajuste local precisa estar presente tambem na configuracao do ambiente que executar a auditoria.
 
 Na consulta de 20/10/2026, os 300 CNPJs tiveram retorno cadastral correspondente: 155 ME, 37 EPP e 108 Demais. Nao restaram pendencias de porte nesta coleta. A concorrencia e limitada a quatro consultas e cada CNPJ e consultado uma unica vez.
 
@@ -84,7 +91,7 @@ O arquivo `.local/tce-pagamentos/acarau.json` guarda os 300 registros de classif
 
 A suite completa foi executada com bancos locais de teste e timeout de conexao de dois segundos: 236 testes, sendo 233 aprovados, dois ignorados por exigirem o piloto real de portes historicos e um erro de importacao no backfill PNCP local, que depende das constantes `PNCP_CONSULTA_BASE_URL` e `PNCP_GESTAO_BASE_URL` removidas da configuracao na branch atual. Os 14 testes novos de pagamentos passaram.
 
-A rota HTTP foi verificada na aplicacao usando a coleta e as classificacoes salvas como substitutos das fontes externas: resposta 200 com os totais financeiros e ME conferidos, respostas 422 para parametros ausentes ou invalidos e resposta 503 para indisponibilidade simulada da fonte. Essa verificacao nao iniciou o servidor nem validou conexoes de banco em uma implantacao. `git diff --check` tambem passou.
+O fluxo foi verificado usando a coleta e as classificacoes salvas como substitutos das fontes externas, incluindo parâmetros inválidos e indisponibilidade simulada da fonte. `git diff --check` também passou.
 
 ## Reproducao
 
@@ -98,7 +105,11 @@ A coleta bruta e salva antes da conciliacao, permitindo investigar rejeicoes. Va
 .venv/Scripts/python.exe scripts/auditar_pagamentos_tce.py --municipio 004 --exercicio 2025 --referencia-final 2026-09 --entrada .local/tce-pagamentos/coleta-acarau.json --somente-financeiro --saida .local/tce-pagamentos/financeiro.json
 ```
 
-O modo financeiro retorna subtotal ME zero com classificacao pendente, pois nao executa consultas de porte; esse zero nao comprova ausencia de ME. Sem `--somente-financeiro`, uma entrada local evita consultas ao TCE, mas os portes sao consultados novamente.
+O modo financeiro retorna subtotal ME zero com classificacao pendente, pois nao
+usa classificações de porte; esse zero nao comprova ausencia de ME. Sem
+`--somente-financeiro`, uma entrada local evita consultas ao TCE e ao OpenCNPJ,
+mas usa os snapshots cadastrais já existentes no banco. CNPJs ausentes no cache
+permanecem pendentes até uma sincronização explícita.
 
 O JSON de saida guarda os portes efetivamente consultados. A funcao pura `resumir_pagamentos` permite reconciliar uma lista de pagamentos ja normalizados com uma classificacao por CNPJ, sem consultar fontes externas. Nao se exige que o porte atual produza o subtotal ME historico de Consultoria de R$ 881.880,06.
 
@@ -120,11 +131,13 @@ A rota `GET /pipeline/tce/overview` (estadual ou municipal por `codigo_municipio
 
 Para cada exercício orçamentário com snapshots publicados, a rota mantém a competência inicial solicitada e estende automaticamente a competência final até o último snapshot publicado daquele exercício. Portanto, uma chamada com datas de 2025 inclui pagamentos documentados em 2026 que pertençam ao orçamento de 2025, sem mudar os parâmetros usados pelo backend ou frontend. A cobertura precisa ser contínua da competência inicial até a última publicada; lacunas intermediárias continuam causando erro. `competencias_solicitadas` preserva o período da chamada; `competencias_pagamentos_incluidas` e `pagamentos_estendidos_automaticamente` mostram a janela efetivamente usada.
 
-Empenhos publicados servem somente para ligar cada pagamento a natureza e fornecedor. Anulações não são somadas nem subtraídas do valor pago. Só entram notas com `estado_de_estornado=0` e órgão classificado com confiança alta como `EXECUTIVO_MUNICIPAL`; órgãos classificados como Câmara e órgãos incertos ficam fora. Nota sem empenho publicado correspondente interrompe o cálculo, em vez de publicar um total parcial.
+Cada nota de pagamento é ligada ao empenho publicado pela chave natural, que inclui `numero_empenho`, município, exercício, órgão, unidade orçamentária e data do empenho. Quando o mesmo empenho reaparece em snapshots mensais, ele é atribuído à primeira competência documental publicada, que representa sua referência de origem; o pagamento integral fica nessa competência, sem rateio entre snapshots. `data_referencia_doc_pagamento` preserva a referência original da nota para auditoria. Notas sem empenho publicado correspondente permanecem persistidas, mas são ignoradas no cálculo; as notas com empenho publicado continuam sendo consideradas. Só entram notas com `estado_de_estornado=0` e órgão classificado com confiança alta como `EXECUTIVO_MUNICIPAL`; órgãos classificados como Câmara e órgãos incertos ficam fora.
 
-A leitura exige snapshots publicados em todos os meses do intervalo para cada exercício orçamentário que tenha pagamentos publicados. Se faltar competência, a rota retorna erro de dados indisponíveis, nunca trata ausência de lote como mês vazio. Para o overview estadual, essa cobertura é exigida em todos os municípios do Ceará cadastrados. Isso preserva o comportamento somente leitura: a rota não inicia ingestão nem consulta TCE ou cadastro externo.
+A leitura exige snapshots publicados em todos os meses do intervalo para cada exercício orçamentário que tenha pagamentos publicados, começando no mês mais recente entre o início solicitado e janeiro do próprio exercício. Assim, uma consulta iniciada em 2025 não exige lotes de 2025 para o orçamento de 2026. Se faltar competência dentro da janela aplicável, a rota retorna erro de dados indisponíveis, nunca trata ausência de lote como mês vazio. Para o overview estadual, essa cobertura é exigida em todos os municípios do Ceará cadastrados. Isso preserva o comportamento somente leitura: a rota não inicia ingestão nem consulta TCE ou cadastro externo.
 
 O overview simples considera ME no numerador e agrupa MEI, EPP e DEMAIS em `OUTROS_PORTES`; não identificados permanecem em categoria própria. O overview municipal mostra a distribuição de todos os portes e aceita `company_sizes`. A classificação usa o cache cadastral disponível (retrato atual, não comprovação histórica). Pagamento não classificado continua no total financeiro, mas não entra em ME; portanto, os indicadores de porte dependem da cobertura cadastral.
+
+Nos overviews municipal e estadual, as evoluções contêm 12 pontos para o exercício orçamentário selecionado pelo ano de `data_inicial`. A análise preserva e filtra explicitamente `exercicio_orcamento` em cada pagamento; pagamentos desse orçamento documentados em outros anos continuam no mesmo exercício e são agregados pelo mês documental (`01` a `12`), sem usar o ano documental no eixo. `evolucao_compras_consideradas` soma compras identificadas e ME em cada mês. No overview municipal, `evolucao_compras_por_portes` mostra o percentual ME acumulado sobre o total identificado do exercício, e dezembro coincide com `kpis.percentual_participacao_me`.
 
 O histórico de despesas líquidas permanece disponível nas rotas de despesas que não foram migradas. Overview simples (estadual e municipal), overview municipal por portes, indicadores analíticos principais e KPI mensal de portes já usam pagamentos publicados. Rotas de listagem de empenhos e indicadores explicitamente de empenhado/anulado continuam com suas medidas originais. A validação do Postgres local abaixo é evidência de execução anterior; nesta revisão o Docker não estava acessível para repetir a chamada HTTP.
 
@@ -136,4 +149,4 @@ A regra nominal inicial deixava os orgaos 03 (Controladoria/Ouvidoria, grafado `
 
 Na mesma execucao, os totais por elemento de todos os portes foram: 30 R$ 29.863.810,49; 32 R$ 1.937.198,26; 35 R$ 1.083.280,71; 39 R$ 65.481.674,75; 40 R$ 10.483,64; 51 R$ 31.285.160,58; 52 R$ 5.329.448,50. Contra a referencia do portal, a divergencia total permaneceu em -R$ 320.472,51 (30 +R$ 332.516,84; 32 +R$ 60.186,26; 35 R$ 0,00; 39 -R$ 836.766,44; 40 R$ 0,00; 51 +R$ 38.932,37; 52 -R$ 162.523,20). Portanto, a classificacao dos dois orgaos explicou parte da diferenca, mas a conciliacao financeira ainda falha.
 
-O subtotal ME corrente apos a reclassificacao foi: 30 R$ 2.650.825,02; 32 R$ 284.931,90; 35 R$ 881.880,06; 40 R$ 0,00; 51 R$ 6.881.189,50; 52 R$ 425.012,45. O cadastro historico continua nao comprovado, e as diferencas de Material de Consumo, Obras e Instalacoes e Material Permanente impedem validar todos os seis alvos. A rota retorna `indicador_me_validado=false` quando comparada com a referencia conhecida.
+O subtotal ME corrente apos a reclassificacao foi: 30 R$ 2.650.825,02; 32 R$ 284.931,90; 35 R$ 881.880,06; 40 R$ 0,00; 51 R$ 6.881.189,50; 52 R$ 425.012,45. O cadastro historico continua nao comprovado, e as diferencas de Material de Consumo, Obras e Instalacoes e Material Permanente impedem validar todos os seis alvos. O resultado retorna `indicador_me_validado=false` quando comparado com a referencia conhecida.

@@ -4,9 +4,6 @@ import calendar
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from app.pipeline import portes_historicos
-
-
 ORIGENS_CONHECIDAS = {
     "NO_MUNICIPIO_COMPRADOR",
     "EM_OUTRO_MUNICIPIO",
@@ -89,9 +86,10 @@ def construir_metadados_carga(
     falhas: list[dict[str, Any]],
     registros: list[dict[str, Any]],
     municipios_no_escopo: int,
+    raizes_com_porte_historico: dict[str, set[str]] | None = None,
     agora: datetime | None = None,
 ) -> dict[str, Any]:
-    """Cria o contrato comum de disponibilidade, defasagem e qualidade do TCE."""
+    """Transforma snapshots recebidos no contrato de qualidade do TCE."""
     instante = agora or datetime.now(timezone.utc)
     if instante.tzinfo is None:
         instante = instante.replace(tzinfo=timezone.utc)
@@ -171,20 +169,7 @@ def construir_metadados_carga(
     ]
     total_despesas = len(registros)
     total_origem_desconhecida = len(despesas_origem_desconhecida)
-    despesas_com_cnpj_por_competencia: dict[str, set[str]] = {}
-    for registro in registros:
-        cnpj = str(registro.get("cnpj_fornecedor") or "").strip()
-        competencia = str(registro.get("data_empenho") or "")[:7]
-        if len(cnpj) >= 8 and competencia:
-            despesas_com_cnpj_por_competencia.setdefault(competencia, set()).add(cnpj[:8])
-
-    raizes_com_porte_historico = (
-        portes_historicos.raizes_classificadas_por_competencia(
-            despesas_com_cnpj_por_competencia
-        )
-        if despesas_com_cnpj_por_competencia
-        else {}
-    )
+    raizes_com_porte_historico = raizes_com_porte_historico or {}
     despesas_classificadas_historicamente = sum(
         1
         for registro in registros

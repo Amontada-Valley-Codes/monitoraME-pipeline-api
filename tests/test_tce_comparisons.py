@@ -131,13 +131,11 @@ class ComparacaoTceTest(unittest.TestCase):
         self.assertEqual(len(resultado), 1)
         self.assertEqual(resultado.iloc[0]["porte_fornecedor"], "DEMAIS")
 
-    @patch("app.pipeline.analisys._atualizar_competencias_tce")
-    @patch("app.pipeline.ingestion.fornecedores.obter_fornecedores_com_cache")
     @patch("app.pipeline.comparisons.database.listar_fornecedores_cache")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_publicacoes_competencias")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_falhas_competencias", return_value=[])
-    @patch("app.pipeline.comparisons.tce_observability.portes_historicos.raizes_classificadas_por_competencia", return_value={})
+    @patch("app.pipeline.comparisons.tce_analytics.carregar_raizes_historicas", return_value={})
     @patch("app.pipeline.comparisons.database.localizar_municipio_tce_por_ibge")
     def test_compara_overviews_usando_somente_o_banco(
         self,
@@ -147,8 +145,6 @@ class ComparacaoTceTest(unittest.TestCase):
         listar_publicacoes,
         listar_empenhos,
         listar_cache,
-        obter_fornecedores,
-        atualizar_competencias,
     ) -> None:
         municipios = {
             "2300200": {
@@ -201,8 +197,6 @@ class ComparacaoTceTest(unittest.TestCase):
         )
         self.assertEqual(total_me["ordering"], "LEFT_HIGHER")
         self.assertEqual(total_me["absolute_difference"], 5_000)
-        obter_fornecedores.assert_not_called()
-        atualizar_competencias.assert_not_called()
 
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_empenhos_liquidos_publicados")
     @patch("app.pipeline.comparisons.tce_despesas_persistence.listar_publicacoes_competencias")
