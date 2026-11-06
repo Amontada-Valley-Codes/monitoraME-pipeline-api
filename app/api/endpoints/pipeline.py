@@ -208,6 +208,64 @@ def tce_overview_municipal(
         raise _erro_pipeline(error) from error
 
 
+@router.get(
+    "/tce/overview/subscriber",
+    tags=["Indicadores TCE-CE"],
+    summary="Consulta participação de ME por natureza da despesa (assinante)",
+    description=(
+        "Visão estadual para assinantes. Calcula ME / (ME + MEI + EPP + DEMAIS) "
+        "por natureza padronizada, em centavos. Naturezas não classificáveis são "
+        "retornadas em grupo próprio e denominadores zero têm percentual nulo."
+    ),
+)
+def tce_overview_subscriber(
+    data_inicial: Annotated[str, _data_inicial_query()],
+    data_final: Annotated[str, _data_final_query()],
+) -> dict[str, object]:
+    try:
+        _validar_periodo_api(data_inicial, data_final)
+        return analisys.consultar_participacao_me_por_natureza_tce(
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
+    except Exception as error:
+        raise _erro_pipeline(error) from error
+
+
+@router.get(
+    "/tce/overview/municipal/subscriber",
+    tags=["Indicadores TCE-CE"],
+    summary="Consulta participação municipal de ME por natureza (assinante)",
+    description=(
+        "Visão municipal para assinantes, com período e filtro opcional de portes. "
+        "Percentuais usam ME como numerador e a soma dos portes selecionados como denominador."
+    ),
+)
+def tce_overview_municipal_subscriber(
+    data_inicial: Annotated[str, _data_inicial_query()],
+    data_final: Annotated[str, _data_final_query()],
+    codigo_municipio_tce: Annotated[
+        str,
+        Query(description="Codigo do municipio no TCE-CE.", pattern=r"^\d{3}$"),
+    ],
+    company_sizes: Annotated[
+        list[CompanySize] | None,
+        Query(description="Portes considerados no denominador; repetivel."),
+    ] = None,
+) -> dict[str, object]:
+    try:
+        _validar_periodo_api(data_inicial, data_final)
+        filtros_portes = [item.value for item in company_sizes or []]
+        return analisys.consultar_participacao_me_por_natureza_tce(
+            data_inicial=data_inicial,
+            data_final=data_final,
+            codigo_municipio=codigo_municipio_tce,
+            company_sizes=filtros_portes,
+        )
+    except Exception as error:
+        raise _erro_pipeline(error) from error
+
+
 @router.post(
     "/tce/comparisons",
     tags=["Comparações TCE-CE"],
