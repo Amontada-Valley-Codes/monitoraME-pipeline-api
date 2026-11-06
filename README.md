@@ -16,6 +16,8 @@ serão entregues em etapas próprias.
 - Classificação pelas sete naturezas de despesa monitoradas.
 - Indicadores por porte, natureza, origem geográfica e fornecedor.
 - Registro separado das execuções de ingestão.
+- Agendamento persistente do TCE-CE aos domingos às 02:00 para os 184 municípios
+  e exercícios 2024–2026, com retry, lease, heartbeat e replay explícito.
 
 ## Fontes de dados
 
@@ -38,7 +40,9 @@ app/
     ├── analitico.py     # base canônica de análise
     ├── analisys.py      # orquestração dos fluxos da API
     ├── kpis.py          # agregações e indicadores
-    └── tce_despesas.py  # ingestão mensal do TCE-CE
+    ├── tce_despesas.py  # ingestão mensal do TCE-CE
+    ├── tce_job_queue.py # fila persistente, lease, retry e replay
+    └── tce_schedule.py  # política semanal e handlers dos jobs
 ```
 
 ## Requisitos
@@ -66,6 +70,12 @@ Variáveis usadas pela aplicação:
 | `DATABASE_SSLMODE` | Não | Modo SSL do banco principal; use `disable` no PostgreSQL local. |
 | `LOG_DATABASE_SSLMODE` | Não | Modo SSL do banco de logs; use `disable` localmente. |
 | `TCE_CE_BASE_URL` | Sim | API de dados abertos do TCE-CE. |
+| `TCE_SCHEDULE_YEARS` | Não | Exercícios cobertos pelo scheduler; padrão `2024,2025,2026`. |
+| `TCE_SCHEDULE_WEEKDAY` / `TCE_SCHEDULE_HOUR` | Não | Dia (`6` = domingo) e hora local; padrões `6` e `2`. |
+| `TCE_SCHEDULE_TIMEZONE` | Não | Fuso da agenda semanal; padrão `America/Fortaleza`. |
+| `TCE_WORKER_CONCURRENCY` | Não | Jobs TCE executados em paralelo; padrão `2`. |
+| `TCE_JOB_MAX_ATTEMPTS` / `TCE_JOB_LEASE_SECONDS` | Não | Tentativas e duração renovável do lease; padrões `5` e `1800`. |
+| `TCE_INCREMENTAL_OVERLAP_MONTHS` | Não | Competências recentes reprocessadas semanalmente; padrão `2`. |
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
 | `PNCP_BASE_URL` | Não | Base pública de consultas do PNCP; padrão oficial. |
@@ -261,6 +271,24 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
 
+### Ingestão semanal do TCE-CE
+
+Os serviços `tce-scheduler` e `tce-worker` mantêm a ingestão fora das rotas HTTP.
+Às 02:00 de cada domingo em `America/Fortaleza`, o scheduler cria um lote
+idempotente para os 184 municípios e os exercícios 2024–2026. O primeiro job
+valida o catálogo municipal; depois, a fila cria as competências ausentes e
+reprocessa o overlap recente. Reservas concorrentes usam PostgreSQL,
+`SKIP LOCKED`, lease renovável e token de posse.
+
+```bash
+docker compose up -d tce-scheduler tce-worker
+docker compose run --rm api python scripts/tce_jobs.py status
+```
+
+Falhas esgotadas permanecem em `FAILED`. O replay é uma decisão operacional
+explícita: `python scripts/tce_jobs.py replay --job-id ID`. Consulte o
+[procedimento completo](docs/ingestao-tce-ce.md).
+
 ### Ingestão manual de empenhos e anulações
 
 O comando `tce-ingestir` coleta as notas de empenho e suas anulações para uma
@@ -309,11 +337,13 @@ docker compose run --rm api tce-enriquecer --ano 2025
 
 Por padrão, percorre todos os municípios da UF configurada em `UF_PADRAO`; use
 `--codigo-municipio 010` para limitar a um município. O comando busca CNPJs
-distintos dos lotes publicados, usa o cache cadastral existente e consulta o
-OpenCNPJ somente em cache miss ou expiração. O intervalo padrão entre consultas
-é 0,3 segundo e pode ser alterado com `--intervalo-segundos`. O resumo informa
-quantos fornecedores tiveram porte identificado. `2` indica CNPJs sem porte
-cadastral disponível; `1` indica falha operacional.
+distintos dos lotes publicados e executa explicitamente a sincronização
+cadastral: reaproveita entradas válidas e consulta o OpenCNPJ somente para
+entradas ausentes ou expiradas. O intervalo padrão entre consultas é 0,3
+segundo e pode ser alterado com `--intervalo-segundos`. As consultas analíticas
+e rotas HTTP nunca acionam essa sincronização. O resumo informa quantos
+fornecedores tiveram porte identificado. `2` indica CNPJs sem porte cadastral
+disponível; `1` indica falha operacional.
 
 Para enriquecer os fornecedores de todos os empenhos publicados, sem limitar
 por ano, use:
@@ -540,17 +570,18 @@ O banco principal mantém:
 - `raw_pncp_records`, com versões originais JSONB do PNCP, e `ingestion_jobs`,
   cuja criação do job `normalize` é atômica com a gravação RAW.
 
-A resolução do código interno de município do TCE consulta primeiro
-`tce_municipios`, associada a `ibge_municipios`. Quando o código ainda não
-existe no cache, a aplicação consulta a lista do TCE uma vez e persiste os
-mapeamentos em lote para as consultas seguintes.
+A resolução do código interno de município do TCE consulta somente
+`tce_municipios`, associada a `ibge_municipios`. Catálogos ausentes são
+sincronizados pelos comandos de ingestão; uma leitura ou montagem analítica não
+consulta TCE ou IBGE como fallback.
 
 O cache cadastral completo de fornecedores mantém os dados normalizados e o
 payload bruto do OpenCNPJ. Registros encontrados valem por 30 dias, respostas
-`nao_encontrado` por sete dias e indisponibilidades por uma hora. A consulta ao
-OpenCNPJ ocorre apenas para CNPJs ausentes ou vencidos. Se a renovação falhar,
-o último dado conhecido é preservado e devolvido com
-`cache_desatualizado=true` até uma nova tentativa.
+`nao_encontrado` por sete dias e indisponibilidades por uma hora. Somente os
+comandos explícitos de sincronização consultam o OpenCNPJ para CNPJs ausentes
+ou vencidos. Leituras retornam apenas snapshots locais e sinalizam entradas
+expiradas com `cache_desatualizado=true`. Se uma renovação explícita falhar, o
+último dado conhecido é preservado até uma nova tentativa.
 
 O banco de logs mantém `logs_ingestao`, para auditoria das coletas, e
 `logs_aplicacao`, para alertas operacionais. Os dois bancos usam ambientes

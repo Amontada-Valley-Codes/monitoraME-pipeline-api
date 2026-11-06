@@ -29,7 +29,7 @@ def fake_main_session(session: MagicMock):
 class IbgeIngestionTest(unittest.TestCase):
     @patch("app.pipeline.ingestion.ibge.database.salvar_municipios_ibge")
     @patch("app.pipeline.ingestion.ibge.buscar_dados_ibge")
-    def test_listar_municipios_persiste_dados_do_ibge(
+    def test_sincronizar_municipios_persiste_dados_do_ibge(
         self,
         buscar_dados_ibge,
         salvar_municipios_ibge,
@@ -37,25 +37,40 @@ class IbgeIngestionTest(unittest.TestCase):
         municipios = [{"id": 2300101, "nome": "Abaiara"}]
         buscar_dados_ibge.return_value = municipios
 
-        dados = ibge.listar_municipios("CE")
+        dados = ibge.sincronizar_municipios("CE")
 
         self.assertEqual(dados, municipios)
         salvar_municipios_ibge.assert_called_once_with(municipios, "CE")
 
-    @patch("app.pipeline.ingestion.ibge.listar_municipios")
+    @patch("app.pipeline.ingestion.ibge.coletar_municipios")
     @patch("app.pipeline.ingestion.ibge.database.localizar_municipio_ibge")
-    def test_localizar_municipio_consulta_banco_antes_da_api(
+    def test_localizar_municipio_consulta_somente_o_banco(
         self,
         localizar_municipio_ibge,
-        listar_municipios,
+        coletar_municipios,
     ) -> None:
-        municipio = {"id": 2304400, "nome": "Fortaleza"}
+        municipio = {"id": 2304400, "nome": "Fortaleza", "uf": "CE"}
         localizar_municipio_ibge.return_value = municipio
 
         dados = ibge.localizar_municipio(2304400, "CE")
 
         self.assertEqual(dados, municipio)
-        listar_municipios.assert_not_called()
+        coletar_municipios.assert_not_called()
+
+    @patch("app.pipeline.ingestion.ibge.buscar_dados_ibge")
+    @patch("app.pipeline.ingestion.ibge.database.listar_municipios_ibge")
+    def test_listar_municipios_nao_dispara_coleta(
+        self,
+        listar_municipios_ibge,
+        buscar_dados_ibge,
+    ) -> None:
+        municipios = [{"id": 2300101, "nome": "Abaiara", "uf": "CE"}]
+        listar_municipios_ibge.return_value = municipios
+
+        dados = ibge.listar_municipios("CE")
+
+        self.assertEqual(dados, municipios)
+        buscar_dados_ibge.assert_not_called()
 
     def test_montar_registro_municipio_ibge_armazena_apenas_campos_basicos(self) -> None:
         registro = database._montar_registro_municipio_ibge(

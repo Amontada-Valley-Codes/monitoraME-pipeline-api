@@ -21,13 +21,14 @@ import pandas as pd
 from app.pipeline.cleaners import ibge as ibge_cleaning
 from app.pipeline.cleaners import opencnpj as opencnpj_cleaning
 from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor, extrair_cnpjs_distintos
-from app.pipeline.enrichment.municipios import buscar_municipios_uf, validar_e_enriquecer_municipio
+from app.pipeline.enrichment.municipios import validar_e_enriquecer_municipio
 from app.pipeline.enrichment.origem_geografica import (
     NIVEL_FORA_DO_ESTADO,
     NIVEL_MESMO_MUNICIPIO,
     NIVEL_OUTRO_MUNICIPIO_CE,
     classificar_origem_geografica,
 )
+from app.pipeline.ingestion.ibge import buscar_municipios_uf
 from app.pipeline.ingestion import fornecedores, ibge
 
 
@@ -81,7 +82,7 @@ def _municipios_ibge_df() -> pd.DataFrame:
     }
     with patch("app.pipeline.ingestion.ibge.requests.get") as mock_get:
         mock_get.return_value = _fake_response([abaiara])
-        registros = ibge.listar_municipios("CE")
+        registros = ibge.coletar_municipios("CE")
     return ibge_cleaning.limpar_municipios(registros)
 
 
@@ -227,25 +228,19 @@ class BuscarMunicipiosUfTest(unittest.TestCase):
             {"nome": "Juazeiro do Norte"},
             {"nome": "Sobral"},  # duplicata proposital
         ]
-        with patch("app.pipeline.enrichment.municipios.requests.get") as mock_get:
-            mock_get.return_value = _fake_response(payload)
+        with patch("app.pipeline.ingestion.ibge.coletar_municipios") as coletar:
+            coletar.return_value = payload
             resultado = buscar_municipios_uf("CE")
 
         self.assertEqual(resultado, ["Fortaleza", "Juazeiro do Norte", "Sobral"])
-        mock_get.assert_called_once_with(
-            "https://servicodados.ibge.gov.br/api/v1/localidades/estados/CE/municipios",
-            timeout=10,
-        )
+        coletar.assert_called_once_with("CE")
 
     def test_uf_minuscula_e_normalizada_na_url(self) -> None:
-        with patch("app.pipeline.enrichment.municipios.requests.get") as mock_get:
-            mock_get.return_value = _fake_response([{"nome": "São Paulo"}])
+        with patch("app.pipeline.ingestion.ibge.coletar_municipios") as coletar:
+            coletar.return_value = [{"nome": "São Paulo"}]
             buscar_municipios_uf("sp")
 
-        mock_get.assert_called_once_with(
-            "https://servicodados.ibge.gov.br/api/v1/localidades/estados/SP/municipios",
-            timeout=10,
-        )
+        coletar.assert_called_once_with("SP")
 
 if __name__ == "__main__":
     unittest.main()

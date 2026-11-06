@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import requests
 
 from app.pipeline.cleaners.ibge import validar_municipio_uf
 
@@ -54,19 +53,7 @@ def validar_e_enriquecer_municipio(
     return df
 
 
-def buscar_municipios_uf(uf: str = "CE") -> list[str]:
-    """
-    Busca na API de Localidades do IBGE os nomes dos municipios de uma UF.
-    """
-    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/estados/{uf.upper()}/municipios"
-    resposta = requests.get(url, timeout=10)
-    resposta.raise_for_status()
-    dados = resposta.json()
-    return sorted({item["nome"] for item in dados if "nome" in item})
-
-
 __all__ = [
-    "buscar_municipios_uf",
     "enriquecer_com_municipio",
     "validar_e_enriquecer_municipio",
 ]

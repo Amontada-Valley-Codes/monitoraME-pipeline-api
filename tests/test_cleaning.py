@@ -116,7 +116,7 @@ class LimparIbgeMunicipiosTest(unittest.TestCase):
 
         mock_get.return_value = _fake_response([abaiara, acarape, sem_id, dict(abaiara)])
 
-        registros = ibge.listar_municipios("CE")
+        registros = ibge.coletar_municipios("CE")
         self.assertEqual(len(registros), 4)  # ingestao real trouxe os 4 registros brutos
 
         df = ibge_cleaning.limpar_municipios(registros)
@@ -456,7 +456,7 @@ class ValidarMunicipioUfTest(unittest.TestCase):
         }
         mock_get.return_value = _fake_response([abaiara])
 
-        municipios = ibge_cleaning.limpar_municipios(ibge.listar_municipios("CE"))
+        municipios = ibge_cleaning.limpar_municipios(ibge.coletar_municipios("CE"))
 
         # Simula registros de outra fonte com codigo IBGE e UF informada.
         contratacoes = pd.DataFrame(

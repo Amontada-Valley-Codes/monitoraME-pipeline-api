@@ -239,18 +239,21 @@ def extrair_fornecedor_me(dados: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def validar_fornecedor_me(cnpj: str) -> dict[str, Any] | None:
+    """Consulta somente o cadastro local de fornecedores classificados como ME."""
     cnpj_limpo = normalizar_cnpj(cnpj)
     if not cnpj_limpo:
         return None
+    return _buscar_fornecedor_me_no_banco(cnpj_limpo)
 
-    fornecedor_salvo = _buscar_fornecedor_me_no_banco(cnpj_limpo)
-    if fornecedor_salvo is not None:
-        return fornecedor_salvo
 
+def sincronizar_fornecedor_me(cnpj: str) -> dict[str, Any] | None:
+    """Coleta e persiste explicitamente um fornecedor ME na fonte cadastral."""
+    cnpj_limpo = normalizar_cnpj(cnpj)
+    if not cnpj_limpo:
+        return None
     fornecedor_me = extrair_fornecedor_me(coletar_fornecedor(cnpj_limpo))
     if fornecedor_me is not None:
         _salvar_fornecedor_me_no_banco(fornecedor_me)
-
     return fornecedor_me
 
 
@@ -369,19 +372,48 @@ def _dados_cache_para_resultado(cache: dict[str, Any]) -> dict[str, Any]:
     return dados
 
 
-def obter_fornecedores_com_cache(
-    cnpjs: Iterable[str],
-    *,
-    throttle_segundos: float = 0.3,
-) -> pd.DataFrame:
-    """Obtém dados normalizados, consultando o OpenCNPJ apenas em cache miss/expiração."""
-    cnpjs_normalizados: list[str] = []
+def _normalizar_cnpjs(cnpjs: Iterable[str]) -> list[str]:
+    normalizados: list[str] = []
     vistos: set[str] = set()
     for cnpj in cnpjs:
         cnpj_limpo = normalizar_cnpj(cnpj)
         if cnpj_limpo and cnpj_limpo not in vistos:
             vistos.add(cnpj_limpo)
-            cnpjs_normalizados.append(cnpj_limpo)
+            normalizados.append(cnpj_limpo)
+    return normalizados
+
+
+def obter_fornecedores_com_cache(
+    cnpjs: Iterable[str],
+    *,
+    throttle_segundos: float = 0.3,
+) -> pd.DataFrame:
+    """Consulta exclusivamente cadastros persistidos; nunca acessa o OpenCNPJ."""
+    del throttle_segundos  # Compatibilidade temporaria com o contrato anterior.
+    cnpjs_normalizados = _normalizar_cnpjs(cnpjs)
+    if not cnpjs_normalizados:
+        return pd.DataFrame()
+    agora = _agora_utc()
+    cache_por_cnpj = database.listar_fornecedores_cache(cnpjs_normalizados)
+    registros: list[dict[str, Any]] = []
+    for cnpj in cnpjs_normalizados:
+        cache = cache_por_cnpj.get(cnpj)
+        if cache is None:
+            continue
+        dados = _dados_cache_para_resultado(cache)
+        if _instante_utc(cache["expira_em"]) <= agora:
+            dados["cache_desatualizado"] = True
+        registros.append(dados)
+    return pd.DataFrame(registros)
+
+
+def sincronizar_fornecedores(
+    cnpjs: Iterable[str],
+    *,
+    throttle_segundos: float = 0.3,
+) -> pd.DataFrame:
+    """Atualiza explicitamente cache miss/expirado usando o OpenCNPJ."""
+    cnpjs_normalizados = _normalizar_cnpjs(cnpjs)
 
     if not cnpjs_normalizados:
         return pd.DataFrame()

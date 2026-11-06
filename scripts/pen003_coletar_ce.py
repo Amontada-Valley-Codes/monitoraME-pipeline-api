@@ -30,7 +30,7 @@ def main():
         tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
         tmp.replace(pasta / 'coleta.json')
     try:
-        oficiais = ibge.listar_municipios('CE')
+        oficiais = ibge.sincronizar_municipios('CE')
         ids = {str(m['id']) for m in oficiais}
         municipios_tce = tce.buscar_municipios()
         municipios = [m for m in municipios_tce if str(m.get('codigo_municipio_ibge')) in ids]
