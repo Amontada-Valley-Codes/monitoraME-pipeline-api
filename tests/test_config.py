@@ -72,6 +72,10 @@ class ConfigTest(unittest.TestCase):
             config.CODIGOS_NATUREZAS_DESPESA_CONSIDERADAS,
             ("39", "51", "30", "52", "32", "35", "40"),
         )
+        self.assertEqual(config.TCE_SCHEDULE_YEARS, (2024, 2025, 2026))
+        self.assertEqual(config.TCE_SCHEDULE_WEEKDAY, 6)
+        self.assertEqual(config.TCE_SCHEDULE_HOUR, 2)
+        self.assertEqual(config.TCE_SCHEDULE_TIMEZONE, "America/Fortaleza")
 
 
 

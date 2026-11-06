@@ -8,8 +8,6 @@ from app.api.schemas.empenhos import EmpenhoSortField, SortOrder
 from app.api.schemas.fornecedores import SupplierDocumentType, SupplierSortField
 from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
 from app.pipeline import analisys, comparisons, empenhos, fornecedores
-from app.pipeline.ingestion.fornecedores import FonteCadastralIndisponivelError
-from app.pipeline.ingestion import tce
 from app.pipeline.kpis import DadosInsuficientesKPI
 from app.utils import DATA_ISO_FORMATO, normalizar_data_iso
 
@@ -23,7 +21,7 @@ router = APIRouter(
         422: {
             "description": "Parametros invalidos ou dados insuficientes para o processamento.",
         },
-        503: {"description": "Fonte externa indisponivel no momento da consulta."},
+        503: {"description": "Snapshot local indisponivel para o recorte solicitado."},
     },
 )
 
@@ -53,16 +51,9 @@ def _erro_pipeline(error: Exception) -> HTTPException:
             },
         )
         return HTTPException(status_code=422, detail=str(error))
-    if isinstance(
-        error,
-        (
-            FonteCadastralIndisponivelError,
-            analisys.CompetenciasTceIndisponiveisError,
-            tce.TceIndisponivelError,
-        ),
-    ):
+    if isinstance(error, analisys.CompetenciasTceIndisponiveisError):
         logger.warning(
-            "Pipeline indisponível por falha em dependência",
+            "Pipeline indisponível por ausência de snapshot local",
             extra={
                 "error_type": type(error).__name__,
                 "error": str(error),

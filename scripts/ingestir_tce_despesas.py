@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _listar_todos_municipios() -> list[dict[str, object]]:
-    municipios_ibge = ibge.listar_municipios(UF_PADRAO)
+    municipios_ibge = ibge.sincronizar_municipios(UF_PADRAO)
     codigos_ibge = {str(municipio["id"]) for municipio in municipios_ibge}
     municipios_tce = tce.buscar_municipios()
     municipios = [

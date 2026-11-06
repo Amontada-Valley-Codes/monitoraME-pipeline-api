@@ -19,6 +19,7 @@ for key, value in {
 
 from app.pipeline import pagamentos as p
 from app.pipeline.ingestion import tce
+from app.pipeline.ingestion import pagamentos_prefeitura as coleta_pagamentos
 from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
 
 ORGAOS = [
@@ -139,16 +140,20 @@ class PagamentosTest(unittest.TestCase):
                 self.assertEqual(result["controle_financeiro"]["por_categoria_centavos"]["NAO_CNPJ"], 1000000)
                 self.assertEqual(result["pendencias"][0]["documento_original"], doc)
 
-    @patch.object(p.fornecedores, "coletar_fornecedor")
-    def test_consulta_unica_porte_me_inclui_mei_sem_inferencia(self, coletar):
-        coletar.return_value = {
-            "porte": "01", "opencnpj_status": "ok",
-            "opencnpj": {"cnpj": "02530104000133", "opcao_mei": "S"},
+    def test_classificacao_local_porte_me_inclui_mei_sem_inferencia(self):
+        cache = {
+            "02530104000133": {
+                "opencnpj_status": "ok",
+                "dados_normalizados": {
+                    "cnpj": "02530104000133",
+                    "porte_padronizado": "ME",
+                    "optante_mei": True,
+                },
+            },
         }
         rows, _ = conciliar([empenho()], [pagamento(), pagamento(numero_nota_pagamento="0003")])
-        cadastros = p.classificar_fornecedores(rows)
+        cadastros = p.classificar_fornecedores(rows, cache)
         result = p.resumir_pagamentos(rows, cadastros)
-        coletar.assert_called_once_with("02530104000133")
         self.assertEqual(result["total_me_centavos"], 2000000)
         self.assertTrue(result["classificacao_completa"])
         self.assertIsNone(cadastros["02530104000133"]["referencia_base_cadastral"])
@@ -177,14 +182,20 @@ class PagamentosTest(unittest.TestCase):
             "Fornecedor Atualizado Ltda", "Fornecedor Original Ltda",
         ])
 
-    @patch.object(p.fornecedores, "coletar_fornecedor")
-    def test_cadastro_divergente_ou_desconhecido_nao_inventa_porte(self, coletar):
+    def test_cadastro_ausente_ou_desconhecido_nao_inventa_porte(self):
         rows, _ = conciliar([empenho()], [pagamento()])
-        for porte, doc, status in [("ME", "17016110000144", "ok"), ("00", "02530104000133", "ok"),
-                                    ("ME", "02530104000133", "indisponivel")]:
-            with self.subTest(porte=porte, doc=doc):
-                coletar.return_value = {"porte": porte, "opencnpj_status": status, "opencnpj": {"cnpj": doc}}
-                result = p.resumir_pagamentos(rows, p.classificar_fornecedores(rows))
+        for porte, status in [("00", "ok"), ("ME", "indisponivel"), (None, None)]:
+            with self.subTest(porte=porte, status=status):
+                cache = {} if status is None else {
+                    "02530104000133": {
+                        "opencnpj_status": status,
+                        "dados_normalizados": {"porte_padronizado": porte},
+                    }
+                }
+                result = p.resumir_pagamentos(
+                    rows,
+                    p.classificar_fornecedores(rows, cache),
+                )
                 self.assertEqual(result["total_me_centavos"], 0)
                 self.assertEqual(result["controle_financeiro"]["total_centavos"], 1000000)
                 self.assertFalse(result["classificacao_completa"])
@@ -229,7 +240,7 @@ class PagamentosTest(unittest.TestCase):
         self.assertFalse(divergente["conferencia_portal"]["bate"])
         self.assertFalse(divergente["indicador_me_validado"])
 
-    @patch.object(p.tce, "buscar_documentos_exercicio")
+    @patch.object(coleta_pagamentos.tce, "buscar_documentos_exercicio")
     def test_coleta_ano_seguinte_exercicio_fixo_e_mes_vazio_nao_interrompe(self, buscar):
         def responder(endpoint, **kwargs):
             if endpoint == "orgaos":
@@ -241,7 +252,13 @@ class PagamentosTest(unittest.TestCase):
                 ]
             return []
         buscar.side_effect = responder
-        result = p.consultar_pagamentos_prefeitura(codigo_municipio="004", exercicio=2025, referencia_final="2026-09", consultar_porte=False)
+        coleta = coleta_pagamentos.coletar_documentos_prefeitura(
+            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
+        )
+        result = p.consultar_pagamentos_prefeitura(
+            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
+            consultar_porte=False, coleta=coleta,
+        )
         calls = buscar.call_args_list
         self.assertEqual(len(calls), 56)
         self.assertTrue(all(c.kwargs["exercicio"] == 2025 for c in calls))

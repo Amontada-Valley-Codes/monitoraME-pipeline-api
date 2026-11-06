@@ -72,6 +72,26 @@ services:
       retries: 5
       start_period: 10s
 
+  tce-scheduler:
+    <<: *app-service
+    image: ${TCE_SCHEDULER_IMAGE:-tce-scheduler:production}
+    init: true
+    command: ["python", "scripts/tce_scheduler.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  tce-worker:
+    <<: *app-service
+    image: ${TCE_WORKER_IMAGE:-tce-worker:production}
+    init: true
+    command: ["python", "scripts/tce_worker.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   pncp-worker-normalizacao:
     <<: *app-service
     image: ${PNCP_NORMALIZATION_IMAGE:-pncp-worker-normalizacao:production}

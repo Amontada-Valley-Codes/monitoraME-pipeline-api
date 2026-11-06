@@ -1,40 +1,15 @@
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from decimal import Decimal
-import logging
 from typing import Any
 import pandas as pd
-from app.core import database
 from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
 from app.pipeline import analitico, kpis
 from app.pipeline import tce_observability
-from app.pipeline import tce_despesas as tce_despesas_pipeline
-from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor, extrair_cnpjs_distintos
-from app.pipeline.ingestion import fornecedores, tce
-from app.pipeline.persistence import tce_despesas as tce_despesas_persistence
-from app.pipeline.persistence import tce_pagamentos as tce_pagamentos_persistence
-
-
-logger = logging.getLogger(__name__)
-
+from app.pipeline.enrichment.fornecedores import enriquecer_com_fornecedor
+from app.pipeline.persistence import tce_analytics
 
 class CompetenciasTceIndisponiveisError(RuntimeError):
     """Nenhuma competência solicitada possui uma publicação utilizável."""
-
-
-TTL_COMPETENCIA_MES_ATUAL = timedelta(hours=1)
-TTL_COMPETENCIA_TRES_MESES_ANTERIORES = timedelta(hours=24)
-TTL_COMPETENCIA_HISTORICA = timedelta(days=7)
-
-
-@dataclass(frozen=True)
-class ResultadoAtualizacaoCompetenciasTce:
-    publicadas: list[str]
-    atualizadas: list[str]
-    reutilizadas: list[str]
-    desatualizadas: list[str]
-    ausentes: list[str]
-    falhas: list[dict[str, Any]]
 
 
 def valor_json(valor: Any) -> Any:
@@ -96,45 +71,6 @@ def _totais_tabelas(tabelas: dict[str, pd.DataFrame]) -> dict[str, int]:
     return {nome: int(len(tabela)) for nome, tabela in tabelas.items()}
 
 
-def _resolver_nome_municipio_tce(codigo_municipio: str) -> str:
-    municipio_salvo = database.localizar_municipio_tce(codigo_municipio)
-    if municipio_salvo is not None:
-        return municipio_salvo["nome"]
-
-    logger.info(
-        "Município ausente no cache; sincronização do TCE-CE será executada",
-        extra={
-            "codigo_municipio": codigo_municipio,
-        },
-    )
-    municipios = tce.buscar_municipios()
-    database.salvar_municipios_tce(municipios, UF_PADRAO)
-    codigo_procurado = str(codigo_municipio).strip()
-
-    for municipio in municipios:
-        codigo = str(municipio.get("codigo_municipio", "")).strip()
-        if codigo != codigo_procurado:
-            continue
-
-        nome = municipio.get("nome_municipio") or municipio.get("nome") or municipio.get("municipio")
-        if isinstance(nome, str) and nome.strip():
-            return nome.strip()
-
-    raise kpis.DadosInsuficientesKPI(
-        f"[INDISPONIVEL] Nao foi possivel resolver o municipio TCE pelo codigo {codigo_municipio}."
-    )
-
-
-def _coletar_fornecedores(cnpjs: list[str], throttle_segundos: float) -> pd.DataFrame | None:
-    if not cnpjs:
-        return None
-
-    return fornecedores.obter_fornecedores_com_cache(
-        cnpjs,
-        throttle_segundos=throttle_segundos,
-    )
-
-
 def _competencias_entre_datas(data_inicial: str, data_final: str) -> list[str]:
     try:
         inicio = date.fromisoformat(data_inicial)
@@ -155,145 +91,25 @@ def _competencias_entre_datas(data_inicial: str, data_final: str) -> list[str]:
     return competencias
 
 
-def _agora_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _ttl_competencia(competencia: str, agora: datetime) -> timedelta:
-    ano, mes = (int(parte) for parte in competencia.split("-", maxsplit=1))
-    distancia_meses = (agora.year - ano) * 12 + agora.month - mes
-    if distancia_meses == 0:
-        return TTL_COMPETENCIA_MES_ATUAL
-    if 1 <= distancia_meses <= 3:
-        return TTL_COMPETENCIA_TRES_MESES_ANTERIORES
-    return TTL_COMPETENCIA_HISTORICA
-
-
-def _publicacao_atualizada(
-    competencia: str,
-    publicado_em: datetime | None,
-    agora: datetime,
-) -> bool:
-    if publicado_em is None:
-        return False
-    instante_publicacao = (
-        publicado_em.replace(tzinfo=timezone.utc)
-        if publicado_em.tzinfo is None
-        else publicado_em.astimezone(timezone.utc)
-    )
-    return instante_publicacao >= agora - _ttl_competencia(competencia, agora)
-
-
-def _atualizar_competencias_tce(
-    *,
-    competencias: list[str],
-    codigo_municipio: str,
-) -> ResultadoAtualizacaoCompetenciasTce:
-    logger.info(
-        "Atualização de competências iniciada",
-        extra={
-            "codigo_municipio": codigo_municipio,
-            "competencias_count": len(competencias),
-        },
-    )
-    agora = _agora_utc()
-    publicacoes_existentes = tce_despesas_persistence.listar_publicacoes_competencias(
-        codigo_municipio_tce=codigo_municipio,
-        competencias=competencias,
-    )
-    publicadas: list[str] = []
-    atualizadas: list[str] = []
-    reutilizadas: list[str] = []
-    desatualizadas: list[str] = []
-    ausentes: list[str] = []
-    falhas: list[dict[str, Any]] = []
-    for competencia in competencias:
-        possui_publicacao = competencia in publicacoes_existentes
-        if possui_publicacao and _publicacao_atualizada(
-            competencia,
-            publicacoes_existentes[competencia],
-            agora,
-        ):
-            publicadas.append(competencia)
-            reutilizadas.append(competencia)
-            continue
-
-        erro_atualizacao: str | None = None
-        try:
-            resultado = tce_despesas_pipeline.executar_ingestao_competencia_tce(
-                competencia,
-                codigo_municipio_tce=codigo_municipio,
-            )
-        except Exception as error:
-            erro_atualizacao = str(error)
-        else:
-            if resultado.status != tce_despesas_persistence.STATUS_PUBLICADO:
-                codigos = ", ".join(
-                    str(problema.get("codigo", "ERRO_VALIDACAO"))
-                    for problema in resultado.problemas
-                )
-                erro_atualizacao = codigos or f"Lote finalizado com status {resultado.status}."
-
-        if erro_atualizacao is None:
-            publicadas.append(competencia)
-            atualizadas.append(competencia)
-            continue
-
-        usou_versao_publicada = possui_publicacao
-        falhas.append(
-            {
-                "competencia": competencia,
-                "erro": erro_atualizacao,
-                "usou_versao_publicada": usou_versao_publicada,
-            }
-        )
-        if usou_versao_publicada:
-            publicadas.append(competencia)
-            desatualizadas.append(competencia)
-        else:
-            ausentes.append(competencia)
-
-        logger.warning(
-            "Falha ao atualizar competência do TCE-CE",
-            extra={
-                "codigo_municipio": codigo_municipio,
-                "competencia": competencia,
-                "used_previous_version": usou_versao_publicada,
-                "error": erro_atualizacao,
-            },
-        )
-
-    if not publicadas:
-        meses = ", ".join(competencias)
-        logger.error(
-            "Nenhuma competência solicitada possui publicação utilizável",
-            extra={
-                "codigo_municipio": codigo_municipio,
-                "competencias_count": len(competencias),
-            },
-        )
-        raise CompetenciasTceIndisponiveisError(
-            f"Nenhuma competência do TCE-CE possui publicação utilizável: {meses}."
-        )
-    logger.info(
-        "Atualização de competências concluída",
-        extra={
-            "codigo_municipio": codigo_municipio,
-            "published_count": len(publicadas),
-            "updated_count": len(atualizadas),
-            "reused_count": len(reutilizadas),
-            "stale_count": len(desatualizadas),
-            "missing_count": len(ausentes),
-            "failed_count": len(falhas),
-        },
-    )
-    return ResultadoAtualizacaoCompetenciasTce(
-        publicadas=publicadas,
-        atualizadas=atualizadas,
-        reutilizadas=reutilizadas,
-        desatualizadas=desatualizadas,
-        ausentes=ausentes,
-        falhas=falhas,
+def _enriquecer_registros_fornecedores(
+    registros: list[dict[str, Any]],
+    caches: dict[str, dict[str, Any]],
+) -> pd.DataFrame:
+    """Transforma registros e snapshots recebidos, sem executar consultas."""
+    base = pd.DataFrame(registros)
+    if base.empty or not caches:
+        return base
+    fornecedores = []
+    for cnpj, cache in caches.items():
+        dados = dict(cache.get("dados_normalizados") or {})
+        dados.setdefault("cnpj", cnpj)
+        fornecedores.append(dados)
+    if not fornecedores:
+        return base
+    return enriquecer_com_fornecedor(
+        base,
+        pd.DataFrame(fornecedores),
+        coluna_cnpj="cnpj_fornecedor",
     )
 
 
@@ -305,81 +121,21 @@ def montar_base_analitica_tce(
     municipio_comprador: str | None = None,
     throttle_fornecedores: float = 0.3,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    competencias = _competencias_entre_datas(data_inicial, data_final)
-    atualizacao = _atualizar_competencias_tce(
-        competencias=competencias,
-        codigo_municipio=codigo_municipio,
-    )
-    municipio_comprador = municipio_comprador or _resolver_nome_municipio_tce(codigo_municipio)
-    empenhos = tce_despesas_persistence.listar_empenhos_liquidos_publicados(
-        codigo_municipio_tce=codigo_municipio,
-        data_inicial=date.fromisoformat(data_inicial),
-        data_final=date.fromisoformat(data_final),
-    )
-    competencias_validas = set(atualizacao.publicadas)
-    empenhos = [
-        empenho
-        for empenho in empenhos
-        if str(empenho.get("data_empenho", ""))[:7] in competencias_validas
-    ]
-
-    base = pd.DataFrame(empenhos)
-    fornecedores_df = None
-    if not base.empty:
-        cnpjs = extrair_cnpjs_distintos(base.get("cnpj_fornecedor"))
-        fornecedores_df = _coletar_fornecedores(cnpjs, throttle_fornecedores)
-        if fornecedores_df is not None:
-            base = enriquecer_com_fornecedor(
-                base,
-                fornecedores_df,
-                coluna_cnpj="cnpj_fornecedor",
-            )
-
-    base_analitica = analitico.montar_base_analitica_tce(
-        base,
+    """Compatibilidade: a montagem agora e invariavelmente somente banco."""
+    del throttle_fornecedores
+    base, metadados = montar_base_analitica_tce_somente_banco(
+        data_inicial,
+        data_final,
         codigo_municipio=codigo_municipio,
         municipio_comprador=municipio_comprador,
-        uf_comprador=UF_PADRAO,
     )
-    logger.info(
-        "Base analítica do TCE-CE montada",
-        extra={
-            "input_count": len(empenhos),
-            "output_count": len(base_analitica),
-            "competencias_count": len(atualizacao.publicadas),
-        },
-    )
-    metadados = {
-        "fonte": "TCE-CE",
-        "parametros": {
-            "data_inicial": data_inicial,
-            "data_final": data_final,
-            "codigo_municipio": codigo_municipio,
-        },
-        "competencias_solicitadas": competencias,
-        "competencias_publicadas": atualizacao.publicadas,
-        "competencias_atualizadas": atualizacao.atualizadas,
-        "competencias_reutilizadas": atualizacao.reutilizadas,
-        "competencias_desatualizadas": atualizacao.desatualizadas,
-        "competencias_ausentes": atualizacao.ausentes,
-        "falhas_competencias": atualizacao.falhas,
-        "politica_atualizacao": {
-            "ttl_mes_atual_segundos": int(TTL_COMPETENCIA_MES_ATUAL.total_seconds()),
-            "ttl_tres_meses_anteriores_segundos": int(
-                TTL_COMPETENCIA_TRES_MESES_ANTERIORES.total_seconds()
-            ),
-            "ttl_historico_segundos": int(TTL_COMPETENCIA_HISTORICA.total_seconds()),
-            "usar_publicacao_anterior_em_falha": True,
-        },
-        "totais": {"despesas": len(empenhos)},
-        "base_analitica": {
-            "nome": "despesas_tce",
-            "base_calculo": "DESPESA_FINAL",
-            "municipio_comprador": municipio_comprador,
-            "colunas": list(analitico.COLUNAS_BASE_ANALITICA_TCE),
-        },
-    }
-    return base_analitica, metadados
+    if not metadados["competencias_publicadas"]:
+        competencias = ", ".join(metadados["competencias_solicitadas"])
+        raise CompetenciasTceIndisponiveisError(
+            "Nenhuma competencia do TCE-CE possui publicacao utilizavel: "
+            f"{competencias}."
+        )
+    return base, metadados
 
 
 def montar_base_analitica_tce_somente_banco(
@@ -391,11 +147,11 @@ def montar_base_analitica_tce_somente_banco(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Calcula a base analítica sem atualizar lotes ou consultar fontes externas."""
     competencias = _competencias_entre_datas(data_inicial, data_final)
-    publicacoes_por_competencia = (
-        tce_despesas_persistence.listar_publicacoes_competencias(
-            codigo_municipio_tce=codigo_municipio,
-            competencias=competencias,
-        )
+    snapshot = tce_analytics.carregar_snapshot_despesas(
+        codigo_municipio_tce=codigo_municipio,
+        data_inicial=date.fromisoformat(data_inicial),
+        data_final=date.fromisoformat(data_final),
+        competencias=competencias,
     )
     publicacoes = [
         {
@@ -403,50 +159,18 @@ def montar_base_analitica_tce_somente_banco(
             "competencia": competencia,
             "publicado_em": publicado_em,
         }
-        for competencia, publicado_em in publicacoes_por_competencia.items()
+        for competencia, publicado_em in snapshot.publicacoes_por_competencia.items()
     ]
-    falhas = tce_despesas_persistence.listar_falhas_competencias(
-        codigo_municipio_tce=codigo_municipio,
-        competencias=competencias,
-    )
     competencias_publicadas = [
         competencia for competencia in competencias
-        if competencia in publicacoes_por_competencia
+        if competencia in snapshot.publicacoes_por_competencia
     ]
-
-    registros = (
-        tce_despesas_persistence.listar_empenhos_liquidos_publicados(
-            codigo_municipio_tce=codigo_municipio,
-            data_inicial=date.fromisoformat(data_inicial),
-            data_final=date.fromisoformat(data_final),
-        )
-        if competencias_publicadas
-        else []
+    registros = snapshot.registros
+    base_tce = _enriquecer_registros_fornecedores(
+        registros,
+        snapshot.fornecedores_cache,
     )
-    registros = [
-        registro
-        for registro in registros
-        if str(registro.get("data_empenho", ""))[:7] in competencias_publicadas
-    ]
-    base_tce = pd.DataFrame(registros)
-    if not base_tce.empty:
-        cnpjs = extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor"))
-        caches = database.listar_fornecedores_cache(cnpjs) if cnpjs else {}
-        if caches:
-            fornecedores_cache = []
-            for cnpj, cache in caches.items():
-                dados = dict(cache.get("dados_normalizados") or {})
-                dados.setdefault("cnpj", cnpj)
-                fornecedores_cache.append(dados)
-            base_tce = enriquecer_com_fornecedor(
-                base_tce,
-                pd.DataFrame(fornecedores_cache),
-                coluna_cnpj="cnpj_fornecedor",
-            )
-
-    if municipio_comprador is None:
-        municipio = database.localizar_municipio_tce(codigo_municipio)
-        municipio_comprador = municipio["nome"] if municipio else None
+    municipio_comprador = municipio_comprador or snapshot.municipio_comprador
     base_analitica = analitico.montar_base_analitica_tce(
         base_tce,
         codigo_municipio=codigo_municipio,
@@ -458,9 +182,10 @@ def montar_base_analitica_tce_somente_banco(
         data_final=date.fromisoformat(data_final),
         competencias_solicitadas=competencias,
         publicacoes=publicacoes,
-        falhas=falhas,
+        falhas=snapshot.falhas,
         registros=registros,
         municipios_no_escopo=1,
+        raizes_com_porte_historico=snapshot.raizes_com_porte_historico,
     )
     metadados = {
         "fonte": "TCE-CE",
@@ -480,9 +205,10 @@ def montar_base_analitica_tce_somente_banco(
         "falhas_competencias": [
             {
                 "competencia": item["competencia"],
+                "erro": item.get("erro"),
                 "usou_versao_publicada": item["competencia"] in competencias_publicadas,
             }
-            for item in falhas
+            for item in snapshot.falhas
         ],
         "politica_atualizacao": {
             "modo": "SOMENTE_BANCO",
@@ -507,38 +233,31 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
     data_final: str,
     *,
     codigo_municipio: str,
+    municipio_comprador: str | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Base de pagamentos com empenhos usados apenas como dimensoes."""
     inicio, fim = date.fromisoformat(data_inicial), date.fromisoformat(data_final)
-    competencias_pagamentos: list[str] = []
-    registros, competencias_ausentes = tce_pagamentos_persistence.listar_pagamentos_municipais_para_analise(
+    snapshot = tce_analytics.carregar_snapshot_pagamentos_municipais(
         codigo_municipio_tce=codigo_municipio,
         data_inicial=inicio,
         data_final=fim,
-        competencias_publicadas=competencias_pagamentos,
     )
-    if competencias_ausentes:
+    if snapshot.competencias_ausentes:
         raise CompetenciasTceIndisponiveisError(
-            f"Lotes de pagamentos publicados ausentes: {competencias_ausentes[:10]} (total={len(competencias_ausentes)})."
+            "Lotes de pagamentos publicados ausentes: "
+            f"{snapshot.competencias_ausentes[:10]} "
+            f"(total={len(snapshot.competencias_ausentes)})."
         )
-    base_tce = pd.DataFrame(registros)
-    if not base_tce.empty:
-        cnpjs = extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor"))
-        caches = database.listar_fornecedores_cache(cnpjs) if cnpjs else {}
-        if caches:
-            fornecedores_cache = []
-            for cnpj, cache in caches.items():
-                dados = dict(cache.get("dados_normalizados") or {})
-                dados.setdefault("cnpj", cnpj)
-                fornecedores_cache.append(dados)
-            base_tce = enriquecer_com_fornecedor(
-                base_tce, pd.DataFrame(fornecedores_cache), coluna_cnpj="cnpj_fornecedor",
-            )
-    municipio = database.localizar_municipio_tce(codigo_municipio)
+    registros = snapshot.registros
+    base_tce = _enriquecer_registros_fornecedores(
+        registros,
+        snapshot.fornecedores_cache,
+    )
+    nome_municipio = municipio_comprador or snapshot.municipio_comprador
     base = analitico.montar_base_analitica_tce(
         base_tce,
         codigo_municipio=codigo_municipio,
-        municipio_comprador=municipio["nome"] if municipio else None,
+        municipio_comprador=nome_municipio,
         uf_comprador=UF_PADRAO,
     )
     if not base.empty:
@@ -552,7 +271,7 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         base["base_calculo"] = "PAGAMENTOS_TCE"
         base["valor_empenhado"] = pd.NA
         base["valor_anulado"] = pd.NA
-    competencias_pagamentos = sorted(set(competencias_pagamentos))
+    competencias_pagamentos = snapshot.competencias_publicadas
     return base, {
         "fonte": "TCE-CE/SIM",
         "parametros": {"data_inicial": data_inicial, "data_final": data_final,
@@ -579,31 +298,22 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
 def montar_base_analitica_pagamentos_tce_estado_somente_banco(
     data_inicial: str, data_final: str,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    competencias_pagamentos: list[str] = []
-    registros, ausentes = tce_pagamentos_persistence.listar_pagamentos_estaduais_para_analise(
+    snapshot = tce_analytics.carregar_snapshot_pagamentos_estaduais(
         data_inicial=date.fromisoformat(data_inicial),
         data_final=date.fromisoformat(data_final),
-        uf=UF_PADRAO,
-        competencias_publicadas=competencias_pagamentos,
     )
-    if ausentes:
-        amostra = ausentes[:10]
+    if snapshot.competencias_ausentes:
+        amostra = snapshot.competencias_ausentes[:10]
         raise CompetenciasTceIndisponiveisError(
-            f"Lotes de pagamentos ausentes ({len(ausentes)} municipio/competencia): {amostra}"
+            "Lotes de pagamentos ausentes "
+            f"({len(snapshot.competencias_ausentes)} municipio/competencia): {amostra}"
         )
-    base_tce = pd.DataFrame(registros)
-    if not base_tce.empty:
-        cnpjs = extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor"))
-        caches = database.listar_fornecedores_cache(cnpjs) if cnpjs else {}
-        if caches:
-            fornecedores_cache = []
-            for cnpj, cache in caches.items():
-                dados = dict(cache.get("dados_normalizados") or {})
-                dados.setdefault("cnpj", cnpj)
-                fornecedores_cache.append(dados)
-            base_tce = enriquecer_com_fornecedor(
-                base_tce, pd.DataFrame(fornecedores_cache), coluna_cnpj="cnpj_fornecedor",
-            )
+    registros = snapshot.registros
+    competencias_pagamentos = snapshot.competencias_publicadas
+    base_tce = _enriquecer_registros_fornecedores(
+        registros,
+        snapshot.fornecedores_cache,
+    )
     base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
     if not base.empty:
         base["exercicio_orcamento"] = base_tce["exercicio_orcamento"]
@@ -868,7 +578,9 @@ def _consultar_overview_tce_estado(
                        "codigo_municipio": None, "uf": UF_PADRAO},
         "escopo_territorial": {
             "tipo": "ESTADO", "uf": UF_PADRAO, "nome": "Ceara",
-            "quantidade_municipios_com_publicacao": len(database.listar_municipios_ibge(UF_PADRAO)),
+            "quantidade_municipios_com_publicacao": (
+                tce_analytics.contar_municipios_catalogados(UF_PADRAO)
+            ),
         },
         "kpi": "overview_me",
         "unidade_monetaria": "CENTAVOS",

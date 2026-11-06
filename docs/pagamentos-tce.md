@@ -18,7 +18,14 @@ O normalizador cadastral compartilhado tambem foi corrigido: aceita `01`, `03`, 
 
 O exercício é o ano do orçamento; a referência final é o último mês da documentação consultada, não a data limite de emissão do pagamento. O início é janeiro do exercício e o término precisa cobrir pelo menos dezembro desse ano.
 
-O comando consulta as fontes externas em cada execução e pode demorar vários minutos; não usa os snapshots versionados de empenhos. A coleta bruta pode ser preservada para reprodução offline. A ingestão incremental mensal de notas de pagamento é documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md), mas a auditoria não consome os snapshots persistidos nem persiste portes.
+Sem `--entrada`, o comando coleta os documentos no TCE e executa explicitamente
+a sincronização cadastral dos fornecedores antes da análise; por isso pode
+demorar vários minutos. Com `--entrada`, não consulta TCE nem OpenCNPJ: usa a
+coleta fornecida e somente os cadastros já persistidos. A coleta bruta pode ser
+preservada para reprodução offline. A ingestão incremental mensal de notas de
+pagamento é documentada em [tce-notas-pagamentos.md](tce-notas-pagamentos.md);
+a auditoria não publica esses snapshots versionados, embora a execução online
+atualize o cache cadastral de fornecedores.
 
 - `total_me_centavos`, `me_por_elemento_centavos` e `fornecedores_me`: valores para o recorte publico ME.
 - `controle_financeiro`: totais antes do porte, por elemento e por categoria exclusiva (ME, EPP, Demais, sem classificacao e documento nao CNPJ).
@@ -98,7 +105,11 @@ A coleta bruta e salva antes da conciliacao, permitindo investigar rejeicoes. Va
 .venv/Scripts/python.exe scripts/auditar_pagamentos_tce.py --municipio 004 --exercicio 2025 --referencia-final 2026-09 --entrada .local/tce-pagamentos/coleta-acarau.json --somente-financeiro --saida .local/tce-pagamentos/financeiro.json
 ```
 
-O modo financeiro retorna subtotal ME zero com classificacao pendente, pois nao executa consultas de porte; esse zero nao comprova ausencia de ME. Sem `--somente-financeiro`, uma entrada local evita consultas ao TCE, mas os portes sao consultados novamente.
+O modo financeiro retorna subtotal ME zero com classificacao pendente, pois nao
+usa classificações de porte; esse zero nao comprova ausencia de ME. Sem
+`--somente-financeiro`, uma entrada local evita consultas ao TCE e ao OpenCNPJ,
+mas usa os snapshots cadastrais já existentes no banco. CNPJs ausentes no cache
+permanecem pendentes até uma sincronização explícita.
 
 O JSON de saida guarda os portes efetivamente consultados. A funcao pura `resumir_pagamentos` permite reconciliar uma lista de pagamentos ja normalizados com uma classificacao por CNPJ, sem consultar fontes externas. Nao se exige que o porte atual produza o subtotal ME historico de Consultoria de R$ 881.880,06.
 

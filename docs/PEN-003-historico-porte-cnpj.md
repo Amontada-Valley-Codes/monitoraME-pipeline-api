@@ -65,7 +65,8 @@ A documentação caracteriza receita como dataset cadastral de atualização men
 | Local | Comportamento observado | Consequência |
 | --- | --- | --- |
 | [ingestion/fornecedores.py](../app/pipeline/ingestion/fornecedores.py), _montar_requisicao_opencnpj | Consulta /{cnpj} com datasets=receita, sem data. | O período do empenho não seleciona uma versão cadastral. |
-| Mesmo módulo, obter_fornecedores_com_cache | Cache encontrado tem TTL de 30 dias; preserva último resultado conhecido quando a renovação falha. | TTL define atualização, não vigência histórica. |
+| Sincronização explícita, `sincronizar_fornecedores` | Cache encontrado tem TTL de 30 dias; preserva último resultado conhecido quando a renovação falha. | TTL define atualização, não vigência histórica. |
+| Leitura local, `obter_fornecedores_com_cache` | Não consulta OpenCNPJ; retorna somente snapshots persistidos e sinaliza expiração. | Cache miss permanece ausente até uma sincronização explícita. |
 | [cleaners/opencnpj.py](../app/pipeline/cleaners/opencnpj.py), limpar_fornecedores | Marca fonte RECEITA_FEDERAL_VIA_OPENCNPJ, procedência RETRATO_ATUAL e observado_em no processamento; opção MEI positiva substitui a classificação por MEI. | A data observada é local; o indicador MEI também precisa de referência temporal antes de uso histórico. |
 | [core/models.py](../app/core/models.py), FornecedorCache | Uma linha por CNPJ, com payload, dados normalizados e datas de observação/cache. | Não existe coleção de versões cadastrais no modelo. |
 | [core/database.py](../app/core/database.py), salvar_fornecedores_cache | ON CONFLICT por CNPJ atualiza payload, classificação e observado_em. | Uma renovação substitui a observação anterior. |
