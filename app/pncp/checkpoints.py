@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import os
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.core import orm
-from app.core.models import PncpSyncCursor
+from app.core.models import IngestionJob, PncpSyncCursor
 
 OVERLAP_PADRAO = timedelta(minutes=int(os.getenv("PNCP_OVERLAP_MINUTES", "5")))
 
@@ -48,8 +49,41 @@ def confirmar_janela_session(session: Session, key: KeyCursor, *, final: datetim
     elif cursor.last_confirmed_end is None or final >= cursor.last_confirmed_end:
         cursor.last_confirmed_end, cursor.last_run_id, cursor.status = final, run_id, "CONFIRMED"
 
+def confirmar_janela_job_session(
+    session: Session,
+    key: KeyCursor,
+    *,
+    final: datetime,
+    job_id: int,
+    lease_token: str,
+) -> None:
+    """Confirma somente sob o lease vigente, na mesma transacao do cursor."""
+    job = session.execute(
+        select(IngestionJob)
+        .where(
+            IngestionJob.id == job_id,
+            IngestionJob.status == "RUNNING",
+            IngestionJob.lease_token == lease_token,
+            IngestionJob.lease_until > func.now(),
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if job is None:
+        raise RuntimeError("lease do job expirou antes da confirmacao do cursor")
+    confirmar_janela_session(session, key, final=final, run_id=str(job_id))
+
+def confirmar_janela_job(key: KeyCursor, *, final: datetime, job_id: int, lease_token: str) -> None:
+    with orm.main_session() as session:
+        confirmar_janela_job_session(
+            session, key, final=final, job_id=job_id, lease_token=lease_token
+        )
+
 def confirmar_janela(key: KeyCursor, *, final: datetime, run_id: str) -> None:
     with orm.main_session() as session: confirmar_janela_session(session, key, final=final, run_id=run_id)
 
 
-__all__ = ["KeyCursor", "ChaveCursor", "OVERLAP_PADRAO", "proxima_janela", "confirmar_janela", "confirmar_janela_session"]
+__all__ = [
+    "KeyCursor", "ChaveCursor", "OVERLAP_PADRAO", "proxima_janela",
+    "confirmar_janela", "confirmar_janela_session", "confirmar_janela_job",
+    "confirmar_janela_job_session",
+]

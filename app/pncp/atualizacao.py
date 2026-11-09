@@ -20,7 +20,7 @@ from app.pncp.raw import (
     identificar_contratacao_raw,
     salvar_raw_e_agendar_normalizacao_session,
 )
-from app.pncp.checkpoints import ChaveCursor, confirmar_janela
+from app.pncp.checkpoints import ChaveCursor, confirmar_janela_job
 
 FLOW = "atualizacao"
 
@@ -104,5 +104,10 @@ def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_p
         if resposta.total_paginas is None and len(resposta.itens) < tamanho_pagina: break
         pagina += 1
     escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
-    confirmar_janela(ChaveCursor("PNCP", "CONTRATACAO", FLOW, escopo_cursor), final=job.window_end, run_id=str(job.id))
+    confirmar_janela_job(
+        ChaveCursor("PNCP", "CONTRATACAO", FLOW, escopo_cursor),
+        final=job.window_end,
+        job_id=job.id,
+        lease_token=job.lease_token,
+    )
     return totais

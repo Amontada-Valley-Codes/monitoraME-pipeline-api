@@ -57,6 +57,12 @@ reserva. O `WorkerPncp` renova o lease automaticamente enquanto um handler esta
 ativo; renovacao, conclusao, falha e quarentena verificam token e validade do
 lease.
 
+Os coletores confirmam o cursor somente depois de persistir todas as paginas e
+validam o `lease_token` ainda vigente na mesma transacao que grava o cursor.
+Assim, um worker atrasado que perdeu o lease nao consegue avancar a janela;
+uma falha antes da confirmacao deixa o cursor anterior intacto e o retry
+reexecuta a janela completa, reutilizando RAW e jobs de normalizacao existentes.
+
 O indice parcial de `dedupe_key` bloqueia jobs equivalentes nos estados ativos
 (`PENDING`, `RUNNING`, `RETRY_WAIT`). Workers reservam uma tentativa de
 `backfill` a cada dez reservas por padrao, evitando starvation historico sem

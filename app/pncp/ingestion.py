@@ -18,7 +18,7 @@ from app.pncp.raw import (
     identificar_contratacao_raw,
     salvar_raw_e_agendar_normalizacao_session,
 )
-from app.pncp.checkpoints import ChaveCursor, confirmar_janela
+from app.pncp.checkpoints import ChaveCursor, confirmar_janela_job
 
 
 ENDPOINT_PUBLICACAO = "/v1/contratacoes/publicacao"
@@ -298,15 +298,15 @@ def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pa
                 raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP", endpoint=ENDPOINT_PUBLICACAO, page=pagina)
             if pagina >= resultado.total_paginas:
                 escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
-                confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))
+                confirmar_janela_job(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, job_id=job.id, lease_token=job.lease_token)
                 return total_registros
         elif len(resultado.itens) < tamanho_pagina:
             escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
-            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))
+            confirmar_janela_job(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, job_id=job.id, lease_token=job.lease_token)
             return total_registros
         elif not resultado.itens:
             escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
-            confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))
+            confirmar_janela_job(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, job_id=job.id, lease_token=job.lease_token)
             return total_registros
         pagina += 1
 

@@ -66,6 +66,12 @@ uma vez; RAW, normalização e efeitos derivados precisam ser idempotentes.
 Cursor de fluxo só é confirmado após todas as páginas válidas da janela estarem
 duravelmente persistidas.
 
+Na confirmacao, o coletor bloqueia e valida o job `RUNNING`, seu `lease_token`
+e `lease_until` dentro da mesma transacao que atualiza o cursor. Se o lease
+expirou ou foi retomado, a confirmacao falha e o worker antigo nao avanca o
+watermark. A recuperacao reinicia a janela desde a primeira pagina; o upsert
+idempotente de RAW torna seguro reaproveitar paginas ja persistidas.
+
 Cada item da página é guardado como payload JSON original em RAW e recebe
 `run_id=job:<id>:pagina:<n>` para correlação com janela e parâmetros do job.
 Para contratação, `numeroControlePNCP` não vazio identifica o recurso; quando
