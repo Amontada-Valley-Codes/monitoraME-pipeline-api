@@ -13,7 +13,11 @@ from app.core import orm
 from app.pncp.jobs import JobReivindicado, NovoJob, PNCP_QUERY_CONFIG_VERSION
 from app.pncp.protecao import PncpProtegidoError, ProtecaoPncp
 from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
-from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
+from app.pncp.raw import (
+    RegistroRawPncp,
+    identificar_contratacao_raw,
+    salvar_raw_e_agendar_normalizacao_session,
+)
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
 
@@ -37,17 +41,20 @@ class PncpColetaError(RuntimeError):
         status_code: int | None = None,
         retry_after: timedelta | None = None,
         endpoint: str | None = None,
+        page: int | None = None,
     ) -> None:
         super().__init__(mensagem)
         self.retryable = retryable
         self.status_code = status_code
         self.retry_after = retry_after
         self.endpoint = endpoint
+        self.page = page
 
     def contexto(self) -> dict[str, object]:
         return {
             "categoria": "pncp_coleta",
             "endpoint": self.endpoint,
+            "page": self.page,
             "status_code": self.status_code,
             "retryable": self.retryable,
             "retry_after_seconds": self.retry_after.total_seconds() if self.retry_after else None,
@@ -58,6 +65,16 @@ class PncpColetaError(RuntimeError):
 class PaginaContratacoes:
     itens: list[dict[str, Any]]
     total_paginas: int | None
+
+
+def data_atualizacao_fonte(valor: Any) -> datetime | None:
+    if not isinstance(valor, str):
+        return None
+    try:
+        atualizado = datetime.fromisoformat(valor.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return atualizado if atualizado.tzinfo is not None else None
 
 
 class ClientePncp:
@@ -122,10 +139,10 @@ class ClientePncp:
             resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
         except requests.Timeout as exc:
             self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError(f"falha na pagina {pagina}: timeout", endpoint=endpoint) from exc
+            raise PncpColetaError(f"falha na pagina {pagina}: timeout", endpoint=endpoint, page=pagina) from exc
         except requests.RequestException as exc:
             self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}", endpoint=endpoint) from exc
+            raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}", endpoint=endpoint, page=pagina) from exc
         status = resposta.status_code
         if status >= 400:
             retryable = classificar_status_http(status)
@@ -139,23 +156,30 @@ class ClientePncp:
                 status_code=status,
                 retry_after=retry_after_para_timedelta(resposta.headers.get("Retry-After")) if status == 429 else None,
                 endpoint=endpoint,
+                page=pagina,
             )
         try:
             corpo = resposta.json()
         except ValueError as exc:
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError(f"falha na pagina {pagina}: JSON invalido", endpoint=endpoint) from exc
+            raise PncpColetaError(f"falha na pagina {pagina}: JSON invalido", endpoint=endpoint, page=pagina) from exc
         if not isinstance(corpo, dict):
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError("resposta PNCP nao e objeto JSON")
+            raise PncpColetaError("resposta PNCP nao e objeto JSON", endpoint=endpoint, page=pagina)
         itens = corpo.get("data", corpo.get("items"))
         if not isinstance(itens, list) or any(not isinstance(item, dict) for item in itens):
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError("resposta PNCP sem lista valida de contratacoes")
+            raise PncpColetaError("resposta PNCP sem lista valida de contratacoes", endpoint=endpoint, page=pagina)
         total = corpo.get("totalPaginas", corpo.get("totalPages"))
-        if total is not None and (not isinstance(total, int) or total < pagina):
+        if total is not None and (
+            isinstance(total, bool)
+            or not isinstance(total, int)
+            or total < 0
+            or (total == 0 and itens)
+            or (pagina > total and itens)
+        ):
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError("metadado de paginacao PNCP invalido")
+            raise PncpColetaError("metadado de paginacao PNCP invalido", endpoint=endpoint, page=pagina)
         self.protecao.registrar_resultado(sucesso=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
         return PaginaContratacoes(itens, total)
 
@@ -226,7 +250,20 @@ def tamanho_pagina_do_job(job: JobReivindicado, padrao: int = 50) -> int:
 
 def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:
     """Persiste todas as paginas; qualquer erro aborta o job sem confirmar janela."""
-    if job.source != FONTE or job.entity_type != TIPO or job.window_start is None or job.window_end is None:
+    fluxo_valido = (
+        (job.job_type == "incremental" and job.scope_key.startswith("publicacao:"))
+        or (job.job_type == "backfill" and job.scope_key.startswith("backfill:"))
+    )
+    if (
+        job.source != FONTE
+        or job.entity_type != TIPO
+        or not fluxo_valido
+        or job.window_start is None
+        or job.window_end is None
+        or job.window_start.tzinfo is None
+        or job.window_end.tzinfo is None
+        or job.window_end < job.window_start
+    ):
         raise ValueError("job nao representa uma janela de publicacao PNCP")
     tamanho_pagina = tamanho_pagina_do_job(job, tamanho_pagina)
     try:
@@ -234,21 +271,31 @@ def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pa
         uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None
     except (IndexError, ValueError) as exc:
         raise ValueError("scope_key de publicacao invalido") from exc
-    pagina = job.page or 1
+    pagina = job.page if job.page is not None else 1
+    if isinstance(pagina, bool) or pagina != 1:
+        raise ValueError("coleta por janela deve reiniciar na pagina 1")
     total_registros = 0
     while True:
         resultado = cliente.buscar_publicacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, uf=uf, pagina=pagina, tamanho_pagina=tamanho_pagina)
         # Vazia e valida somente encerra quando e a primeira pagina ou apos pagina conhecida.
         for item in resultado.itens:
-            external_id = item.get("numeroControlePNCP")
-            if not isinstance(external_id, str) or not external_id.strip():
-                raise PncpColetaError("contratacao sem numeroControlePNCP valido")
+            external_id, _ = identificar_contratacao_raw(item)
             with orm.main_session() as session:
-                salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(entity_type=TIPO, external_id=external_id, payload=item, collected_at=datetime.now(timezone.utc), run_id=f"job:{job.id}:pagina:{pagina}"))
+                salvar_raw_e_agendar_normalizacao_session(
+                    session,
+                    RegistroRawPncp(
+                        entity_type=TIPO,
+                        external_id=external_id,
+                        payload=item,
+                        collected_at=datetime.now(timezone.utc),
+                        source_updated_at=data_atualizacao_fonte(item.get("dataAtualizacao")),
+                        run_id=f"job:{job.id}:pagina:{pagina}",
+                    ),
+                )
             total_registros += 1
         if resultado.total_paginas is not None:
             if not resultado.itens and pagina < resultado.total_paginas:
-                raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP")
+                raise PncpColetaError("pagina vazia antes do fim informado pelo PNCP", endpoint=ENDPOINT_PUBLICACAO, page=pagina)
             if pagina >= resultado.total_paginas:
                 escopo_cursor = f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
                 confirmar_janela(ChaveCursor(FONTE, TIPO, "publicacao", escopo_cursor), final=job.window_end, run_id=str(job.id))

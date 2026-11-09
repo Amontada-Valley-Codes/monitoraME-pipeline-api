@@ -66,6 +66,13 @@ uma vez; RAW, normalização e efeitos derivados precisam ser idempotentes.
 Cursor de fluxo só é confirmado após todas as páginas válidas da janela estarem
 duravelmente persistidas.
 
+Cada item da página é guardado como payload JSON original em RAW e recebe
+`run_id=job:<id>:pagina:<n>` para correlação com janela e parâmetros do job.
+Para contratação, `numeroControlePNCP` não vazio identifica o recurso; quando
+ausente ou de tipo inválido, um hash canônico do payload preserva o registro
+incompleto para diagnóstico/quarentena. A validade da resposta HTTP e da
+paginação é verificada antes de confirmar o cursor.
+
 O serviço `pncp-scheduler` agenda `publicacao` e `atualizacao` usando uma
 janela independente por fluxo, UF e modalidade. Cada janela tem no máximo
 `PNCP_SCHEDULER_WINDOW_DAYS`; a primeira usa esse tamanho e as seguintes partem

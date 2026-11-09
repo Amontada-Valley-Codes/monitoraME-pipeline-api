@@ -7,17 +7,25 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core import orm
 from app.core.models import PncpContratacaoAtual
-from app.pncp.ingestion import ClientePncp, PncpColetaError, UFS_NORDESTE, tamanho_pagina_do_job
+from app.pncp.ingestion import (
+    ClientePncp,
+    PncpColetaError,
+    UFS_NORDESTE,
+    data_atualizacao_fonte,
+    tamanho_pagina_do_job,
+)
 from app.pncp.jobs import JobReivindicado, NovoJob, PNCP_QUERY_CONFIG_VERSION
-from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
+from app.pncp.raw import (
+    RegistroRawPncp,
+    identificar_contratacao_raw,
+    salvar_raw_e_agendar_normalizacao_session,
+)
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
 FLOW = "atualizacao"
 
 def _data(valor: Any) -> datetime | None:
-    if not isinstance(valor, str): return None
-    try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
-    except ValueError: return None
+    return data_atualizacao_fonte(valor)
 
 def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None, tamanho_pagina: int = 50, prioridade: int = 80) -> list[NovoJob]:
     if inicio.tzinfo is None or fim.tzinfo is None or fim < inicio:
@@ -36,7 +44,7 @@ def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[in
     return jobs
 
 def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_hash: str, source_updated_at: datetime | None) -> str:
-    external_id = str(item["numeroControlePNCP"])
+    external_id = str(item["numeroControlePNCP"]).strip()
     anterior = session.get(PncpContratacaoAtual, {"source": "PNCP", "external_id": external_id})
     if anterior and anterior.payload_hash == payload_hash: return "INALTERADO"
     if anterior and anterior.source_updated_at and (source_updated_at is None or source_updated_at < anterior.source_updated_at): return "ANTIGO"
@@ -44,19 +52,54 @@ def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_
     return "NOVO" if anterior is None else "ALTERADO"
 
 def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> dict[str, int]:
-    if job.window_start is None or job.window_end is None: raise ValueError("janela obrigatoria")
+    if (
+        job.job_type != "incremental"
+        or job.source != "PNCP"
+        or job.entity_type != "CONTRATACAO"
+        or not job.scope_key.startswith("atualizacao:")
+        or job.window_start is None
+        or job.window_end is None
+        or job.window_start.tzinfo is None
+        or job.window_end.tzinfo is None
+        or job.window_end < job.window_start
+    ):
+        raise ValueError("job nao representa uma janela valida de atualizacao PNCP")
     tamanho_pagina = tamanho_pagina_do_job(job, tamanho_pagina)
-    modalidade = int(job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0]) if ":modalidade:" in job.scope_key else int(job.scope_key.rsplit(":", 1)[1]); uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None; pagina = job.page or 1; totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
+    try:
+        modalidade = int(job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0])
+        uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None
+    except (IndexError, ValueError) as exc:
+        raise ValueError("scope_key de atualizacao invalido") from exc
+    pagina = job.page if job.page is not None else 1
+    if isinstance(pagina, bool) or pagina != 1:
+        raise ValueError("coleta por janela deve reiniciar na pagina 1")
+    totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
     while True:
         resposta = cliente.buscar_atualizacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, uf=uf, pagina=pagina, tamanho_pagina=tamanho_pagina)
-        if not resposta.itens and resposta.total_paginas and pagina < resposta.total_paginas: raise PncpColetaError("pagina de atualizacao incompleta")
+        if not resposta.itens and resposta.total_paginas and pagina < resposta.total_paginas:
+            raise PncpColetaError(
+                "pagina de atualizacao incompleta",
+                endpoint="/v1/contratacoes/atualizacao",
+                page=pagina,
+            )
         for item in resposta.itens:
-            if not isinstance(item.get("numeroControlePNCP"), str): raise PncpColetaError("atualizacao sem numeroControlePNCP")
+            external_id, tem_numero_controle = identificar_contratacao_raw(item)
             atualizado = _data(item.get("dataAtualizacao"))
             with orm.main_session() as s:
-                raw = salvar_raw_e_agendar_normalizacao_session(s, RegistroRawPncp("CONTRATACAO", item["numeroControlePNCP"], item, datetime.now(timezone.utc), atualizado, f"job:{job.id}:pagina:{pagina}"))
-                classe = salvar_versao_atual_session(s, item, raw.payload_hash, atualizado)
-            if classe != "ANTIGO": totais[classe] += 1
+                raw = salvar_raw_e_agendar_normalizacao_session(
+                    s,
+                    RegistroRawPncp(
+                        "CONTRATACAO", external_id, item, datetime.now(timezone.utc),
+                        atualizado, f"job:{job.id}:pagina:{pagina}",
+                    ),
+                )
+                classe = (
+                    salvar_versao_atual_session(s, item, raw.payload_hash, atualizado)
+                    if tem_numero_controle
+                    else None
+                )
+            if classe is not None and classe != "ANTIGO":
+                totais[classe] += 1
         if resposta.total_paginas is not None and pagina >= resposta.total_paginas: break
         if resposta.total_paginas is None and len(resposta.itens) < tamanho_pagina: break
         pagina += 1

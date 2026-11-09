@@ -65,6 +65,20 @@ def _payload_canonico(payload: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
     return valor_json, hashlib.sha256(serializado.encode("utf-8")).hexdigest()
 
 
+def identificar_contratacao_raw(payload: Mapping[str, Any]) -> tuple[str, bool]:
+    """Usa o controle PNCP quando presente; sem ele, identifica pelo conteúdo.
+
+    O segundo valor indica se a identidade veio de ``numeroControlePNCP``.
+    Identidades de fallback preservam itens incompletos no RAW para que o
+    normalizador os diagnostique e coloque em quarentena sem novo download.
+    """
+    numero_controle = payload.get("numeroControlePNCP")
+    if isinstance(numero_controle, str) and numero_controle.strip():
+        return numero_controle.strip(), True
+    _, payload_hash = _payload_canonico(payload)
+    return f"payload-sha256:{payload_hash}", False
+
+
 def _validar_registro(registro: RegistroRawPncp) -> None:
     if registro.source != FONTE_PNCP:
         raise ValueError("a camada RAW PNCP aceita somente source='PNCP'")
@@ -153,6 +167,6 @@ def salvar_raw_e_agendar_normalizacao(registro: RegistroRawPncp) -> ResultadoPer
 
 __all__ = [
     "FONTE_PNCP", "JOB_NORMALIZAR", "PayloadPncpInvalido", "RegistroRawPncp",
-    "ResultadoPersistenciaRaw", "salvar_raw_e_agendar_normalizacao",
+    "ResultadoPersistenciaRaw", "identificar_contratacao_raw", "salvar_raw_e_agendar_normalizacao",
     "salvar_raw_e_agendar_normalizacao_session",
 ]

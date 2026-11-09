@@ -1,8 +1,11 @@
 # PNCP RAW e reprocessamento
 
-`raw_pncp_records` e um historico imutavel de respostas JSON validas do PNCP.
-Cada versao e identificada por `source`, `entity_type`, `external_id` e o
-SHA-256 do JSON canonico. O payload nao e exposto pelas rotas HTTP nem deve ser
+`raw_pncp_records` e um historico imutavel dos registros JSON originais
+retornados nas paginas do PNCP. Cada item e identificado por `source`,
+`entity_type`, `external_id` e SHA-256 do JSON canonico. Para contratacoes,
+`numeroControlePNCP` e usado quando e uma string nao vazia; se faltar ou vier
+com tipo invalido, `payload-sha256:<hash>` preserva a resposta sem inventar uma
+identidade de dominio. O payload nao e exposto pelas rotas HTTP nem deve ser
 registrado em logs.
 
 O repositorio `app.pncp.raw.salvar_raw_e_agendar_normalizacao` grava a versao
@@ -12,13 +15,20 @@ mesmo job. Uma falha posterior de normalizacao nao remove o RAW.
 
 ## Retry de coleta
 
-O cliente PNCP faz uma chamada por execução de job. Timeout, `408`, `429` e
-`5xx` são classificados como transitórios e o worker persiste `RETRY_WAIT` com
-backoff exponencial e *full jitter*; `400`, `401` e `403` vão diretamente para
-`FAILED`. Em `429`, `Retry-After` prevalece sobre o jitter. `attempts`,
-`next_run_at`, `last_error` e `last_error_context` permanecem no job para
-auditoria e replay. O limite padrão é cinco tentativas totais, configurável por
-variáveis `PNCP_*` descritas no `.env.example`.
+O cliente PNCP valida cada resposta paginada e percorre todas as paginas da
+janela. Cada RAW referencia `run_id=job:<id>:pagina:<n>`; os parametros,
+janela e versao da consulta podem ser recuperados do job correlacionado. RAW e
+job `normalize` sao persistidos na mesma transacao por item. Repetir uma pagina
+reaproveita as mesmas versoes RAW e jobs. Um item sem identidade de dominio
+segue para normalizacao e quarentena, sem ser baixado repetidamente para
+reparar o dado.
+
+Timeout, `408`, `429` e `5xx` sao classificados como transitorios e o worker
+persiste `RETRY_WAIT` com backoff exponencial e *full jitter*; `400`, `401` e
+`403` vao diretamente para `FAILED`. Em `429`, `Retry-After` prevalece sobre o
+jitter. `attempts`, `next_run_at`, `last_error` e `last_error_context` permanecem
+no job para auditoria e replay. O limite padrao e cinco tentativas totais,
+configuravel por variaveis `PNCP_*` descritas no `.env.example`.
 
 ## Proteção da fonte
 
@@ -41,54 +51,60 @@ operacional separados, depois de definida a retencao legal e de backup.
 ## Fila de jobs
 
 `ingestion_jobs` e a fila persistente do PostgreSQL; RabbitMQ nao e usado. A
-reserva ocorre em uma transacao curta com `FOR UPDATE SKIP LOCKED`, prioridade
+reserva ocorre em transacao curta com `FOR UPDATE SKIP LOCKED`, prioridade
 descendente e `lease_token`. O handler do worker executa apos o commit da
-reserva. Conclusao, falha e heartbeat conferem o token, portanto um worker que
-perdeu o lease nao altera um job reassumido. O recuperador devolve leases
-expirados para `PENDING`.
+reserva. O `WorkerPncp` renova o lease automaticamente enquanto um handler esta
+ativo; renovacao, conclusao, falha e quarentena verificam token e validade do
+lease.
 
-Handlers longos devem chamar `renovar_lease(job_id, lease_token)` antes de o
-lease vencer; essa chamada abre e fecha sua propria transacao curta.
-
-O indice parcial de `dedupe_key` bloqueia apenas jobs equivalentes nos estados
-ativos (`PENDING`, `RUNNING`, `RETRY_WAIT`). Workers reservam uma tentativa de
+O indice parcial de `dedupe_key` bloqueia jobs equivalentes nos estados ativos
+(`PENDING`, `RUNNING`, `RETRY_WAIT`). Workers reservam uma tentativa de
 `backfill` a cada dez reservas por padrao, evitando starvation historico sem
 tirar prioridade das atualizacoes recentes.
 
-## Recuperação e replay
+## Recuperacao e replay
 
-Leases expirados são devolvidos para `PENDING` pelo recuperador; o token antigo
-é removido, portanto um worker que terminou tardiamente não consegue concluir
-o job reassumido. `FAILED` e `QUARANTINED` são terminais recuperáveis: o replay
-explícito por ID, fluxo ou janela recria a execução no próprio job, zera apenas
-o contador operacional de tentativas e incrementa `replay_count`.
+Leases expirados sao devolvidos a fila em `PENDING` com backoff e respeitando o
+limite de tentativas; os esgotados ficam em `FAILED`. O recuperador PNCP filtra
+os tipos de trabalho PNCP para nao reassumir jobs NLP da fila compartilhada. O
+token antigo e removido e todas as transicoes exigem lease vigente, portanto um
+worker atrasado nao conclui nem altera um job retomado. `FAILED` e
+`QUARANTINED` sao terminais recuperaveis: o replay explicito por ID, fluxo ou
+janela reativa o proprio job, zera apenas o contador operacional de tentativas
+e incrementa `replay_count`.
 
-`ingestion_job_events` é um histórico append-only de início, falha, quarentena,
+`ingestion_job_events` e um historico append-only de inicio, falha, quarentena,
 lease expirado, replay e sucesso. O replay ignora jobs `SUCCEEDED` e bloqueia a
-reativação se houver outro `dedupe_key` equivalente ativo. Inconsistências de
-normalização vão a `QUARANTINED`; falhas HTTP transitórias seguem `RETRY_WAIT`.
+reativacao se houver outra `dedupe_key` equivalente ativa. Inconsistencias de
+normalizacao vao a `QUARANTINED`; falhas HTTP transitorias seguem `RETRY_WAIT`.
 
-## Descoberta por publicação
+## Descoberta por publicacao
 
 O coletor usa `GET /v1/contratacoes/publicacao` com `dataInicial` e
 `dataFinal` em `AAAAMMDD`, `codigoModalidadeContratacao`, `pagina` e
-`tamanhoPagina` (limitado pelo cliente local a 50). Uma janela e criada por modalidade. Cada
-registro valido vai para RAW com `run_id=job:<id>:pagina:<n>`; portanto, uma
-falha na pagina seguinte preserva o trabalho anterior e o replay e idempotente.
+`tamanhoPagina` (limitado pelo cliente local a 50). Uma janela e criada por
+modalidade e UF. Cada item recebido e persistido como payload JSON original em
+RAW com `run_id=job:<id>:pagina:<n>` e job `normalize` na mesma transacao.
+Assim, uma falha na pagina seguinte preserva o trabalho anterior e o replay e
+idempotente. Quando `numeroControlePNCP` esta ausente ou tem tipo invalido, o
+RAW usa `payload-sha256:<hash>` para conservar o item incompleto e permitir que
+a normalizacao o diagnostique e envie para quarentena.
 
-Uma resposta 5xx, timeout, JSON invalido ou pagina vazia antes de
-`totalPaginas` encerra o job com falha; nunca e tratada como fim da janela. O
-job somente chega a `SUCCEEDED` depois que todas as paginas foram persistidas,
-logo esta etapa ainda nao confirma watermark algum.
+Uma resposta 5xx, timeout, JSON invalido ou pagina vazia antes do fim informado
+encerra o job com falha. Pagina vazia de fim e valida, inclusive com
+`totalPaginas=0`. O cursor so avanca depois que todas as paginas exigidas foram
+validadas e seus registros persistidos; os jobs de normalizacao continuam
+independentes. Falhas na pagina seguinte preservam os RAWs anteriores para
+reutilizacao no replay.
 
 O comando `coletar-publicacao --ano AAAA` agenda um backfill persistente desde
-1º de janeiro até o momento da execução, em janelas semanais por modalidade.
+1 de janeiro ate o momento da execucao, em janelas semanais por modalidade.
 Cada janela pode ser acompanhada em `GET /pncp/cobertura/{ano}`; a rota informa
-contagens por estado e o status individual de cada janela/modalidade, além da
-fila de normalização associada às páginas coletadas. Os serviços Compose
+contagens por estado e o status individual de cada janela/modalidade, alem da
+fila de normalizacao associada aos registros coletados. Os servicos Compose
 `pncp-worker-coleta` e `pncp-worker-normalizacao` processam jobs e retries
 continuamente. A API de consumo filtra por `ano_publicacao` (`dataPublicacaoPncp`)
-ou `ano_compra` (`anoCompra`) em parâmetros separados.
+ou `ano_compra` (`anoCompra`) em parametros separados.
 
 ## Enriquecimento sob demanda
 
