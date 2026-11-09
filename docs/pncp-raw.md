@@ -48,6 +48,26 @@ Nao ha limpeza automatica nesta etapa: RAW e jobs sao retidos para replay e
 auditoria. Uma politica de expiracao futura deve ser uma migration e um job
 operacional separados, depois de definida a retencao legal e de backup.
 
+## Normalizacao, versoes e replay
+
+O worker normalizador valida cada campo com a versao de regra ativa e registra
+evidencias por RAW, endpoint e `run_id`. A oportunidade canonica, os eventos de
+alteracao e a sincronizacao do corpus local sao gravados na mesma transacao.
+Comparacoes de hash e data preservam versoes mais recentes diante de respostas
+antigas, empatadas ou incompletas; um lock transacional por contratacao
+serializa normalizacoes concorrentes. Conteudo estruturalmente invalido mantem
+o RAW, a avaliacao e o motivo em quarentena.
+
+O replay PNCP seleciona somente jobs `source = 'PNCP'`, exige ID, fluxo ou
+janela, preserva o historico de erro, incrementa o contador de replay e registra
+um evento de auditoria. Um job normalizado com sucesso remove sua quarentena;
+resultados de precedencia ficam registrados na avaliacao versionada.
+
+`GET /health/pncp` resume estados e tentativas somente dos jobs PNCP, filas de
+normalizacao/enriquecimento, falhas e quarentenas, RAW, leases expirados e
+cobertura de itens/documentos. O endpoint consulta apenas o PostgreSQL e nao
+inclui payloads RAW nem mensagens de erro potencialmente sensiveis.
+
 ## Fila de jobs
 
 `ingestion_jobs` e a fila persistente do PostgreSQL; RabbitMQ nao e usado. A

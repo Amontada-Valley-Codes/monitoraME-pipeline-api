@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core import orm
@@ -149,6 +149,13 @@ def normalizar_raw_session(session: Session, raw: RawPncpRecord) -> str:
         return resultado
 
     dados = normalizar_payload(raw)
+    # Serializa versões concorrentes da mesma contratação antes de comparar o
+    # hash e a precedência temporal, evitando que uma resposta antiga vença por
+    # ordem de commit quando dois workers normalizam RAWs diferentes.
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"{raw.source}:{dados['external_id']}"},
+    )
     atual = session.get(PncpOportunidade, {"source": raw.source, "external_id": raw.external_id})
     if (
         atual
@@ -227,6 +234,8 @@ def normalizar_job(job: JobReivindicado) -> str:
                     session,
                     opportunity_keys=[(raw.source, raw.external_id)],
                 )
+            # Um RAW valido pode perder por precedencia sem ser estruturalmente
+            # invalido; uma avaliacao concluida resolve a quarentena estrutural.
             quarentena = session.get(PncpQuarentena, raw.id)
             if quarentena is not None:
                 session.delete(quarentena)

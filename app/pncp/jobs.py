@@ -445,6 +445,7 @@ def recuperar_leases_expirados(
 def replay_jobs_session(
     session: Session,
     *,
+    source: str = "PNCP",
     job_id: int | None = None,
     flow: str | None = None,
     window_start: datetime | None = None,
@@ -455,20 +456,24 @@ def replay_jobs_session(
     A seleção usa sobreposição de janela e aceita somente ``FAILED`` e
     ``QUARANTINED``. Jobs bem-sucedidos jamais são alterados por este caminho.
     """
+    if source != "PNCP":
+        raise ValueError("replay PNCP aceita somente source='PNCP'")
+    if flow is not None and (not flow.strip() or ":" in flow or "%" in flow or "_" in flow):
+        raise ValueError("flow deve ser um prefixo exato de scope_key")
     if job_id is None and flow is None and window_start is None and window_end is None:
         raise ValueError("informe job_id, flow ou janela para replay")
     if (window_start is None) != (window_end is None):
         raise ValueError("window_start e window_end devem ser informados juntos")
     if window_start and (window_start.tzinfo is None or window_end is None or window_end.tzinfo is None or window_end < window_start):
         raise ValueError("janela de replay deve ter timezone e ordem valida")
-    filtros = ["status IN ('FAILED', 'QUARANTINED')"]
-    parametros: dict[str, object] = {}
+    filtros = ["source = :source", "status IN ('FAILED', 'QUARANTINED')"]
+    parametros: dict[str, object] = {"source": source}
     if job_id is not None:
         filtros.append("id = :job_id")
         parametros["job_id"] = job_id
     if flow is not None:
-        filtros.append("scope_key LIKE :flow")
-        parametros["flow"] = f"{flow}:%"
+        filtros.append("left(scope_key, length(:flow)) = :flow AND substr(scope_key, length(:flow) + 1, 1) = ':'")
+        parametros["flow"] = flow
     if window_start is not None and window_end is not None:
         filtros.append("window_end >= :window_start AND window_start <= :window_end")
         parametros.update({"window_start": window_start, "window_end": window_end})
@@ -498,7 +503,7 @@ def replay_jobs_session(
     for replay_id in ids:
         _registrar_evento_session(
             session, job_id=replay_id, event_type="REPLAYED", details={
-                "selector_job_id": job_id, "flow": flow,
+                "selector_job_id": job_id, "source": source, "flow": flow,
                 "window_start": window_start.isoformat() if window_start else None,
                 "window_end": window_end.isoformat() if window_end else None,
             },
