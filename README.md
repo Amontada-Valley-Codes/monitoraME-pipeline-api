@@ -695,6 +695,10 @@ docker compose up -d pncp-scheduler
 Backfill e propostas abertas continuam sendo agendados explicitamente pela CLI,
 pois não fazem parte da recorrência padrão.
 
+Os workers renovam leases durante tarefas longas. Após reinício, recuperam leases
+vencidos com backoff; o job vai a `FAILED` quando as tentativas se esgotam. Um
+worker cujo lease expirou não pode concluir nem registrar falha para esse job.
+
 Para um backfill, substitua `--dias 1` por `--ano 2026`; para atualizações,
 use `coletar-atualizacao` no lugar de `coletar-publicacao`. Os workers de coleta
 e normalização processam os jobs persistidos. `pncp coletar-amostra-abertas` é

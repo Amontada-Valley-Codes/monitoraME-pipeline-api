@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import json
 import logging
 import time
+from threading import Event, Thread
 from typing import Any
 from uuid import uuid4
 
@@ -139,6 +140,7 @@ WITH candidate AS (
     FROM ingestion_jobs
     WHERE status IN ('PENDING', 'RETRY_WAIT')
       AND next_run_at <= now()
+      AND attempts < max_attempts
       AND (:somente_backfill = false OR job_type = 'backfill')
       AND (CAST(:job_type AS text) IS NULL OR job_type = CAST(:job_type AS text))
     ORDER BY
@@ -199,11 +201,14 @@ def reivindicar_proximo_job(**kwargs: Any) -> JobReivindicado | None:
 
 
 def renovar_lease_session(session: Session, *, job_id: int, lease_token: str, lease_seconds: int = 120) -> bool:
+    if lease_seconds < 1:
+        raise ValueError("lease_seconds deve ser positivo")
     resultado = session.execute(
         text("""
         UPDATE ingestion_jobs SET lease_until = now() + (:lease_seconds * interval '1 second'),
             heartbeat_at = now(), updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+          AND lease_until > now()
         """),
         {"job_id": job_id, "lease_token": lease_token, "lease_seconds": lease_seconds},
     )
@@ -225,6 +230,7 @@ def concluir_job_session(session: Session, *, job_id: int, lease_token: str) -> 
             lease_until = NULL, heartbeat_at = NULL, last_error = NULL,
             success_count = success_count + 1, updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+          AND lease_until > now()
         """), {"job_id": job_id, "lease_token": lease_token},
     )
     concluido = resultado.rowcount == 1
@@ -266,6 +272,7 @@ def falhar_job_session(
                 THEN now() + (:retry_seconds * interval '1 second') ELSE next_run_at END,
             updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+          AND lease_until > now()
         """).bindparams(bindparam("contexto", type_=JSONB))
     resultado = session.execute(statement, parametros)
     if resultado.rowcount == 1:
@@ -287,6 +294,7 @@ def quarentenar_job_session(
             lease_until = NULL, heartbeat_at = NULL, last_error = :erro,
             last_error_context = CAST(:contexto AS jsonb), updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+          AND lease_until > now()
         """).bindparams(bindparam("contexto", type_=JSONB)),
         {"job_id": job.id, "lease_token": job.lease_token, "erro": erro[:2048], "contexto": contexto or {}},
     )
@@ -307,6 +315,7 @@ def adiar_job_sem_tentativa_session(
             last_error = :motivo, last_error_context = CAST(:contexto AS jsonb),
             next_run_at = now() + (:aguardar_seconds * interval '1 second'), updated_at = now()
         WHERE id = :job_id AND status = 'RUNNING' AND lease_token = :lease_token
+          AND lease_until > now()
         """).bindparams(bindparam("contexto", type_=JSONB)),
         {"job_id": job.id, "lease_token": job.lease_token, "motivo": motivo[:2048],
          "contexto": contexto or {}, "aguardar_seconds": max(0, aguardar.total_seconds())},
@@ -317,27 +326,120 @@ def adiar_job_sem_tentativa_session(
     return False
 
 
-def recuperar_leases_expirados_session(session: Session, *, job_type: str | None = None) -> int:
+def recuperar_leases_expirados_session(
+    session: Session,
+    *,
+    job_type: str | None = None,
+    job_types: tuple[str, ...] | None = None,
+    source: str | None = None,
+) -> int:
+    if job_type is not None and job_types is not None:
+        raise ValueError("informe job_type ou job_types, nao ambos")
+    if job_types is not None and not job_types:
+        return 0
     filtro_tipo = " AND job_type = :job_type" if job_type is not None else ""
-    resultado = session.execute(text(f"""
-        UPDATE ingestion_jobs SET status = 'PENDING', locked_by = NULL, lease_token = NULL,
+    parametros_filtro: dict[str, object] = {}
+    if job_type is not None:
+        parametros_filtro["job_type"] = job_type
+    if job_types is not None:
+        nomes = []
+        for indice, tipo in enumerate(dict.fromkeys(job_types)):
+            nome = f"job_type_{indice}"
+            nomes.append(f":{nome}")
+            parametros_filtro[nome] = tipo
+        filtro_tipo = f" AND job_type IN ({', '.join(nomes)})"
+    filtro_fonte = " AND source = :source" if source is not None else ""
+    if source is not None:
+        parametros_filtro["source"] = source
+    exhausted = session.execute(text(f"""
+        UPDATE ingestion_jobs
+        SET status = 'FAILED', locked_by = NULL, lease_token = NULL,
             lease_until = NULL, heartbeat_at = NULL,
-            last_error = 'lease expirado; job devolvido a fila', next_run_at = now(), updated_at = now()
-        WHERE status = 'RUNNING' AND lease_until <= now(){filtro_tipo}
+            last_error = coalesce(last_error, 'tentativas esgotadas'), updated_at = now()
+        WHERE status IN ('PENDING', 'RETRY_WAIT') AND attempts >= max_attempts
+          AND next_run_at <= now(){filtro_tipo}{filtro_fonte}
         RETURNING id, attempts
-    """), {"job_type": job_type} if job_type is not None else {})
-    recuperados = resultado.mappings().all()
-    for registro in recuperados:
+    """), parametros_filtro).mappings().all()
+    for registro in exhausted:
         _registrar_evento_session(
-            session, job_id=int(registro["id"]), event_type="LEASE_EXPIRED",
-            attempt=int(registro["attempts"]), details={"motivo": "worker sem heartbeat"},
+            session,
+            job_id=int(registro["id"]),
+            event_type="FAILED",
+            attempt=int(registro["attempts"]),
+            details={"motivo": "tentativas esgotadas durante recuperacao"},
         )
-    return len(recuperados)
+    expirados = session.execute(text(f"""
+        SELECT id, attempts, max_attempts
+        FROM ingestion_jobs
+        WHERE status = 'RUNNING' AND lease_until <= now(){filtro_tipo}{filtro_fonte}
+        FOR UPDATE SKIP LOCKED
+    """), parametros_filtro).mappings().all()
+    politica = PoliticaRetryPncp.do_ambiente() if source == "PNCP" else PoliticaRetryPncp()
+    recuperados = 0
+    for registro in expirados:
+        tentativas = int(registro["attempts"])
+        limite = int(registro.get("max_attempts", politica.max_attempts))
+        decisao = decidir_retry(
+            attempts=tentativas,
+            max_attempts=limite,
+            retryable=True,
+            politica=politica,
+        )
+        novo_status = PENDING if decisao.repetir else FAILED
+        atraso = decisao.atraso if source == "PNCP" else timedelta()
+        motivo_retry = (
+            decisao.motivo
+            if source == "PNCP"
+            else "lease expirado; reagendado sem atraso"
+        )
+        resultado = session.execute(text(f"""
+            UPDATE ingestion_jobs
+            SET status = '{novo_status}',
+                locked_by = NULL, lease_token = NULL, lease_until = NULL,
+                heartbeat_at = NULL,
+                last_error = 'lease expirado; job devolvido a fila',
+                last_error_context = CAST(:contexto AS jsonb),
+                next_run_at = now() + (:retry_seconds * interval '1 second'),
+                updated_at = now()
+            WHERE id = :job_id AND status = 'RUNNING' AND lease_until <= now()
+            RETURNING id
+        """).bindparams(bindparam("contexto", type_=JSONB)), {
+            "job_id": int(registro["id"]),
+            "retry_seconds": atraso.total_seconds() if atraso else 0,
+            "contexto": {
+                "categoria": "lease_expirado",
+                "retry_reason": motivo_retry,
+                "retry_seconds": atraso.total_seconds() if atraso else None,
+            },
+        }).mappings().first()
+        if resultado is None:
+            continue
+        recuperados += 1
+        _registrar_evento_session(
+            session,
+            job_id=int(registro["id"]),
+            event_type="LEASE_EXPIRED",
+            attempt=tentativas,
+            details={
+                "motivo": "worker sem heartbeat",
+                "status": novo_status,
+                "retry_reason": motivo_retry,
+                "retry_seconds": atraso.total_seconds() if atraso else None,
+            },
+        )
+    return recuperados
 
 
-def recuperar_leases_expirados() -> int:
+def recuperar_leases_expirados(
+    *,
+    source: str | None = "PNCP",
+    job_type: str | None = None,
+    job_types: tuple[str, ...] | None = None,
+) -> int:
     with orm.main_session() as session:
-        return recuperar_leases_expirados_session(session)
+        return recuperar_leases_expirados_session(
+            session, source=source, job_type=job_type, job_types=job_types
+        )
 
 
 def replay_jobs_session(
@@ -446,7 +548,7 @@ class WorkerPncp:
         if job is None:
             return False
         try:
-            self.handler(job)  # HTTP/processamento fica deliberadamente fora da transacao.
+            self._executar_com_heartbeat(job)
         except Exception as exc:
             retryable = getattr(exc, "retryable", True)
             retry_after = getattr(exc, "retry_after", None)
@@ -488,6 +590,43 @@ class WorkerPncp:
                 detalhes.update(_contar_fila_enriquecimento())
                 logger.info("Registro de enriquecimento PNCP concluido", extra={"job_id": job.id, **detalhes})
         return True
+
+    def _executar_com_heartbeat(self, job: JobReivindicado) -> None:
+        parar_heartbeat = Event()
+        intervalo = max(0.05, min(60.0, self.lease_seconds / 3))
+
+        def manter_lease() -> None:
+            while not parar_heartbeat.wait(intervalo):
+                try:
+                    renovado = renovar_lease(
+                        job_id=job.id,
+                        lease_token=job.lease_token,
+                        lease_seconds=self.lease_seconds,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Falha ao renovar lease de job PNCP",
+                        extra={"job_id": job.id, "worker_id": self.worker_id},
+                    )
+                    continue
+                if not renovado:
+                    logger.warning(
+                        "Worker perdeu lease de job PNCP",
+                        extra={"job_id": job.id, "worker_id": self.worker_id},
+                    )
+                    return
+
+        heartbeat = Thread(
+            target=manter_lease,
+            name=f"pncp-heartbeat-{job.id}",
+            daemon=True,
+        )
+        heartbeat.start()
+        try:
+            self.handler(job)  # I/O e processamento ficam fora da transacao de reserva.
+        finally:
+            parar_heartbeat.set()
+            heartbeat.join()
 
     def executar_loop(self, *, parar: Callable[[], bool], idle_seconds: float = 1.0) -> None:
         while not parar():

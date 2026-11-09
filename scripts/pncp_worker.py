@@ -16,11 +16,25 @@ from app.pncp.normalization import normalizar_job
 from app.pncp.enrichment import ClienteEnriquecimentoPncp, enriquecer_job
 from app.core.logging import configurar_logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("app.pncp.worker")
+
+
+def recuperar_e_registrar_leases() -> int:
+    recuperados = recuperar_leases_expirados(
+        source="PNCP",
+        job_types=("incremental", "backfill", "normalize", "enrich"),
+    )
+    if recuperados:
+        logger.warning(
+            "Leases PNCP expirados recuperados",
+            extra={"jobs_recuperados": recuperados, "source": "PNCP"},
+        )
+    return recuperados
 
 
 def executar_coleta() -> None:
     cliente = ClientePncp()
+    worker_identity = f"{socket.gethostname()}:{os.getpid()}"
 
     def processar(job: Any) -> None:
         if job.scope_key.startswith(("publicacao:", "backfill:")):
@@ -31,14 +45,14 @@ def executar_coleta() -> None:
             raise ValueError(f"fluxo PNCP desconhecido: {job.scope_key}")
 
     workers = (
-        WorkerPncp("pncp-worker-incremental", processar, job_type="incremental"),
-        WorkerPncp("pncp-worker-backfill", processar, job_type="backfill"),
+        WorkerPncp(f"pncp-worker-incremental:{worker_identity}", processar, job_type="incremental"),
+        WorkerPncp(f"pncp-worker-backfill:{worker_identity}", processar, job_type="backfill"),
     )
     intervalo_ocioso = float(os.getenv("PNCP_WORKER_IDLE_SECONDS", "1"))
-    ultimo_recovery = 0.0
+    ultimo_recovery = time.monotonic() - 30
     while True:
         if time.monotonic() - ultimo_recovery >= 30:
-            recuperar_leases_expirados()
+            recuperar_e_registrar_leases()
             ultimo_recovery = time.monotonic()
         houve_trabalho = False
         for worker in workers:
@@ -49,15 +63,15 @@ def executar_coleta() -> None:
 
 def executar_normalizacao() -> None:
     worker = WorkerPncp(
-        "pncp-worker-normalizacao",
+        f"pncp-worker-normalizacao:{socket.gethostname()}:{os.getpid()}",
         normalizar_job,
         job_type="normalize",
     )
     intervalo_ocioso = float(os.getenv("PNCP_WORKER_IDLE_SECONDS", "1"))
-    ultimo_recovery = 0.0
+    ultimo_recovery = time.monotonic() - 30
     while True:
         if time.monotonic() - ultimo_recovery >= 30:
-            recuperar_leases_expirados()
+            recuperar_e_registrar_leases()
             ultimo_recovery = time.monotonic()
         if not worker.executar_uma_vez():
             time.sleep(intervalo_ocioso)
@@ -74,15 +88,15 @@ def executar_enriquecimento() -> None:
         # compartilhado no PostgreSQL e impõe o teto global de taxa/concorrência.
         cliente = ClienteEnriquecimentoPncp()
         worker = WorkerPncp(
-            f"pncp-worker-enriquecimento-{indice}-{socket.gethostname()}",
+            f"pncp-worker-enriquecimento-{indice}-{socket.gethostname()}-{os.getpid()}",
             lambda job: enriquecer_job(job, cliente),
             job_type="enrich", lease_seconds=1800,
         )
-        ultimo_recovery = 0.0
+        ultimo_recovery = time.monotonic() - 30
         while True:
             try:
                 if time.monotonic() - ultimo_recovery >= 30:
-                    recuperar_leases_expirados()
+                    recuperar_e_registrar_leases()
                     ultimo_recovery = time.monotonic()
                 if not worker.executar_uma_vez():
                     time.sleep(intervalo_ocioso)

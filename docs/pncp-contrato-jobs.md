@@ -49,11 +49,16 @@ timezone-aware.
 ## Ciclo de vida e concorrência
 
 Workers reservam em transação curta usando `FOR UPDATE SKIP LOCKED`; executam
-HTTP fora da transação. O lease é identificado por `lease_token`, renovado pelo
-heartbeat e validado em qualquer mudança terminal. Leases vencidos são
-recuperados para execução futura. Retries transitórios usam `RETRY_WAIT` e
-`next_run_at`; falhas permanentes/esgotadas ficam em `FAILED`; erro estrutural
-de conteúdo fica em `QUARANTINED`. Replay é explícito e auditado.
+HTTP fora da transação. Um heartbeat renova automaticamente leases durante
+handlers longos. Renovação, conclusão, falha e quarentena exigem token atual e
+lease ainda válido. Leases vencidos são recuperados com backoff; se o limite de
+tentativas tiver sido atingido, o job termina em `FAILED`. Retries transitórios
+usam `PENDING` com `next_run_at` futuro; falhas permanentes/esgotadas ficam em
+`FAILED`; erro estrutural de conteúdo fica em `QUARANTINED`. Replay é explícito
+e auditado. O recuperador executado pelos processos PNCP filtra a origem e os
+tipos `incremental`, `backfill`, `normalize` e `enrich`. Isso evita tomar
+leases de embeddings, que também podem usar `source = "PNCP"` na fila
+compartilhada.
 
 Jobs recentes e de atualização devem manter precedência sobre backfill, com
 reserva periódica de capacidade para backfill. A fila assume entrega pelo menos
