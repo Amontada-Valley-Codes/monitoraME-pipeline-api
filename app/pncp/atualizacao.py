@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core import orm
 from app.core.models import PncpContratacaoAtual
-from app.pncp.ingestion import ClientePncp, PncpColetaError
+from app.pncp.ingestion import ClientePncp, PncpColetaError, UFS_NORDESTE, tamanho_pagina_do_job
 from app.pncp.jobs import JobReivindicado, NovoJob, PNCP_QUERY_CONFIG_VERSION
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
@@ -19,8 +19,21 @@ def _data(valor: Any) -> datetime | None:
     try: return datetime.fromisoformat(valor.replace("Z", "+00:00"))
     except ValueError: return None
 
-def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None) -> list[NovoJob]:
-    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{uf}:{m}" if uf else f"atualizacao:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:uf:{uf}:modalidade:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": FLOW, "codigoModalidadeContratacao": m, "uf": uf, "tamanhoPagina": 50}, config_version=PNCP_QUERY_CONFIG_VERSION) for uf in (ufs or (None,)) for m in modalidades]
+def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None, tamanho_pagina: int = 50, prioridade: int = 80) -> list[NovoJob]:
+    if inicio.tzinfo is None or fim.tzinfo is None or fim < inicio:
+        raise ValueError("janela com timezone e ordem valida e obrigatoria")
+    if not 1 <= tamanho_pagina <= 50:
+        raise ValueError("tamanho_pagina deve estar entre 1 e 50")
+    if ufs is not None and (not ufs or any(uf not in UFS_NORDESTE for uf in ufs)):
+        raise ValueError("ufs deve conter somente UFs do Nordeste")
+    jobs: list[NovoJob] = []
+    for uf in (ufs or (None,)):
+        for modalidade in modalidades:
+            uf_scope = f":uf:{uf}" if uf is not None else ""
+            scope = f"atualizacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
+            dedupe_key = f"{scope}:config:{PNCP_QUERY_CONFIG_VERSION}"
+            jobs.append(NovoJob("incremental", "CONTRATACAO", "PNCP", scope, dedupe_key, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": FLOW, "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
+    return jobs
 
 def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_hash: str, source_updated_at: datetime | None) -> str:
     external_id = str(item["numeroControlePNCP"])
@@ -32,6 +45,7 @@ def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_
 
 def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> dict[str, int]:
     if job.window_start is None or job.window_end is None: raise ValueError("janela obrigatoria")
+    tamanho_pagina = tamanho_pagina_do_job(job, tamanho_pagina)
     modalidade = int(job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0]) if ":modalidade:" in job.scope_key else int(job.scope_key.rsplit(":", 1)[1]); uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None; pagina = job.page or 1; totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
     while True:
         resposta = cliente.buscar_atualizacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, uf=uf, pagina=pagina, tamanho_pagina=tamanho_pagina)

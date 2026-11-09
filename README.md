@@ -79,6 +79,12 @@ Variáveis usadas pela aplicação:
 | `IBGE_LOCALIDADES_BASE_URL` | Sim | API de localidades do IBGE. |
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
 | `PNCP_BASE_URL` | Não | Base pública de consultas do PNCP; padrão oficial. |
+| `PNCP_SCHEDULER_IMAGE` | Não | Imagem Docker do processo de agendamento PNCP. |
+| `PNCP_SCHEDULER_INTERVAL_SECONDS` | Não | Intervalo do processo que agenda janelas PNCP; padrão `3600`. |
+| `PNCP_SCHEDULER_FLOWS` | Não | Fluxos recorrentes separados por vírgula; padrão `publicacao,atualizacao`. |
+| `PNCP_SCHEDULER_MODALIDADES` / `PNCP_SCHEDULER_UFS` | Não | Dimensões de coleta agendadas; padrões são modalidades prioritárias e UFs do Nordeste. Use `*` em UFs para todas. |
+| `PNCP_SCHEDULER_WINDOW_DAYS` / `PNCP_SCHEDULER_PAGE_SIZE` | Não | Tamanho máximo de cada janela e tamanho da página; padrões `1` dia e `50`. Janelas partem do cursor com overlap. |
+| `PNCP_SCHEDULER_PUBLICATION_PRIORITY` / `PNCP_SCHEDULER_UPDATE_PRIORITY` | Não | Prioridades dos jobs recorrentes; padrões `70` e `80`. |
 | `PNCP_CONNECT_TIMEOUT_SECONDS` | Não | Timeout de conexão PNCP; padrão `10`. |
 | `PNCP_READ_TIMEOUT_SECONDS` | Não | Timeout de leitura PNCP; padrão `30`. |
 | `PNCP_MAX_ATTEMPTS` | Não | Tentativas totais de um job PNCP, incluindo a primeira; padrão `5`. |
@@ -674,6 +680,20 @@ docker compose -f compose.production.yaml exec api pncp coletar-publicacao --dia
 docker compose -f compose.production.yaml exec api pncp status
 docker compose -f compose.production.yaml logs -f pncp-worker-coleta pncp-worker-normalizacao
 ```
+
+O serviço `pncp-scheduler` agenda automaticamente publicação e atualização
+conforme `PNCP_SCHEDULER_*`; ele só grava jobs no PostgreSQL. A coleta continua
+nos workers separados. Cada combinação de fluxo, UF e modalidade usa cursor
+próprio, aplica overlap, e o scheduler não recria uma `dedupe_key` já registrada
+(inclusive para jobs terminais). Para executar um ciclo manual de diagnóstico:
+
+```bash
+docker compose exec api python scripts/pncp_scheduler.py --once
+docker compose up -d pncp-scheduler
+```
+
+Backfill e propostas abertas continuam sendo agendados explicitamente pela CLI,
+pois não fazem parte da recorrência padrão.
 
 Para um backfill, substitua `--dias 1` por `--ano 2026`; para atualizações,
 use `coletar-atualizacao` no lugar de `coletar-publicacao`. Os workers de coleta

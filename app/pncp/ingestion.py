@@ -172,7 +172,8 @@ def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int
         for modalidade in modalidades:
             uf_scope = f":uf:{uf}" if uf is not None else ""
             scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
-            jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": "publicacao", "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
+            dedupe_key = f"{scope}:config:{PNCP_QUERY_CONFIG_VERSION}"
+            jobs.append(NovoJob("incremental", TIPO, FONTE, scope, dedupe_key, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": "publicacao", "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
     return jobs
 
 
@@ -195,7 +196,8 @@ def agendar_backfill_anual(*, ano: int, modalidades: list[int], ufs: tuple[str, 
             for modalidade in modalidades:
                 uf_scope = f":uf:{uf}" if uf is not None else ""
                 scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
-                jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": "publicacao", "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
+                dedupe_key = f"{scope}:config:{PNCP_QUERY_CONFIG_VERSION}"
+                jobs.append(NovoJob("backfill", TIPO, FONTE, scope, dedupe_key, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": "publicacao", "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
         inicio = fim + timedelta(seconds=1)
     return jobs
 
@@ -210,14 +212,23 @@ def agendar_propostas_abertas(*, data_final: datetime, modalidades: list[int] | 
     for modalidade in codigos:
         codigo = str(modalidade) if modalidade is not None else "todas"
         scope = f"propostas-abertas:{data_final.date().isoformat()}:modalidade:{codigo}:tamanho:{tamanho_pagina}"
-        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_end=data_final, page=1, parameters={"flow": "propostas_abertas", "codigoModalidadeContratacao": modalidade, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
+        dedupe_key = f"{scope}:config:{PNCP_QUERY_CONFIG_VERSION}"
+        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, dedupe_key, prioridade, datetime.now(timezone.utc), window_end=data_final, page=1, parameters={"flow": "propostas_abertas", "codigoModalidadeContratacao": modalidade, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
     return jobs
+
+
+def tamanho_pagina_do_job(job: JobReivindicado, padrao: int = 50) -> int:
+    valor = job.parameters.get("tamanhoPagina", padrao)
+    if isinstance(valor, bool) or not isinstance(valor, int) or not 1 <= valor <= 50:
+        raise ValueError("tamanhoPagina do job deve ser um inteiro entre 1 e 50")
+    return valor
 
 
 def coletar_publicacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_pagina: int = 50) -> int:
     """Persiste todas as paginas; qualquer erro aborta o job sem confirmar janela."""
     if job.source != FONTE or job.entity_type != TIPO or job.window_start is None or job.window_end is None:
         raise ValueError("job nao representa uma janela de publicacao PNCP")
+    tamanho_pagina = tamanho_pagina_do_job(job, tamanho_pagina)
     try:
         modalidade = int(job.scope_key.split(":modalidade:", 1)[1].split(":", 1)[0])
         uf = job.scope_key.split(":uf:", 1)[1].split(":", 1)[0] if ":uf:" in job.scope_key else None

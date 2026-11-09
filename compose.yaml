@@ -83,6 +83,16 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  pncp-scheduler:
+    <<: *app-service
+    image: ${PNCP_SCHEDULER_IMAGE:-pncp-scheduler:local}
+    init: true
+    command: ["python", "scripts/pncp_scheduler.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   pncp-worker-coleta:
     <<: *app-service
     image: ${PNCP_COLLECTION_IMAGE:-pncp-worker-coleta:local}

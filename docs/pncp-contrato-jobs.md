@@ -61,6 +61,15 @@ uma vez; RAW, normalização e efeitos derivados precisam ser idempotentes.
 Cursor de fluxo só é confirmado após todas as páginas válidas da janela estarem
 duravelmente persistidas.
 
+O serviço `pncp-scheduler` agenda `publicacao` e `atualizacao` usando uma
+janela independente por fluxo, UF e modalidade. Cada janela tem no máximo
+`PNCP_SCHEDULER_WINDOW_DAYS`; a primeira usa esse tamanho e as seguintes partem
+do cursor confirmado menos o overlap. Atrasos longos são divididos em janelas
+limitadas e recuperados em ciclos sucessivos. Um advisory lock transacional serializa ciclos concorrentes e
+o scheduler consulta todas as ocorrências existentes da `dedupe_key` antes de
+criar outra, inclusive quando a anterior já é terminal. `backfill` e
+`propostas_abertas` permanecem agendamentos explícitos.
+
 ## Schema
 
 O modelo ORM está em `app/core/models.py`; fila e operações estão em
