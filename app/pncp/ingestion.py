@@ -10,7 +10,7 @@ from typing import Any
 import requests
 
 from app.core import orm
-from app.pncp.jobs import JobReivindicado, NovoJob
+from app.pncp.jobs import JobReivindicado, NovoJob, PNCP_QUERY_CONFIG_VERSION
 from app.pncp.protecao import PncpProtegidoError, ProtecaoPncp
 from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
@@ -172,7 +172,7 @@ def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int
         for modalidade in modalidades:
             uf_scope = f":uf:{uf}" if uf is not None else ""
             scope = f"publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
-            jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
+            jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": "publicacao", "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
     return jobs
 
 
@@ -195,7 +195,7 @@ def agendar_backfill_anual(*, ano: int, modalidades: list[int], ufs: tuple[str, 
             for modalidade in modalidades:
                 uf_scope = f":uf:{uf}" if uf is not None else ""
                 scope = f"backfill:{ano}:publicacao:{inicio.date().isoformat()}:{fim.date().isoformat()}{uf_scope}:modalidade:{modalidade}:tamanho:{tamanho_pagina}"
-                jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1))
+                jobs.append(NovoJob("backfill", TIPO, FONTE, scope, scope, 20, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": "publicacao", "codigoModalidadeContratacao": modalidade, "uf": uf, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
         inicio = fim + timedelta(seconds=1)
     return jobs
 
@@ -210,7 +210,7 @@ def agendar_propostas_abertas(*, data_final: datetime, modalidades: list[int] | 
     for modalidade in codigos:
         codigo = str(modalidade) if modalidade is not None else "todas"
         scope = f"propostas-abertas:{data_final.date().isoformat()}:modalidade:{codigo}:tamanho:{tamanho_pagina}"
-        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_end=data_final, page=1))
+        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, scope, prioridade, datetime.now(timezone.utc), window_end=data_final, page=1, parameters={"flow": "propostas_abertas", "codigoModalidadeContratacao": modalidade, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
     return jobs
 
 

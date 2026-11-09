@@ -610,6 +610,12 @@ O banco principal mantém:
 - `raw_pncp_records`, com versões originais JSONB do PNCP, e `ingestion_jobs`,
   cuja criação do job `normalize` é atômica com a gravação RAW.
 
+O contrato persistido de jobs PNCP, incluindo escopo, filtros efetivos,
+`config_version`, estados e leases, está em
+[`docs/pncp-contrato-jobs.md`](docs/pncp-contrato-jobs.md). A migration principal
+`0032_pncp_job_query_contract` adiciona os parâmetros reproduzíveis de consulta
+à fila existente.
+
 A resolução do código interno de município do TCE consulta somente
 `tce_municipios`, associada a `ibge_municipios`. Catálogos ausentes são
 sincronizados pelos comandos de ingestão; uma leitura ou montagem analítica não

@@ -143,6 +143,10 @@ class IngestionJob(MainBase):
     source: Mapped[str] = mapped_column(Text)
     scope_key: Mapped[str] = mapped_column(Text)
     dedupe_key: Mapped[str] = mapped_column(Text)
+    parameters: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    config_version: Mapped[str | None] = mapped_column(Text)
     raw_record_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("raw_pncp_records.id", ondelete="RESTRICT")
     )

@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import json
 import logging
 import time
 from typing import Any
@@ -27,6 +28,7 @@ SUCCEEDED = "SUCCEEDED"
 FAILED = "FAILED"
 QUARANTINED = "QUARANTINED"
 ACTIVE_STATUSES = (PENDING, RUNNING, RETRY_WAIT)
+PNCP_QUERY_CONFIG_VERSION = "v1"
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,8 @@ class NovoJob:
     window_end: datetime | None = None
     page: int | None = None
     raw_record_id: int | None = None
+    parameters: dict[str, Any] = field(default_factory=dict)
+    config_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,8 @@ class JobReivindicado:
     window_start: datetime | None
     window_end: datetime | None
     page: int | None
+    parameters: dict[str, Any] = field(default_factory=dict)
+    config_version: str | None = None
 
 
 def _registrar_evento_session(
@@ -78,6 +84,14 @@ def _validar_novo_job(job: NovoJob) -> None:
         raise ValueError("next_run_at deve incluir timezone")
     if job.max_attempts is not None and job.max_attempts < 1:
         raise ValueError("max_attempts deve ser maior que zero")
+    if not isinstance(job.parameters, dict):
+        raise ValueError("parameters deve ser um objeto JSON")
+    try:
+        json.dumps(job.parameters, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("parameters deve conter somente valores JSON validos") from exc
+    if job.config_version is not None and not job.config_version.strip():
+        raise ValueError("config_version nao pode ser vazia")
 
 
 def agendar_job_session(session: Session, job: NovoJob) -> tuple[int, bool]:
@@ -92,6 +106,7 @@ def agendar_job_session(session: Session, job: NovoJob) -> tuple[int, bool]:
             status=PENDING, next_run_at=job.next_run_at, max_attempts=max_attempts,
             window_start=job.window_start, window_end=job.window_end, page=job.page,
             raw_record_id=job.raw_record_id,
+            parameters=job.parameters, config_version=job.config_version,
         )
         .on_conflict_do_nothing(
             index_elements=[IngestionJob.dedupe_key],
@@ -172,6 +187,7 @@ def reivindicar_proximo_job_session(
         attempts=int(registro["attempts"]), max_attempts=int(registro["max_attempts"]),
         lease_token=registro["lease_token"], raw_record_id=registro["raw_record_id"],
         window_start=registro["window_start"], window_end=registro["window_end"], page=registro["page"],
+        parameters=registro.get("parameters") or {}, config_version=registro.get("config_version"),
     )
     _registrar_evento_session(session, job_id=job.id, event_type="STARTED", attempt=job.attempts)
     return job

@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.core import orm
 from app.core.models import PncpContratacaoAtual
 from app.pncp.ingestion import ClientePncp, PncpColetaError
-from app.pncp.jobs import JobReivindicado, NovoJob
+from app.pncp.jobs import JobReivindicado, NovoJob, PNCP_QUERY_CONFIG_VERSION
 from app.pncp.raw import RegistroRawPncp, salvar_raw_e_agendar_normalizacao_session
 from app.pncp.checkpoints import ChaveCursor, confirmar_janela
 
@@ -20,7 +20,7 @@ def _data(valor: Any) -> datetime | None:
     except ValueError: return None
 
 def agendar_atualizacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None) -> list[NovoJob]:
-    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{uf}:{m}" if uf else f"atualizacao:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:uf:{uf}:modalidade:{m}" if uf else f"atualizacao:{inicio.date()}:{fim.date()}:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1) for uf in (ufs or (None,)) for m in modalidades]
+    return [NovoJob("incremental", "CONTRATACAO", "PNCP", f"atualizacao:{uf}:{m}" if uf else f"atualizacao:{m}", f"atualizacao:{inicio.date()}:{fim.date()}:uf:{uf}:modalidade:{m}", 80, datetime.now(timezone.utc), window_start=inicio, window_end=fim, page=1, parameters={"flow": FLOW, "codigoModalidadeContratacao": m, "uf": uf, "tamanhoPagina": 50}, config_version=PNCP_QUERY_CONFIG_VERSION) for uf in (ufs or (None,)) for m in modalidades]
 
 def salvar_versao_atual_session(session: Session, item: dict[str, Any], payload_hash: str, source_updated_at: datetime | None) -> str:
     external_id = str(item["numeroControlePNCP"])
