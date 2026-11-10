@@ -110,6 +110,16 @@ jobs:
       - name: Check out validated source
         uses: actions/checkout@v6
 
+      - name: Consultar chave pública da VPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh-keyscan -T 10 -t ed25519 -p 22 "$VPS_HOST" > "$RUNNER_TEMP/vps_host_key.pub" 2> "$RUNNER_TEMP/ssh-keyscan.log" || true
+          cat "$RUNNER_TEMP/ssh-keyscan.log" >&2
+          test -s "$RUNNER_TEMP/vps_host_key.pub"
+          cat "$RUNNER_TEMP/vps_host_key.pub"
+          ssh-keygen -lf "$RUNNER_TEMP/vps_host_key.pub"
+
       - name: Configure and verify SSH
         shell: bash
         run: |
