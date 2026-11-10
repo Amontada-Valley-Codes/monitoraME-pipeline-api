@@ -25,6 +25,14 @@ def obter_previa_municipal(
     codigo_tce: Annotated[str, Path(pattern=r"^[0-9]{3}$", description="Código do município no TCE-CE, com três dígitos.")],
     data_inicial: Annotated[str, Query(pattern=r"^\d{4}-\d{2}-\d{2}$")],
     data_final: Annotated[str, Query(pattern=r"^\d{4}-\d{2}-\d{2}$")],
+    exercicio_orcamentario: Annotated[
+        int | None,
+        Query(
+            ge=1900,
+            le=9999,
+            description="Ano do orçamento; por padrão usa o ano de data_inicial.",
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     try:
         inicio = date.fromisoformat(data_inicial)
@@ -39,10 +47,11 @@ def obter_previa_municipal(
         raise HTTPException(status_code=404, detail="Município do Ceará não encontrado no catálogo local.")
 
     try:
-        overview = analisys.consultar_overview_municipal_tce(
+        overview = analisys.consultar_overview_pagamentos_tce(
             data_inicial=data_inicial,
             data_final=data_final,
             codigo_municipio=municipio["codigo_municipio_tce"],
+            exercicio_orcamentario=exercicio_orcamentario or inicio.year,
             incluir_resumo_compras=True,
         )
     except analisys.CompetenciasTceIndisponiveisError as error:
@@ -57,7 +66,11 @@ def obter_previa_municipal(
             "nome": municipio["nome"],
             "uf": municipio["uf"],
         },
-        "periodo": {"data_inicial": data_inicial, "data_final": data_final},
+        "periodo": {
+            "data_inicial": data_inicial,
+            "data_final": data_final,
+            "exercicio_orcamentario": exercicio_orcamentario or inicio.year,
+        },
         "fonte": "TCE-CE",
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,

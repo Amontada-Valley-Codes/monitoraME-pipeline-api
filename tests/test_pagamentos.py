@@ -57,6 +57,8 @@ class PagamentosTest(unittest.TestCase):
         self.assertEqual(rows[0]["valor_centavos"], 1000000)
         self.assertEqual(rows[0]["cnpj"], "02530104000133")
         self.assertEqual(rows[0]["data_pagamento"], "2026-02-02")
+        self.assertEqual(rows[0]["chave_pagamento"][3], "01")
+        self.assertEqual(rows[0]["chave_pagamento"][5:], ["0001", "001", "0002"])
         self.assertEqual(audit["pagamentos_sem_empenho"], 0)
 
     def test_filtros_financeiros_e_elemento_nas_posicoes_corretas(self):
@@ -108,7 +110,7 @@ class PagamentosTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identificar a Camara"):
             p.conciliar_pagamentos([], [], ORGAOS[1:], codigo_municipio="004", exercicio=2025)
 
-    def test_classificacao_nao_trata_tipo_unidade_como_codigo_universal(self):
+    def test_classificacao_da_camara_segue_codigo_tipo_unidade_do_cadastro(self):
         orgaos = [
             {"codigo_orgao": "01", "nome_orgao": "Camara Municipal", "codigo_tipo_unidade": "03"},
             {"codigo_orgao": "02", "nome_orgao": "Secretaria de Educacao", "codigo_tipo_unidade": "02"},
@@ -117,9 +119,9 @@ class PagamentosTest(unittest.TestCase):
         ps = [pagamento(codigo_orgao="01"), pagamento(codigo_orgao="02")]
         rows, audit = p.conciliar_pagamentos(es, ps, orgaos, codigo_municipio="004", exercicio=2025)
         self.assertEqual(len(rows), 1)
-        self.assertEqual(audit["orgaos_camara"], ["01"])
-        self.assertEqual(audit["orgaos_executivo_municipal"], ["02"])
-        self.assertEqual(audit["classificacoes_orgaos"][0]["regra"], "NOME_ORGAO_NORMALIZADO")
+        self.assertEqual(audit["orgaos_camara"], ["02"])
+        self.assertEqual(audit["orgaos_executivo_municipal"], ["01"])
+        self.assertEqual(audit["classificacoes_orgaos"][0]["regra"], "CODIGO_TIPO_UNIDADE_02")
 
     def test_classificacao_reconhece_variacoes_textuais_do_executivo(self):
         for orgao in [
@@ -131,14 +133,14 @@ class PagamentosTest(unittest.TestCase):
                 self.assertEqual(classificacao["classificacao"], "EXECUTIVO_MUNICIPAL")
                 self.assertEqual(classificacao["confianca"], "ALTA")
 
-    def test_documentos_nao_cnpj_preservam_total(self):
+    def test_documentos_nao_cnpj_ficam_fora_do_recorte_validado(self):
         for tipo, doc in [("2", "02530104000133"), ("1", "2530104000133"),
                           ("1", "02530104000134"), ("1", "02530104000133!")]:
             with self.subTest(doc=doc):
-                rows, _ = conciliar([empenho(codigo_tipo_negociante=tipo, numero_documento_negociante=doc)], [pagamento()])
+                rows, audit = conciliar([empenho(codigo_tipo_negociante=tipo, numero_documento_negociante=doc)], [pagamento()])
                 result = p.resumir_pagamentos(rows, {})
-                self.assertEqual(result["controle_financeiro"]["por_categoria_centavos"]["NAO_CNPJ"], 1000000)
-                self.assertEqual(result["pendencias"][0]["documento_original"], doc)
+                self.assertEqual(result["controle_financeiro"]["total_centavos"], 0)
+                self.assertEqual(audit["excluidos"], {"fornecedor_nao_cnpj": 1})
 
     def test_classificacao_local_porte_me_inclui_mei_sem_inferencia(self):
         cache = {
@@ -155,6 +157,7 @@ class PagamentosTest(unittest.TestCase):
         cadastros = p.classificar_fornecedores(rows, cache)
         result = p.resumir_pagamentos(rows, cadastros)
         self.assertEqual(result["total_me_centavos"], 2000000)
+        self.assertEqual(result["total_mpe_centavos"], 2000000)
         self.assertTrue(result["classificacao_completa"])
         self.assertIsNone(cadastros["02530104000133"]["referencia_base_cadastral"])
         self.assertEqual(result["fornecedores_me"][0]["quantidade_pagamentos"], 2)
@@ -213,13 +216,9 @@ class PagamentosTest(unittest.TestCase):
         self.assertEqual(result["total_me_centavos"], 88188006)
         self.assertEqual(sum(result["controle_financeiro"]["por_categoria_centavos"].values()), 108328071)
 
-    def test_conferencia_portal_por_elemento_so_no_recorte_referenciado(self):
-        es, ps = [], []
-        for indice, (elemento, valor) in enumerate(p.REFERENCIA_PORTAL_ACARAU_2025.items()):
-            numero = f"{indice + 1:04d}"
-            es.append(empenho(numero_empenho=numero, codigo_elemento_despesa=f"3399{elemento}00"))
-            ps.append(pagamento(numero_empenho=numero, numero_nota_pagamento=numero,
-                                valor_nota_pagamento=f"{valor / 100:.2f}"))
+    def test_conferencia_portal_nao_valida_coleta_sintetica(self):
+        es = [empenho()]
+        ps = [pagamento(valor_nota_pagamento="1.00")]
         coleta = {"codigo_municipio": "004", "exercicio": 2025, "referencia_final": "2026-09",
                   "coleta_iniciada_em": "inicio", "coleta_concluida_em": "fim",
                   "orgaos": ORGAOS, "empenhos": es, "pagamentos": ps}
@@ -227,18 +226,39 @@ class PagamentosTest(unittest.TestCase):
             codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
             consultar_porte=False, coleta=coleta,
         )
-        self.assertEqual(resultado["conferencia_portal"]["divergencia_centavos_por_elemento"],
-                         {elemento: 0 for elemento in p.REFERENCIA_PORTAL_ACARAU_2025})
-        self.assertTrue(resultado["conferencia_portal"]["bate"])
+        self.assertFalse(resultado["conferencia_portal"]["bate"])
         self.assertFalse(resultado["indicador_me_validado"])
-        self.assertEqual(resultado["controle_financeiro"]["total_centavos"], 13_531_152_944)
-        ps[0]["valor_nota_pagamento"] = "66318441.20"
-        divergente = p.consultar_pagamentos_prefeitura(
-            codigo_municipio="004", exercicio=2025, referencia_final="2026-09",
-            consultar_porte=False, coleta=coleta,
-        )
-        self.assertFalse(divergente["conferencia_portal"]["bate"])
-        self.assertFalse(divergente["indicador_me_validado"])
+        self.assertEqual(resultado["controle_financeiro"]["total_centavos"], 100)
+
+    def test_mpe_e_calculada_separadamente_de_me(self):
+        es = [
+            empenho(numero_empenho="0001", numero_documento_negociante="02530104000133"),
+            empenho(numero_empenho="0002", numero_documento_negociante="17016110000144"),
+            empenho(numero_empenho="0003", numero_documento_negociante="26940943000198"),
+        ]
+        ps = [
+            pagamento(numero_empenho="0001", numero_nota_pagamento="0001", valor_nota_pagamento="1.00"),
+            pagamento(numero_empenho="0002", numero_nota_pagamento="0002", valor_nota_pagamento="2.00"),
+            pagamento(numero_empenho="0003", numero_nota_pagamento="0003", valor_nota_pagamento="3.00"),
+        ]
+        rows, _ = conciliar(es, ps)
+        resumo = p.resumir_pagamentos(rows, {
+            "02530104000133": {
+                "porte_codigo": "01", "indicador_mei": False,
+                "situacao_classificacao": "ok",
+            },
+            "17016110000144": {
+                "porte_codigo": "03", "indicador_mei": False,
+                "situacao_classificacao": "ok",
+            },
+            "26940943000198": {
+                "porte_codigo": "05", "indicador_mei": True,
+                "situacao_classificacao": "ok",
+            },
+        })
+        self.assertEqual(resumo["total_me_centavos"], 100)
+        self.assertEqual(resumo["total_mpe_centavos"], 600)
+        self.assertNotEqual(resumo["total_me_centavos"], resumo["total_mpe_centavos"])
 
     @patch.object(coleta_pagamentos.tce, "buscar_documentos_exercicio")
     def test_coleta_ano_seguinte_exercicio_fixo_e_mes_vazio_nao_interrompe(self, buscar):
@@ -291,6 +311,30 @@ class PagamentosTest(unittest.TestCase):
     def test_codigos_receita_normalizados_sem_classificar_codigo_desconhecido(self):
         for entrada, saida in [("01", "ME"), (1, "ME"), ("03", "EPP"), ("05", "DEMAIS"), ("00", None), (2, None)]:
             self.assertEqual(normalizar_porte_empresarial(entrada), saida)
+
+    def test_rota_pagamentos_preserva_exercicio_e_converte_referencia_em_periodo(self):
+        from app.api.endpoints import pipeline
+
+        with patch.object(
+            pipeline.analisys,
+            "consultar_overview_pagamentos_tce",
+            return_value={"controle_financeiro": {"total_centavos": 1}},
+        ) as consultar:
+            resultado = pipeline.tce_pagamentos_overview(
+                codigo_municipio="004",
+                exercicio=2025,
+                referencia_final="2026-09",
+                data_inicial=None,
+                data_final=None,
+            )
+
+        consultar.assert_called_once_with(
+            data_inicial="2025-01-01",
+            data_final="2026-09-30",
+            codigo_municipio="004",
+            exercicio_orcamentario=2025,
+        )
+        self.assertEqual(resultado["controle_financeiro"]["total_centavos"], 1)
 
 if __name__ == "__main__":
     unittest.main()

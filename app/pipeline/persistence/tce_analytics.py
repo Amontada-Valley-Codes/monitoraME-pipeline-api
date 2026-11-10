@@ -116,6 +116,7 @@ def carregar_snapshot_pagamentos_municipais(
     codigo_municipio_tce: str,
     data_inicial: date,
     data_final: date,
+    exercicio_orcamento: int | None = None,
 ) -> SnapshotPagamentosTce:
     """Le o snapshot municipal publicado, sem atualizar fontes ou tabelas."""
     competencias_publicadas: list[str] = []
@@ -124,6 +125,7 @@ def carregar_snapshot_pagamentos_municipais(
             codigo_municipio_tce=codigo_municipio_tce,
             data_inicial=data_inicial,
             data_final=data_final,
+            exercicio_orcamento=exercicio_orcamento,
             competencias_publicadas=competencias_publicadas,
         )
     )

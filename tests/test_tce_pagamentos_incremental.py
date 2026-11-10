@@ -72,7 +72,59 @@ class FakeSession:
 
 
 class IngestaoIncrementalPagamentosTest(unittest.TestCase):
-    def test_analise_ignora_pagamento_sem_empenho_publicado(self):
+    def test_analise_deduplica_repeticao_identica_e_rejeita_conflito(self):
+        run = SimpleNamespace(id=1, competencia="2025-01")
+        classificacoes = [
+            SimpleNamespace(codigo_orgao="01", classificacao="EXECUTIVO_MUNICIPAL"),
+            SimpleNamespace(codigo_orgao="02", classificacao="CAMARA"),
+        ]
+        base_pagamento = {
+            "chave_empenho": "empenho-1", "run_id": 1,
+            "chave_pagamento": "pagamento-1", "codigo_orgao": "01",
+            "estado_de_estornado": "0", "data_referencia_doc": 202501,
+            "data_nota_pagamento": date(2025, 1, 15),
+            "valor_nota_pagamento_centavos": 1000,
+        }
+        empenho = SimpleNamespace(
+            chave_empenho="empenho-1", codigo_elemento_despesa="33903000",
+            cnpj_fornecedor="02530104000133",
+            documento_fornecedor="02530104000133",
+            tipo_documento_fornecedor="1", nome_fornecedor="Fornecedor",
+            valor_empenhado_centavos=1000,
+        )
+
+        def executar(pagamentos):
+            sessao = MagicMock()
+            sessao.scalars.side_effect = [
+                SimpleNamespace(all=lambda: [run]),
+                SimpleNamespace(all=lambda: classificacoes),
+                SimpleNamespace(all=lambda: pagamentos),
+            ]
+            sessao.execute.return_value.all.return_value = [(empenho, "2025-01")]
+            with (
+                patch.object(persistence.database, "init_db"),
+                patch.object(
+                    persistence.orm, "main_session", return_value=nullcontext(sessao)
+                ),
+            ):
+                return persistence.listar_pagamentos_para_analise(
+                    codigo_municipio_tce="004", exercicio_orcamento=202500,
+                    data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
+                )
+
+        registros, ausentes = executar([
+            SimpleNamespace(**base_pagamento), SimpleNamespace(**base_pagamento),
+        ])
+        self.assertEqual(ausentes, [])
+        self.assertEqual(len(registros), 1)
+
+        conflitante = {**base_pagamento, "valor_nota_pagamento_centavos": 2000}
+        with self.assertRaisesRegex(ValueError, "conteudo conflitante"):
+            executar([
+                SimpleNamespace(**base_pagamento), SimpleNamespace(**conflitante),
+            ])
+
+    def test_analise_rejeita_pagamento_sem_empenho_publicado(self):
         run = SimpleNamespace(id=1, competencia="2025-01")
         classificacoes = [
             SimpleNamespace(codigo_orgao="01", classificacao="EXECUTIVO_MUNICIPAL", confianca="ALTA"),
@@ -81,6 +133,7 @@ class IngestaoIncrementalPagamentosTest(unittest.TestCase):
         pagamentos = [
             SimpleNamespace(
                 chave_empenho=chave, run_id=1, chave_pagamento=f"pagamento-{chave}",
+                codigo_orgao="01", estado_de_estornado="0",
                 data_referencia_doc=202501, data_nota_pagamento=date(2025, 1, 15),
                 valor_nota_pagamento_centavos=valor,
             )
@@ -90,6 +143,7 @@ class IngestaoIncrementalPagamentosTest(unittest.TestCase):
             chave_empenho="presente", codigo_elemento_despesa="33903000",
             cnpj_fornecedor="12345678000100", documento_fornecedor="12345678000100",
             tipo_documento_fornecedor="2", nome_fornecedor="Fornecedor",
+            valor_empenhado_centavos=1000,
         )
         sessao = MagicMock()
         sessao.scalars.side_effect = [
@@ -103,35 +157,62 @@ class IngestaoIncrementalPagamentosTest(unittest.TestCase):
             patch.object(persistence.database, "init_db"),
             patch.object(persistence.orm, "main_session", return_value=nullcontext(sessao)),
         ):
-            resultado, ausentes = persistence.listar_pagamentos_para_analise(
-                codigo_municipio_tce="004", exercicio_orcamento=202500,
-                data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
-            )
+            with self.assertRaisesRegex(ValueError, "sem empenho publicado"):
+                persistence.listar_pagamentos_para_analise(
+                    codigo_municipio_tce="004", exercicio_orcamento=202500,
+                    data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
+                )
 
-        self.assertEqual(ausentes, [])
-        self.assertEqual(len(resultado), 1)
-        self.assertEqual(resultado[0]["chave_empenho"], "presente")
-        self.assertEqual(resultado[0]["valor_centavos"], 1000)
+    def test_coleta_divide_por_orgao_e_unidade_quando_teto_e_atingido(self):
+        def registro(numero, unidade):
+            return {
+                "numero": str(numero),
+                "codigo_municipio": "004",
+                "exercicio_orcamento": 202500,
+                "data_referencia_doc": 202602,
+                "codigo_orgao": "01",
+                "codigo_unidade_orcamentaria": unidade,
+            }
 
-    def test_coleta_pagina_todas_as_notas_e_preserva_orcamento_202500_em_referencia_202602(self):
-        paginas = [
-            [{"numero": str(i)} for i in range(1000)],
-            [{"numero": str(i)} for i in range(1000, 2000)],
-            [{"numero": str(i)} for i in range(2000, 2005)],
+        unidade_01 = [registro(i, "01") for i in range(600)]
+        unidade_02 = [registro(i, "02") for i in range(600, 1005)]
+        completos = unidade_01 + unidade_02
+        pagina_limitada = completos[:1000]
+        orgaos = [
+            {"codigo_orgao": "01", "codigo_tipo_unidade": "01"},
+            {"codigo_orgao": "77", "codigo_tipo_unidade": "02"},
+        ]
+        unidades = [
+            {"codigo_orgao": "01", "codigo_unidade_orcamentaria": "01"},
+            {"codigo_orgao": "01", "codigo_unidade_orcamentaria": "02"},
         ]
 
         with (
-            patch("app.pipeline.ingestion.tce.buscar_dados_tce", side_effect=[{"elements": p} for p in paginas]) as buscar,
-            patch("app.pipeline.ingestion.pagination.time.sleep"),
+            patch(
+                "app.pipeline.ingestion.tce.buscar_documentos_exercicio",
+                side_effect=[orgaos, unidades],
+            ),
+            patch(
+                "app.pipeline.ingestion.tce.buscar_dados_tce",
+                side_effect=[
+                    {"elements": pagina_limitada},
+                    {"elements": pagina_limitada},
+                    {"elements": unidade_01},
+                    {"elements": unidade_02},
+                ],
+            ) as buscar,
             patch("app.core.logging.log_database.registrar_log_ingestao"),
         ):
             registros = tce.buscar_notas_pagamentos(
                 "2026-02", exercicio_orcamento=2025, codigo_municipio="004",
             )
 
-        self.assertEqual(len(registros), 2005)
-        self.assertEqual(len({item["numero"] for item in registros}), 2005)
-        self.assertEqual([call.args[1]["$start_index"] for call in buscar.call_args_list], [0, 1000, 2000])
+        self.assertEqual(len(registros), 1005)
+        self.assertEqual(len({item["numero"] for item in registros}), 1005)
+        self.assertEqual(
+            [call.args[1]["$start_index"] for call in buscar.call_args_list],
+            [0, 0, 0, 0],
+        )
         for call in buscar.call_args_list:
             self.assertEqual(call.args[1]["codigo_municipio"], "004")
             self.assertEqual(call.args[1]["exercicio_orcamento"], 202500)

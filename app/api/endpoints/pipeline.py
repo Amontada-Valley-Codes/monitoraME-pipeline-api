@@ -1,4 +1,6 @@
 import logging
+from calendar import monthrange
+from datetime import date
 from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -74,12 +76,12 @@ def _erro_pipeline(error: Exception) -> HTTPException:
     tags=["Indicadores TCE-CE"],
     summary="Calcula participação por porte empresarial por mês",
     description=(
-        "Calcula quantidade, valor final das despesas e percentual mensal por porte "
-        "empresarial usando somente competências publicadas no banco local."
+        "Calcula quantidade, valor pago e percentual mensal por porte empresarial "
+        "usando notas de pagamento nao estornadas publicadas no banco local."
     ),
     response_description=(
         "Objeto com `dados`, uma série mensal por porte contendo quantidade, valor "
-        "líquido empenhado e percentual; inclui `totais`, competências processadas, "
+        "pago e percentual; inclui `totais`, competências processadas, "
         "parâmetros, `limite_resposta` e metadados comuns de disponibilidade, "
         "defasagem e qualidade. Valores monetários usam centavos."
     ),
@@ -91,6 +93,14 @@ def tce_kpi_portes_por_mes(
         str,
         Query(description="Código do município no TCE-CE."),
     ] = CODIGO_MUNICIPIO_TCE_PADRAO,
+    exercicio_orcamentario: Annotated[
+        int | None,
+        Query(
+            description="Ano do orçamento, independente da data do pagamento.",
+            ge=1900,
+            le=9999,
+        ),
+    ] = None,
     limite: Annotated[
         int | None,
         Query(
@@ -106,7 +116,80 @@ def tce_kpi_portes_por_mes(
             data_inicial=data_inicial,
             data_final=data_final,
             codigo_municipio=codigo_municipio,
+            exercicio_orcamentario=exercicio_orcamentario,
             limite=limite,
+        )
+    except Exception as error:
+        raise _erro_pipeline(error) from error
+
+
+def _resolver_periodo_pagamentos(
+    *,
+    exercicio: int,
+    referencia_final: str | None,
+    data_inicial: str | None,
+    data_final: str | None,
+) -> tuple[str, str]:
+    if referencia_final is not None and (data_inicial is not None or data_final is not None):
+        raise ValueError(
+            "Use referencia_final ou o par data_inicial/data_final, nao ambos."
+        )
+    if referencia_final is not None:
+        try:
+            ano, mes = map(int, referencia_final.split("-"))
+            ultimo_dia = monthrange(ano, mes)[1]
+        except (TypeError, ValueError) as error:
+            raise ValueError("referencia_final deve usar o formato YYYY-MM.") from error
+        return f"{exercicio:04d}-01-01", f"{ano:04d}-{mes:02d}-{ultimo_dia:02d}"
+    if data_inicial is None or data_final is None:
+        raise ValueError(
+            "Informe referencia_final ou ambos data_inicial e data_final."
+        )
+    inicio, fim = date.fromisoformat(data_inicial), date.fromisoformat(data_final)
+    if inicio > fim:
+        raise ValueError("data_inicial deve ser menor ou igual a data_final.")
+    return inicio.isoformat(), fim.isoformat()
+
+
+@router.get(
+    "/tce/pagamentos/overview",
+    tags=["Pagamentos TCE-CE"],
+    summary="Consulta pagamentos da Prefeitura por orçamento e período",
+    description=(
+        "Soma valor_nota_pagamento de notas nao estornadas, exclui a Camara pelo "
+        "cadastro de orgaos e aplica os sete elementos monitorados. O exercicio "
+        "orcamentario e independente do periodo, que incide sobre data_nota_pagamento "
+        "com limites inclusivos. Usa somente snapshots locais publicados."
+    ),
+)
+def tce_pagamentos_overview(
+    codigo_municipio: Annotated[str, Query(pattern=r"^[0-9]{3}$")],
+    exercicio: Annotated[int, Query(ge=1900, le=9999)],
+    referencia_final: Annotated[
+        str | None,
+        Query(
+            pattern=r"^[0-9]{4}-[0-9]{2}$",
+            description=(
+                "Compatibilidade: consulta de janeiro do exercicio ate o ultimo "
+                "dia do mes informado."
+            ),
+        ),
+    ] = None,
+    data_inicial: Annotated[str | None, Query(pattern=DATA_ISO_PATTERN)] = None,
+    data_final: Annotated[str | None, Query(pattern=DATA_ISO_PATTERN)] = None,
+) -> dict[str, Any]:
+    try:
+        inicio, fim = _resolver_periodo_pagamentos(
+            exercicio=exercicio,
+            referencia_final=referencia_final,
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
+        return analisys.consultar_overview_pagamentos_tce(
+            data_inicial=inicio,
+            data_final=fim,
+            codigo_municipio=codigo_municipio,
+            exercicio_orcamentario=exercicio,
         )
     except Exception as error:
         raise _erro_pipeline(error) from error
@@ -117,10 +200,9 @@ def tce_kpi_portes_por_mes(
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview estadual de Microempresas (ME)",
     description=(
-        "Calcula sobre notas de pagamento publicadas no banco local; empenhos fornecem "
-        "natureza e fornecedor, sem compor o valor. O recorte considera somente ME; "
-        "MEI, EPP e demais portes integram Outros. O porte vem do cadastro enriquecido "
-        "disponivel e nao comprova classificacao historica. A rota nao consulta fontes externas."
+        "Calcula empenhos liquidos (valor empenhado menos anulacoes) publicados no "
+        "banco local. Nao representa valor pago. Para pagamentos, use "
+        "/pipeline/tce/pagamentos/overview. A rota nao consulta fontes externas."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
@@ -157,10 +239,9 @@ def tce_overview(
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de um municipio por periodo",
     description=(
-        "Calcula o overview municipal sobre notas de pagamento publicadas. Por padrao, "
-        "mostra todos os portes; company_sizes restringe o calculo. Empenhos fornecem "
-        "natureza e fornecedor, sem compor valor. A rota nao consulta fontes externas e "
-        "falha quando faltam lotes mensais publicados ou empenhos de ligacao."
+        "Calcula o overview municipal de empenhos liquidos publicados. Por padrao, "
+        "mostra todos os portes; company_sizes restringe o calculo. Nao representa "
+        "valor pago; consumidores de pagamentos devem usar /tce/pagamentos/overview."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
@@ -363,8 +444,9 @@ def _erro_empenhos(
     tags=["Despesas TCE-CE"],
     summary="Lista despesas publicadas armazenadas",
     description=(
-        "Lista e pagina despesas dos sete elementos monitorados usando somente "
-        "lotes publicados e fornecedores armazenados no banco local."
+        "Lista e pagina empenhos liquidos dos sete elementos monitorados usando "
+        "somente lotes publicados. valor_final_centavos e o campo legado para "
+        "valor empenhado menos anulacoes; nao representa pagamentos."
     ),
     response_description=("Objeto com items de despesas, fornecedor, elemento e somente valor final em centavos, mais paginacao, ordenacao e filtros."),
     response_model=None,
@@ -415,7 +497,8 @@ def tce_empenhos(
     tags=["Despesas TCE-CE"],
     summary="Detalha uma despesa publicada pela chave canonica",
     description=(
-        "Retorna os dados da despesa e seu valor final em centavos, sem consultar fontes externas."
+        "Retorna o empenho e seu valor liquido (empenhado menos anulacoes) em "
+        "centavos. Nao representa valor pago e nao consulta fontes externas."
     ),
     response_description=("Objeto da despesa com fornecedor, municipio, valor final em centavos, classificacao orcamentaria e referencias de contrato e licitacao."),
     response_model=None,

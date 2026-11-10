@@ -1,4 +1,6 @@
+from collections import Counter
 from decimal import Decimal
+import json
 import logging
 import time
 from typing import Any
@@ -281,14 +283,183 @@ def buscar_notas_pagamentos(
         etapa="buscar_notas_pagamentos",
         parametros=parametros_log,
         totais={"endpoint": ENDPOINT_NOTAS_PAGAMENTOS},
-        executar=lambda: listar_registros(
+        executar=lambda: _buscar_documentos_dcd_sem_truncamento(
             ENDPOINT_NOTAS_PAGAMENTOS,
             parametros_api,
-            filtrar_por_codigo_despesa=False,
-            preservar_decimais=True,
-            falhar_ao_esgotar=True,
+            exercicio=exercicio_orcamento,
         ),
     )
+
+
+def _assinaturas_documentos(registros: list[dict[str, Any]]) -> Counter[str]:
+    return Counter(
+        json.dumps(item, sort_keys=True, ensure_ascii=False, default=str)
+        for item in registros
+    )
+
+
+def _buscar_pagina_dcd(
+    endpoint: str,
+    parametros: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Lê uma partição limitada; atingir o teto exige subdivisão comprovável."""
+    resposta = buscar_dados_tce(
+        endpoint,
+        {
+            **parametros,
+            "$count": TAMANHO_PAGINA,
+            "$start_index": 0,
+        },
+        preservar_decimais=True,
+        falhar_ao_esgotar=True,
+    )
+    registros = resposta.get("elements")
+    if not isinstance(registros, list) or any(
+        not isinstance(item, dict) for item in registros
+    ):
+        raise TceIndisponivelError(
+            f"Resposta invalida do TCE-CE: {endpoint}; elements deve ser uma lista de objetos."
+        )
+    if len(registros) > TAMANHO_PAGINA:
+        raise TceIndisponivelError(
+            f"{endpoint}: resposta excedeu o limite esperado de {TAMANHO_PAGINA} registros."
+        )
+    for registro in registros:
+        for campo in (
+            "codigo_municipio",
+            "exercicio_orcamento",
+            "data_referencia_doc",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+        ):
+            if campo in parametros and str(registro.get(campo, "")).strip() != str(
+                parametros[campo]
+            ).strip():
+                raise TceIndisponivelError(
+                    f"{endpoint}: resposta fora do filtro {campo}."
+                )
+    return registros
+
+
+def _buscar_documentos_dcd_sem_truncamento(
+    endpoint: str,
+    parametros: dict[str, Any],
+    *,
+    exercicio: int,
+) -> list[dict[str, Any]]:
+    """Replica a estratégia comprovada do ``dados`` para o limite do SIM.
+
+    A paginação por ``$start_index`` omitiu documentos na validação do projeto
+    de referência. Quando a consulta mensal atinge o teto, a coleta é refeita
+    por órgão e, se necessário, por unidade orçamentária.
+    """
+    codigo_municipio = str(parametros["codigo_municipio"]).strip()
+    orgaos = buscar_documentos_exercicio(
+        "orgaos", codigo_municipio=codigo_municipio, exercicio=exercicio
+    )
+    unidades = buscar_documentos_exercicio(
+        "unidades_orcamentarias",
+        codigo_municipio=codigo_municipio,
+        exercicio=exercicio,
+    )
+    if not orgaos or len(orgaos) >= TAMANHO_PAGINA or len(unidades) >= TAMANHO_PAGINA:
+        raise TceIndisponivelError(
+            "Cadastro de orgaos/unidades ausente ou possivelmente incompleto."
+        )
+
+    codigos_camara = {
+        str(item.get("codigo_orgao", "")).strip()
+        for item in orgaos
+        if str(item.get("codigo_tipo_unidade", "")).strip().zfill(2) == "02"
+    }
+    if not codigos_camara:
+        raise TceIndisponivelError(
+            "Camara nao identificada no cadastro pelo codigo_tipo_unidade=02."
+        )
+    if any(
+        str(item.get("codigo_orgao", "")).strip() in codigos_camara
+        and str(item.get("codigo_tipo_unidade", "")).strip().zfill(2) != "02"
+        for item in orgaos
+    ):
+        raise TceIndisponivelError(
+            "Cadastro de orgaos com classificacao conflitante para a Camara."
+        )
+    codigos_executivo = sorted(
+        {
+            str(item.get("codigo_orgao", "")).strip()
+            for item in orgaos
+            if str(item.get("codigo_orgao", "")).strip() not in codigos_camara
+        }
+    )
+    if not codigos_executivo or any(not codigo for codigo in codigos_executivo):
+        raise TceIndisponivelError("Cadastro de orgaos sem Executivo municipal valido.")
+
+    mensal = _buscar_pagina_dcd(endpoint, parametros)
+    mensal_executivo = [
+        item
+        for item in mensal
+        if str(item.get("codigo_orgao", "")).strip() not in codigos_camara
+    ]
+    desconhecidos = {
+        str(item.get("codigo_orgao", "")).strip() for item in mensal_executivo
+    } - set(codigos_executivo)
+    if desconhecidos:
+        raise TceIndisponivelError(
+            f"{endpoint}: orgaos fora do cadastro: {sorted(desconhecidos)}."
+        )
+    if len(mensal) < TAMANHO_PAGINA:
+        return sorted(
+            mensal_executivo,
+            key=lambda item: str(item.get("codigo_orgao", "")).strip(),
+        )
+
+    por_orgao: list[dict[str, Any]] = []
+    for codigo_orgao in codigos_executivo:
+        parametros_orgao = {**parametros, "codigo_orgao": codigo_orgao}
+        registros_orgao = _buscar_pagina_dcd(endpoint, parametros_orgao)
+        if len(registros_orgao) < TAMANHO_PAGINA:
+            por_orgao.extend(registros_orgao)
+            continue
+
+        codigos_unidade = sorted(
+            {
+                str(item.get("codigo_unidade_orcamentaria", "")).strip()
+                for item in unidades
+                if str(item.get("codigo_orgao", "")).strip() == codigo_orgao
+            }
+        )
+        if not codigos_unidade or any(not codigo for codigo in codigos_unidade):
+            raise TceIndisponivelError(
+                f"{endpoint}/{codigo_orgao}: limite atingido sem unidades cadastradas."
+            )
+        partes_orgao: list[dict[str, Any]] = []
+        for codigo_unidade in codigos_unidade:
+            registros_unidade = _buscar_pagina_dcd(
+                endpoint,
+                {
+                    **parametros_orgao,
+                    "codigo_unidade_orcamentaria": codigo_unidade,
+                },
+            )
+            if len(registros_unidade) >= TAMANHO_PAGINA:
+                raise TceIndisponivelError(
+                    f"{endpoint}/{codigo_orgao}/{codigo_unidade}: limite atingido; "
+                    "coleta nao comprovadamente completa."
+                )
+            partes_orgao.extend(registros_unidade)
+        if _assinaturas_documentos(registros_orgao) - _assinaturas_documentos(
+            partes_orgao
+        ):
+            raise TceIndisponivelError(
+                f"{endpoint}/{codigo_orgao}: divisao por unidade perdeu registros."
+            )
+        por_orgao.extend(partes_orgao)
+
+    if _assinaturas_documentos(mensal_executivo) - _assinaturas_documentos(por_orgao):
+        raise TceIndisponivelError(
+            f"{endpoint}: divisao por orgao perdeu registros da consulta mensal."
+        )
+    return por_orgao
 
 
 def buscar_contratacoes(

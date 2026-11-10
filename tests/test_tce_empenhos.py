@@ -96,6 +96,11 @@ class EmpenhosTest(unittest.TestCase):
 
         self.assertEqual(resultado["items"][0]["display_id"], "EMP-2025-27000294")
         self.assertEqual(resultado["items"][0]["valores"]["valor_final_centavos"], 2_788_141_002)
+        self.assertEqual(resultado["measure"], "NET_COMMITMENT")
+        self.assertEqual(
+            resultado["items"][0]["valores"]["valor_empenho_liquido_centavos"],
+            2_788_141_002,
+        )
         self.assertEqual(resultado["pagination"]["total_pages"], 2)
         self.assertFalse(resultado["pagination"]["has_next"])
         _, kwargs = listar.call_args
@@ -129,7 +134,11 @@ class EmpenhosTest(unittest.TestCase):
 
         self.assertEqual(resultado["classificacao_orcamentaria"]["exercicio"], 2025)
         self.assertEqual(resultado["publicacao"]["status"], "PUBLICADO")
-        self.assertEqual(resultado["valores"], {"valor_final_centavos": 2_788_141_002})
+        self.assertEqual(resultado["measure"], "NET_COMMITMENT")
+        self.assertEqual(resultado["valores"], {
+            "valor_empenho_liquido_centavos": 2_788_141_002,
+            "valor_final_centavos": 2_788_141_002,
+        })
         self.assertNotIn("anulacoes", resultado)
         self.assertNotIn("valor_empenhado_centavos", resultado["valores"])
         self.assertNotIn("valor_anulado_centavos", resultado["valores"])

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import re
 from typing import Any
 
 from sqlalchemy import exists, select
@@ -10,7 +9,6 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.models import TceOrgaoClassificacao
-from app.utils import normalizar_texto
 
 
 def classificar_orgao(orgao: dict[str, Any]) -> dict[str, str | None]:
@@ -19,20 +17,15 @@ def classificar_orgao(orgao: dict[str, Any]) -> dict[str, str | None]:
     tipo = str(orgao.get("codigo_tipo_unidade", "")).strip() or None
     if not codigo or not nome_original:
         raise ValueError("Cadastro de órgão sem código ou nome.")
-    nome = normalizar_texto(nome_original)
-    tokens = re.sub(r"[^A-Z0-9]+", " ", nome).split()
-    camara = "CAMARA" in tokens or "LEGISLATIVO" in tokens
-    certeza = any(token in tokens for token in (
-        "CAMARA", "LEGISLATIVO", "PREFEITURA", "SECRETARIA", "GABINETE",
-        "AUTARQUIA", "FUNDO", "PROCURADORIA", "INSTITUTO", "SEC",
-    )) or any(token.startswith("CONTROL") for token in tokens)
+    tipo_normalizado = tipo.zfill(2) if tipo and tipo.isdigit() else tipo
+    camara = tipo_normalizado == "02"
     return {
         "codigo_orgao": codigo,
         "nome_orgao": nome_original,
         "codigo_tipo_unidade": tipo,
         "classificacao": "CAMARA" if camara else "EXECUTIVO_MUNICIPAL",
-        "regra": "NOME_ORGAO_NORMALIZADO",
-        "confianca": "ALTA" if certeza else "REVISAR",
+        "regra": "CODIGO_TIPO_UNIDADE_02",
+        "confianca": "ALTA",
     }
 
 

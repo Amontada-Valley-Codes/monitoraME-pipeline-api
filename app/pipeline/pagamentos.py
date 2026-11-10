@@ -10,7 +10,7 @@ from datetime import date
 import re
 
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS
-from app.pipeline.cleaners.opencnpj import normalizar_porte_empresarial
+from app.pipeline.cleaners.opencnpj import normalizar_booleano, normalizar_porte_empresarial
 from app.pipeline.cleaners.tce_despesas import valor_para_centavos
 from app.pipeline.persistence.tce_orgaos import classificar_orgao
 from app.pipeline.referencias import referencias_entre
@@ -81,21 +81,15 @@ def conciliar_pagamentos(
         if codigo in cadastro:
             raise ValueError(f"Orgao duplicado: {codigo}.")
         cadastro[codigo] = orgao
-        nome = normalizar_texto(_texto(orgao, "nome_orgao"))
         tipo = str(orgao.get("codigo_tipo_unidade") or "").strip() or None
-        # codigo_tipo_unidade varia entre cadastros/anos. O nome e os dados
-        # vinculados identificam o Legislativo; o codigo do tipo e registrado
-        # como evidência, nunca tratado como regra universal.
         eh_camara = classificacao["classificacao"] == "CAMARA"
         classificacoes_orgaos.append({
             "codigo_orgao": codigo,
             "nome_orgao": orgao["nome_orgao"],
             "codigo_tipo_unidade": tipo,
             "classificacao": "CAMARA" if eh_camara else "EXECUTIVO_MUNICIPAL",
-            "regra": "NOME_ORGAO_NORMALIZADO",
-            "confianca": "ALTA" if eh_camara or any(
-                token in nome for token in ("PREFEITURA", "SECRETARIA", "GABINETE", "AUTARQUIA")
-            ) else "REVISAR",
+            "regra": classificacao["regra"],
+            "confianca": classificacao["confianca"],
         })
         if eh_camara:
             camaras.add(codigo)
@@ -147,9 +141,11 @@ def conciliar_pagamentos(
         if not re.fullmatch(r"[0-9]{8}", natureza):
             raise ValueError(f"Codigo de natureza invalido: {natureza}.")
         elemento = natureza[4:6]
+        cnpj = _cnpj(empenho)
         motivo = ("camara" if chave[2] in camaras else "estado_estorno_desconhecido" if estado not in {"0", "1"}
                   else "estornado" if estado == "1"
-                  else "fora_naturezas" if elemento not in NATUREZAS_DESPESA_MONITORADAS else None)
+                  else "fora_naturezas" if elemento not in NATUREZAS_DESPESA_MONITORADAS
+                  else "fornecedor_nao_cnpj" if cnpj is None else None)
         if motivo:
             excluidos[motivo] += 1
         if motivo == "estado_estorno_desconhecido":
@@ -163,7 +159,7 @@ def conciliar_pagamentos(
             continue
         elegiveis.append({
             "chave_pagamento": list(chave_pagamento), "elemento": elemento,
-            "cnpj": _cnpj(empenho),
+            "cnpj": cnpj,
             "documento_original": empenho.get("numero_documento_negociante"),
             "tipo_documento": empenho.get("codigo_tipo_negociante"),
             "nome": empenho.get("nome_negociante"),
@@ -196,6 +192,12 @@ def _classificar_cnpj(cnpj: str, cache: dict | None) -> dict:
         if "optante_mei" in dados
         else dados.get("opencnpj_opcao_mei")
     )
+    indicador_mei_normalizado = normalizar_booleano(indicador_mei)
+    indicador_mei = (
+        indicador_mei_normalizado
+        if isinstance(indicador_mei_normalizado, bool)
+        else None
+    )
     return {
         "cnpj_completo": cnpj, "cnpj_basico": cnpj[:8],
         "porte_original": dados.get("opencnpj_porte_empresa") or dados.get("porte_padronizado"),
@@ -225,6 +227,7 @@ def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) 
     totais = {codigo: 0 for codigo in NATUREZAS_DESPESA_MONITORADAS}
     categorias = {categoria: 0 for categoria in CATEGORIAS}
     me_por_elemento = dict(totais)
+    mpe_por_elemento = dict(totais)
     grupos: dict[tuple, dict] = {}
     pendencias = []
     for pagamento in pagamentos:
@@ -254,6 +257,8 @@ def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) 
                 grupo["_nomes_observados"].setdefault(nome_chave, nome)
             grupo["valor_pago_centavos"] += valor
             grupo["quantidade_pagamentos"] += 1
+        if categoria in {"ME", "EPP"} or cadastro.get("indicador_mei") is True:
+            mpe_por_elemento[elemento] += valor
     total = sum(totais.values())
     assert sum(categorias.values()) == total
     fornecedores_me = []
@@ -263,6 +268,9 @@ def resumir_pagamentos(pagamentos: list[dict], classificacoes: dict[str, dict]) 
         fornecedores_me.append(grupo)
     return {
         "total_me_centavos": categorias["ME"], "me_por_elemento_centavos": me_por_elemento,
+        "total_mpe_centavos": None if pendencias else sum(mpe_por_elemento.values()),
+        "total_mpe_identificado_centavos": sum(mpe_por_elemento.values()),
+        "mpe_por_elemento_centavos": mpe_por_elemento,
         "fornecedores_me": sorted(fornecedores_me, key=lambda g: (g["elemento"], g["cnpj"])),
         "controle_financeiro": {
             "total_centavos": total, "por_elemento_centavos": totais,
@@ -323,7 +331,14 @@ def consultar_pagamentos_prefeitura(
         "referencias_pagamentos": [f"{exercicio}-01", referencia_final],
         "coleta_iniciada_em": coleta["coleta_iniciada_em"],
         "coleta_concluida_em": coleta["coleta_concluida_em"],
-        "criterio_me": {"porte_codigo": "01", "excluir_mei": False},
+        "criterio_me": {
+            "porte_codigo": "01",
+            "rotulo": "ME",
+            "observacao": "Subtotal ME; nao deve ser rotulado como MPE.",
+        },
+        "criterio_mpe": {
+            "regra": "ME + EPP + MEI quando indicado pelo cadastro",
+        },
         "referencia_base_cadastral": None, "porte_historico_comprovado": False,
         "consulta_cadastral_executada": consultar_porte,
         "indicador_me_validado": (

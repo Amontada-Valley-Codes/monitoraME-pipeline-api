@@ -155,7 +155,7 @@ class MetadadosCargaTceTest(unittest.TestCase):
 
 
 class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
-    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
+    @patch("app.pipeline.analisys.montar_base_analitica_tce_somente_banco")
     def test_sem_carga_retorna_zero_monetario_taxas_nulas_sem_ingestao(
         self,
         montar_base,
