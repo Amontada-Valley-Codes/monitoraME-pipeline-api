@@ -10,7 +10,8 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select, exists, insert
+from sqlalchemy import select, exists
+from sqlalchemy.dialects.postgresql import insert
 
 from app.core import orm
 from app.core.models import IngestionJob, NlpMatchingBatch, NlpProcurementEmbedding, NlpProcurementSegment
