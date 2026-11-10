@@ -80,10 +80,14 @@ Variáveis usadas pela aplicação:
 | `OPENCNPJ_BASE_URL` | Sim | API cadastral OpenCNPJ. |
 | `PNCP_BASE_URL` | Não | Base pública de consultas do PNCP; padrão oficial. |
 | `PNCP_SCHEDULER_IMAGE` | Não | Imagem Docker do processo de agendamento PNCP. |
-| `PNCP_SCHEDULER_INTERVAL_SECONDS` | Não | Intervalo do processo que agenda janelas PNCP; padrão `3600`. |
+| `PNCP_SCHEDULER_POLL_SECONDS` | Não | Frequência para conferir conclusão/due date dos ciclos; padrão `30`. |
+| `PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS` | Não | Espera após concluir todos os jobs do ciclo antes de iniciar outro; padrão `14400` (4 horas). |
 | `PNCP_SCHEDULER_FLOWS` | Não | Fluxos recorrentes separados por vírgula; padrão `publicacao,atualizacao`. |
 | `PNCP_SCHEDULER_MODALIDADES` / `PNCP_SCHEDULER_UFS` | Não | Dimensões de coleta agendadas; padrões são modalidades prioritárias e UFs do Nordeste. Use `*` em UFs para todas. |
 | `PNCP_SCHEDULER_WINDOW_DAYS` / `PNCP_SCHEDULER_PAGE_SIZE` | Não | Tamanho máximo de cada janela e tamanho da página; padrões `1` dia e `50`. Janelas partem do cursor com overlap. |
+| `PNCP_SCHEDULER_BACKFILL_ENABLED` | Não | Inclui backfill histórico no primeiro ciclo; padrão `true`. |
+| `PNCP_SCHEDULER_BACKFILL_START_YEAR` / `PNCP_SCHEDULER_BACKFILL_WINDOW_DAYS` | Não | Ano inicial e largura semanal do backfill; padrões `2021` e `7` dias. |
+| `PNCP_SCHEDULER_BACKFILL_PRIORITY` | Não | Prioridade menor do backfill perante consultas recentes; padrão `20`. |
 | `PNCP_SCHEDULER_PUBLICATION_PRIORITY` / `PNCP_SCHEDULER_UPDATE_PRIORITY` | Não | Prioridades dos jobs recorrentes; padrões `70` e `80`. |
 | `PNCP_CONNECT_TIMEOUT_SECONDS` | Não | Timeout de conexão PNCP; padrão `10`. |
 | `PNCP_READ_TIMEOUT_SECONDS` | Não | Timeout de leitura PNCP; padrão `30`. |
@@ -681,19 +685,29 @@ docker compose -f compose.production.yaml exec api pncp status
 docker compose -f compose.production.yaml logs -f pncp-worker-coleta pncp-worker-normalizacao
 ```
 
-O serviço `pncp-scheduler` agenda automaticamente publicação e atualização
-conforme `PNCP_SCHEDULER_*`; ele só grava jobs no PostgreSQL. A coleta continua
-nos workers separados. Cada combinação de fluxo, UF e modalidade usa cursor
-próprio, aplica overlap, e o scheduler não recria uma `dedupe_key` já registrada
-(inclusive para jobs terminais). Para executar um ciclo manual de diagnóstico:
+O serviço `pncp-scheduler` agenda automaticamente ciclos completos de publicação
+e atualização conforme `PNCP_SCHEDULER_*`; ele só grava jobs no PostgreSQL. A
+coleta continua nos workers separados. Cada combinação de fluxo, UF e modalidade
+usa cursor próprio e overlap. O scheduler espera os jobs do ciclo ficarem
+terminais antes de marcar sua conclusão; só então aguarda
+`PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS` (padrão 14.400, quatro horas) para abrir
+o próximo ciclo. Enquanto um ciclo está em andamento, o scheduler apenas consulta
+seu estado, sem agendar outra rodada. Para executar um ciclo manual de diagnóstico:
 
 ```bash
 docker compose exec api python scripts/pncp_scheduler.py --once
 docker compose up -d pncp-scheduler
 ```
 
-Backfill e propostas abertas continuam sendo agendados explicitamente pela CLI,
-pois não fazem parte da recorrência padrão.
+O primeiro ciclo também agenda o backfill histórico de publicações desde 2021,
+em janelas semanais por UF e modalidade (`PNCP_SCHEDULER_BACKFILL_*`). As janelas
+são deduplicadas no PostgreSQL; a semana corrente fica para os fluxos incrementais
+de publicação e atualização. Backfill tem prioridade menor para que a descoberta
+recente continue sendo processada. Falhas transitórias que esgotarem as tentativas
+são reprocessadas automaticamente em ciclos posteriores, com intervalo de quatro
+horas entre ciclos. Defina
+`PNCP_SCHEDULER_BACKFILL_ENABLED=false` para desativá-lo. Propostas abertas
+continuam sendo agendadas explicitamente pela CLI.
 
 Os workers renovam leases durante tarefas longas. Após reinício, recuperam leases
 vencidos com backoff; o job vai a `FAILED` quando as tentativas se esgotam. Um
@@ -823,12 +837,14 @@ intervalo/modalidade não tiver esse volume. O limite de `normalizar` conta jobs
 até três jobs por edital. Deixe o worker de enriquecimento drenar a fila; ele respeita
 rate limit e circuit breaker. Para uma execução manual curta, use
 `docker compose run --rm api python scripts/pncp_operacao.py enriquecer --limite 5`.
-`matching-nlp-worker` consome o batch automaticamente. Em produção, o Backend
-envia os perfis pela rota HTTP; o JSON acima é somente uma fixture de smoke
-test e precisa ser montado explicitamente no comando. O worker prepara vetores
-faltantes; a primeira inferência pode baixar o modelo E5. Acompanhe
-`docker compose logs -f matching-nlp-worker`. Sem batch, o worker não carrega
-os pesos nem percorre o corpus; libera os pesos após o período de ociosidade.
+`matching-nlp-worker` prepara o corpus e calcula embeddings continuamente,
+independentemente de existir batch de empresa. Na inicialização, sincroniza o
+corpus legado; novas normalizações e enriquecimentos de itens já enfileiram os
+vetores na mesma transação. O worker carrega o modelo E5 quando há trabalho e
+libera os pesos após o período de ociosidade. Quando o Backend enviar perfis
+pela rota HTTP, o matching usa os vetores já prontos; batches continuam
+aguardando a cobertura de embeddings necessária. A primeira inferência pode
+baixar o modelo. Acompanhe `docker compose logs -f matching-nlp-worker`.
 
 Consulte o estado e os resultados do batch completo (paginados em blocos de até
 500) e, em separado, os editais compatíveis com a empresa de teste:
