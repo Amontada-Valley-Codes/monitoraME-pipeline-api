@@ -159,3 +159,26 @@ class ParticipacaoTest(unittest.TestCase):
         itens = cliente.buscar(IdentidadeCompra("12345678000190", 2026, 1), "items")
         self.assertEqual(len(itens), 51)
         self.assertIn("pagina=2", sessao.get.call_args.args[0])
+
+    def test_cliente_percorre_paginas_de_historico(self):
+        sessao = MagicMock()
+        primeira, segunda = MagicMock(status_code=200), MagicMock(status_code=200)
+        primeira.json.return_value = [
+            {"tipoLogManutencao": 0, "categoriaLogManutencao": numero}
+            for numero in (1, 2)
+        ]
+        segunda.json.return_value = [{"tipoLogManutencao": 1, "categoriaLogManutencao": 1}]
+        sessao.get.side_effect = [primeira, segunda]
+        protecao = MagicMock(); protecao.adquirir.return_value.permitida = True
+        cliente = ClienteEnriquecimentoPncp(
+            base_url="https://pncp.gov.br/api/pncp", session=sessao, protecao=protecao
+        )
+        configuracao = {
+            "PNCP_ENRICHMENT_HISTORY_PAGE_SIZE": "2",
+            "PNCP_ENRICHMENT_MAX_HISTORY_PAGES": "5",
+        }
+        with patch("app.pncp.enrichment.os.getenv", side_effect=lambda chave, default=None: configuracao.get(chave, default)):
+            historico = cliente.buscar(IdentidadeCompra("12345678000190", 2026, 1), "history")
+
+        self.assertEqual(len(historico), 3)
+        self.assertIn("/historico?pagina=2&tamanhoPagina=2", sessao.get.call_args.args[0])

@@ -351,6 +351,8 @@ class PncpEnriquecimento(MainBase):
     items_hash: Mapped[str | None] = mapped_column(Text)
     documents_payload: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     documents_hash: Mapped[str | None] = mapped_column(Text)
+    history_payload: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    history_hash: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

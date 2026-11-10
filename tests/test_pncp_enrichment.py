@@ -17,7 +17,7 @@ from app.pncp.enrichment import ClienteEnriquecimentoPncp, ErroEnriquecimentoPnc
 class EnriquecimentoPncpTest(unittest.TestCase):
     def test_agenda_itens_ausentes_mesmo_com_cache_valido_de_outro_recurso(self) -> None:
         oportunidade = PncpOportunidade(source="PNCP", external_id="id", raw_record_id=1, payload_hash="versao", source_updated_at=None, orgao=None, unidade=None, objeto="objeto", modalidade=None, situacao=None, prazo_proposta_final=None, url_oficial="https://pncp.gov.br")
-        cache = PncpEnriquecimento(source="PNCP", external_id="id", source_version_hash="versao", expires_at=datetime.now(timezone.utc) + timedelta(hours=1), detail_hash="detail", items_hash=None, documents_hash="docs")
+        cache = PncpEnriquecimento(source="PNCP", external_id="id", source_version_hash="versao", expires_at=datetime.now(timezone.utc) + timedelta(hours=1), detail_hash="detail", items_hash=None, documents_hash="docs", history_hash="history")
         raw = RawPncpRecord(payload={"orgaoEntidade": {"cnpj": "12345678000190"}, "anoCompra": 2026, "sequencialCompra": 7})
         session = MagicMock()
         session.get.side_effect = [raw, cache]
@@ -25,6 +25,32 @@ class EnriquecimentoPncpTest(unittest.TestCase):
             resultados = enrichment.agendar_enriquecimento_session(session, oportunidade=oportunidade, motivo="teste")
         self.assertEqual(len(resultados), 1)
         self.assertIn(":items:", agendar.call_args.args[1].scope_key)
+
+    def test_agenda_somente_historico_quando_recurso_e_limitado(self) -> None:
+        oportunidade = PncpOportunidade(source="PNCP", external_id="id", raw_record_id=1, payload_hash="versao", source_updated_at=None, orgao=None, unidade=None, objeto="objeto", modalidade=None, situacao=None, prazo_proposta_final=None, url_oficial="https://pncp.gov.br")
+        cache = PncpEnriquecimento(source="PNCP", external_id="id", source_version_hash="versao", expires_at=datetime.now(timezone.utc) + timedelta(hours=1), detail_hash="detail", items_hash="items", documents_hash="docs", history_hash=None)
+        raw = RawPncpRecord(payload={"orgaoEntidade": {"cnpj": "12345678000190"}, "anoCompra": 2026, "sequencialCompra": 7})
+        session = MagicMock()
+        session.get.side_effect = [raw, cache]
+        with unittest.mock.patch.object(enrichment, "agendar_job_session", return_value=(123, True)) as agendar:
+            resultados = enrichment.agendar_enriquecimento_session(
+                session, oportunidade=oportunidade, motivo="backfill", recursos=["history"]
+            )
+        self.assertEqual(resultados, [(123, True)])
+        self.assertEqual(agendar.call_count, 1)
+        self.assertIn(":history:", agendar.call_args.args[1].scope_key)
+
+    @unittest.mock.patch.object(enrichment.orm, "main_session")
+    @unittest.mock.patch.object(enrichment, "agendar_enriquecimento_session", return_value=[(123, True)])
+    def test_backfill_automatico_agenda_apenas_historico(self, agendar, main_session) -> None:
+        oportunidade = PncpOportunidade(source="PNCP", external_id="id", raw_record_id=1, payload_hash="versao", source_updated_at=None, orgao=None, unidade=None, objeto="objeto", modalidade=None, situacao=None, prazo_proposta_final=None, url_oficial="https://pncp.gov.br")
+        session = main_session.return_value.__enter__.return_value
+        session.scalars.return_value.all.return_value = [oportunidade]
+
+        total = enrichment.agendar_historicos_pendentes(limite=10)
+
+        self.assertEqual(total, 1)
+        self.assertEqual(agendar.call_args.kwargs["recursos"], ["history"])
 
     def test_identidade_exige_chaves_proprias_da_compra(self) -> None:
         identidade = identidade_do_payload({"orgaoEntidade": {"cnpj": "12.345.678/0001-90"}, "anoCompra": 2026, "sequencialCompra": 7})

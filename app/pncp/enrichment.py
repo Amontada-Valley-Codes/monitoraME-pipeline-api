@@ -11,10 +11,11 @@ import time
 from typing import Any
 
 import requests
+from sqlalchemy import exists, literal, not_, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import orm
-from app.core.models import PncpEnriquecimento, PncpOportunidade, RawPncpRecord
+from app.core.models import IngestionJob, PncpEnriquecimento, PncpOportunidade, RawPncpRecord
 from app.pncp.jobs import JobReivindicado, NovoJob, agendar_job_session
 from app.pncp.retry import classificar_status_http, retry_after_para_timedelta
 from app.pncp.protecao import PncpProtegidoError, ProtecaoPncp
@@ -22,7 +23,7 @@ from app.pncp.participation import salvar_documentos_session, salvar_itens_sessi
 
 
 PRIORIDADE_ENRIQUECIMENTO = 40
-RECURSOS = frozenset({"detail", "items", "documents"})
+RECURSOS = frozenset({"detail", "items", "documents", "history"})
 
 
 class ErroEnriquecimentoPncp(RuntimeError):
@@ -70,7 +71,8 @@ def _hash(payload: object) -> str:
 
 
 def agendar_enriquecimento_session(
-    session: Session, *, oportunidade: PncpOportunidade, motivo: str, agora: datetime | None = None
+    session: Session, *, oportunidade: PncpOportunidade, motivo: str,
+    agora: datetime | None = None, recursos: list[str] | None = None,
 ) -> list[tuple[int, bool]]:
     """Agenda apenas recursos de uma oportunidade já considerada relevante."""
     agora = agora or datetime.now(timezone.utc)
@@ -84,8 +86,11 @@ def agendar_enriquecimento_session(
         and cache.source_version_hash == oportunidade.payload_hash
         and cache.expires_at > agora
     )
+    recursos_agendados = set(recursos) if recursos is not None else RECURSOS
+    if not recursos_agendados or not recursos_agendados.issubset(RECURSOS):
+        raise ValueError("recursos de enriquecimento invalidos")
     resultados = []
-    for recurso in RECURSOS:
+    for recurso in sorted(recursos_agendados):
         if cache_valido and getattr(cache, f"{recurso}_hash", None) is not None:
             continue
         scope = f"enrich:{recurso}:{oportunidade.external_id}:{oportunidade.payload_hash}"
@@ -95,6 +100,55 @@ def agendar_enriquecimento_session(
             next_run_at=agora, raw_record_id=oportunidade.raw_record_id,
         )))
     return resultados
+
+
+def agendar_historicos_pendentes(limite: int = 100) -> int:
+    """Agenda historicos ausentes para oportunidades normalizadas, em lotes idempotentes."""
+    if limite < 1:
+        raise ValueError("limite deve ser maior que zero")
+    agora = datetime.now(timezone.utc)
+    escopo_job = (
+        literal("enrich:history:")
+        + PncpOportunidade.external_id
+        + literal(":")
+        + PncpOportunidade.payload_hash
+    )
+    job_existente = exists(select(1).where(
+        IngestionJob.source == PncpOportunidade.source,
+        IngestionJob.scope_key == escopo_job,
+    ))
+    with orm.main_session() as session:
+        oportunidades = session.scalars(
+            select(PncpOportunidade)
+            .outerjoin(
+                PncpEnriquecimento,
+                (PncpEnriquecimento.source == PncpOportunidade.source)
+                & (PncpEnriquecimento.external_id == PncpOportunidade.external_id),
+            )
+            .where(
+                PncpOportunidade.source == "PNCP",
+                or_(
+                    PncpEnriquecimento.external_id.is_(None),
+                    PncpEnriquecimento.source_version_hash != PncpOportunidade.payload_hash,
+                    PncpEnriquecimento.history_hash.is_(None),
+                    PncpEnriquecimento.expires_at <= agora,
+                ),
+                not_(job_existente),
+            )
+            .order_by(PncpOportunidade.normalized_at, PncpOportunidade.external_id)
+            .limit(limite)
+        ).all()
+        agendados = 0
+        for oportunidade in oportunidades:
+            resultado = agendar_enriquecimento_session(
+                session,
+                oportunidade=oportunidade,
+                motivo="historico_pendente",
+                agora=agora,
+                recursos=["history"],
+            )
+            agendados += sum(int(criado) for _, criado in resultado)
+        return agendados
 
 
 class ClienteEnriquecimentoPncp:
@@ -136,7 +190,7 @@ class ClienteEnriquecimentoPncp:
             raise ErroEnriquecimentoPncp("JSON invalido em enriquecimento") from exc
         esperado = (payload if recurso == "detail" else
             payload if isinstance(payload, list) else
-            payload.get({"items": "itens", "documents": "documentos", "results": "listaResultados"}[recurso]) if isinstance(payload, dict) else None)
+            payload.get({"items": "itens", "documents": "documentos", "results": "listaResultados", "history": "listaEventos"}[recurso]) if isinstance(payload, dict) else None)
         valido = isinstance(esperado, dict) if recurso == "detail" else isinstance(esperado, list) and all(isinstance(item, dict) for item in esperado)
         if not valido:
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=resposta.status_code, latency_seconds=time.monotonic() - inicio)
@@ -148,20 +202,28 @@ class ClienteEnriquecimentoPncp:
         if recurso not in RECURSOS:
             raise ValueError("recurso de enriquecimento invalido")
         raiz = f"/v1/orgaos/{identidade.cnpj}/compras/{identidade.ano}/{identidade.sequencial}"
-        caminho = raiz if recurso == "detail" else f"{raiz}/{'itens' if recurso == 'items' else 'arquivos'}"
-        if recurso == "items":
-            tamanho = 50
-            itens: list[dict[str, Any]] = []
-            for pagina in range(1, int(os.getenv("PNCP_ENRICHMENT_MAX_ITEM_PAGES", "100")) + 1):
-                payload = self._buscar_json(f"{caminho}?pagina={pagina}&tamanhoPagina={tamanho}", recurso)
-                lote = payload if isinstance(payload, list) else payload.get("itens") if isinstance(payload, dict) else None
+        caminhos = {"detail": raiz, "items": f"{raiz}/itens", "documents": f"{raiz}/arquivos", "history": f"{raiz}/historico"}
+        if recurso in {"items", "history"}:
+            tamanho = int(os.getenv(
+                "PNCP_ENRICHMENT_HISTORY_PAGE_SIZE" if recurso == "history" else "PNCP_ENRICHMENT_ITEM_PAGE_SIZE",
+                "50",
+            ))
+            limite_paginas = int(os.getenv(
+                "PNCP_ENRICHMENT_MAX_HISTORY_PAGES" if recurso == "history" else "PNCP_ENRICHMENT_MAX_ITEM_PAGES",
+                "100",
+            ))
+            chave_lista = "listaEventos" if recurso == "history" else "itens"
+            registros: list[dict[str, Any]] = []
+            for pagina in range(1, limite_paginas + 1):
+                payload = self._buscar_json(f"{caminhos[recurso]}?pagina={pagina}&tamanhoPagina={tamanho}", recurso)
+                lote = payload if isinstance(payload, list) else payload.get(chave_lista) if isinstance(payload, dict) else None
                 if not isinstance(lote, list) or any(not isinstance(item, dict) for item in lote):
-                    raise ErroEnriquecimentoPncp("pagina de itens PNCP invalida", retryable=False)
-                itens.extend(lote)
+                    raise ErroEnriquecimentoPncp(f"pagina de {recurso} PNCP invalida", retryable=False)
+                registros.extend(lote)
                 if len(lote) < tamanho:
-                    return itens
-            raise ErroEnriquecimentoPncp("limite de paginas de itens excedido", retryable=False)
-        payload = self._buscar_json(caminho, recurso)
+                    return registros
+            raise ErroEnriquecimentoPncp(f"limite de paginas de {recurso} excedido", retryable=False)
+        payload = self._buscar_json(caminhos[recurso], recurso)
         if recurso == "detail" and not isinstance(payload, dict):
             raise ErroEnriquecimentoPncp("detalhe PNCP invalido")
         if recurso == "documents" and isinstance(payload, dict):

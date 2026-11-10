@@ -13,7 +13,7 @@ from app.pncp.atualizacao import coletar_atualizacao
 from app.pncp.ingestion import ClientePncp, coletar_publicacao
 from app.pncp.jobs import WorkerPncp, recuperar_leases_expirados
 from app.pncp.normalization import normalizar_job
-from app.pncp.enrichment import ClienteEnriquecimentoPncp, enriquecer_job
+from app.pncp.enrichment import ClienteEnriquecimentoPncp, agendar_historicos_pendentes, enriquecer_job
 from app.core.logging import configurar_logging
 
 logger = logging.getLogger("app.pncp.worker")
@@ -93,11 +93,21 @@ def executar_enriquecimento() -> None:
             job_type="enrich", lease_seconds=1800,
         )
         ultimo_recovery = time.monotonic() - 30
+        intervalo_agendamento = max(5.0, float(os.getenv("PNCP_ENRICHMENT_SCHEDULE_INTERVAL_SECONDS", "30")))
+        ultimo_agendamento = time.monotonic() - intervalo_agendamento
         while True:
             try:
                 if time.monotonic() - ultimo_recovery >= 30:
                     recuperar_e_registrar_leases()
                     ultimo_recovery = time.monotonic()
+                if time.monotonic() - ultimo_agendamento >= intervalo_agendamento:
+                    jobs_historico = agendar_historicos_pendentes()
+                    if jobs_historico:
+                        logger.info(
+                            "Históricos PNCP pendentes agendados automaticamente",
+                            extra={"jobs_agendados": jobs_historico, "slot": indice},
+                        )
+                    ultimo_agendamento = time.monotonic()
                 if not worker.executar_uma_vez():
                     time.sleep(intervalo_ocioso)
             except Exception:
