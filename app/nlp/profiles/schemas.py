@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 SCHEMA_VERSION = "matching.v1"
@@ -33,6 +33,26 @@ class CompanyLocation(BaseModel):
     state: str = Field(min_length=2, max_length=2, pattern=r"^[A-Z]{2}$")
 
 
+class ProductServiceProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    description: str = Field(min_length=1, max_length=500)
+    keywords: list[str] = Field(default_factory=list, max_length=50)
+
+
+class CompanyRegion(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, populate_by_name=True)
+
+    municipality_code: str = Field(
+        validation_alias=AliasChoices("ibgeCode", "municipality_code"),
+        min_length=7, max_length=7, pattern=r"^\d{7}$",
+    )
+    state: str = Field(
+        validation_alias=AliasChoices("uf", "state"),
+        min_length=2, max_length=2, pattern=r"^[A-Z]{2}$",
+    )
+
+
 class CompanyProfile(BaseModel):
     """Snapshot mínimo; não aceita dados pessoais/identificadores cadastrais."""
 
@@ -42,8 +62,14 @@ class CompanyProfile(BaseModel):
     profile_version: str = Field(min_length=1, max_length=100)
     company_size: CompanySize
     primary_cnae: str = Field(min_length=7, max_length=7, pattern=r"^\d{7}$")
+    business_description: str | None = Field(default=None, max_length=150)
+    version: int | None = Field(default=None, ge=1)
+    schema_version: str | None = Field(default=None, pattern=r"^\d+$")
     cnaes: list[CnaeProfile] = Field(min_length=1, max_length=100)
     location: CompanyLocation
+    products_and_services: list[ProductServiceProfile] = Field(default_factory=list, max_length=100)
+    regions: list[CompanyRegion] = Field(default_factory=list, max_length=5_600)
+    modalities: list[str] | None = Field(default=None, max_length=30)
     categories: list[str] = Field(default_factory=list, max_length=100)
     operational_preferences: dict[str, str | bool | int] = Field(default_factory=dict, max_length=50)
     participation_forms: list[str] | None = Field(default=None, max_length=30)
@@ -51,6 +77,14 @@ class CompanyProfile(BaseModel):
     interested_states: list[str] | None = Field(default=None, max_length=27)
     interested_municipalities: list[str] | None = Field(default=None, max_length=5_600)
     preferred_modality_codes: list[str] | None = Field(default=None, max_length=30)
+
+    @field_validator("business_description")
+    @classmethod
+    def normalizar_descricao_empresa(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = " ".join(value.split())
+        return value or None
 
     @field_validator("interested_states")
     @classmethod
@@ -73,6 +107,15 @@ class CompanyProfile(BaseModel):
             raise ValueError("cnaes deve conter exatamente um is_primary=true igual a primary_cnae")
         if len({cnae.code for cnae in self.cnaes}) != len(self.cnaes):
             raise ValueError("cnaes não pode conter códigos duplicados")
+        if self.regions:
+            if self.interested_states is None:
+                self.interested_states = list(dict.fromkeys(region.state for region in self.regions))
+            if self.interested_municipalities is None:
+                self.interested_municipalities = list(dict.fromkeys(
+                    region.municipality_code for region in self.regions
+                ))
+        if self.modalities is not None and self.preferred_modality_codes is None:
+            self.preferred_modality_codes = self.modalities
         return self
 
 
