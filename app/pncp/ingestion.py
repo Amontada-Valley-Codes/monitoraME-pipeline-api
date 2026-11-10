@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+import hashlib
+import json
 import os
 import time
 from typing import Any
@@ -42,6 +44,7 @@ class PncpColetaError(RuntimeError):
         retry_after: timedelta | None = None,
         endpoint: str | None = None,
         page: int | None = None,
+        diagnostico: dict[str, object] | None = None,
     ) -> None:
         super().__init__(mensagem)
         self.retryable = retryable
@@ -49,6 +52,7 @@ class PncpColetaError(RuntimeError):
         self.retry_after = retry_after
         self.endpoint = endpoint
         self.page = page
+        self.diagnostico = diagnostico or {}
 
     def contexto(self) -> dict[str, object]:
         return {
@@ -58,6 +62,7 @@ class PncpColetaError(RuntimeError):
             "status_code": self.status_code,
             "retryable": self.retryable,
             "retry_after_seconds": self.retry_after.total_seconds() if self.retry_after else None,
+            **self.diagnostico,
         }
 
 
@@ -135,15 +140,74 @@ class ClientePncp:
         self._adquirir_permissao()
         self._ultima_requisicao_monotonic = time.monotonic()
         inicio_chamada = time.monotonic()
+        contexto_requisicao: dict[str, object] = {
+            "query": params,
+            "timeout_connect_seconds": self.timeout[0],
+            "timeout_read_seconds": self.timeout[1],
+        }
         try:
             resposta = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=self.timeout, headers={"Accept": "application/json"})
         except requests.Timeout as exc:
+            contexto_requisicao.update({
+                "transport_error": type(exc).__name__,
+                "duration_ms": round((time.monotonic() - inicio_chamada) * 1000, 2),
+            })
             self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError(f"falha na pagina {pagina}: timeout", endpoint=endpoint, page=pagina) from exc
+            raise PncpColetaError(
+                f"falha na pagina {pagina}: timeout", endpoint=endpoint, page=pagina,
+                diagnostico=contexto_requisicao,
+            ) from exc
         except requests.RequestException as exc:
+            contexto_requisicao.update({
+                "transport_error": type(exc).__name__,
+                "duration_ms": round((time.monotonic() - inicio_chamada) * 1000, 2),
+            })
             self.protecao.registrar_resultado(sucesso=False, retryable=True, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError(f"falha na pagina {pagina}: {type(exc).__name__}", endpoint=endpoint, page=pagina) from exc
+            raise PncpColetaError(
+                f"falha na pagina {pagina}: {type(exc).__name__}", endpoint=endpoint,
+                page=pagina, diagnostico=contexto_requisicao,
+            ) from exc
         status = resposta.status_code
+        cabecalhos = getattr(resposta, "headers", {}) or {}
+        cabecalhos_lower = {str(nome).lower(): valor for nome, valor in cabecalhos.items()}
+        request_id = next((
+            _valor_cabecalho(cabecalhos_lower[nome])
+            for nome in ("x-request-id", "x-correlation-id", "traceparent")
+            if cabecalhos_lower.get(nome)
+        ), None)
+        content_type = cabecalhos_lower.get("content-type")
+        content_length = cabecalhos_lower.get("content-length")
+        try:
+            corpo_bytes = _bytes_resposta(resposta)
+        except requests.RequestException as exc:
+            contexto_corpo = {
+                **contexto_requisicao,
+                "status_code": status,
+                "duration_ms": round((time.monotonic() - inicio_chamada) * 1000, 2),
+                "content_type": _valor_cabecalho(content_type),
+                "content_length_header": _valor_cabecalho(content_length, limite=40),
+                "upstream_request_id": request_id,
+                "response_body_error": type(exc).__name__,
+            }
+            self.protecao.registrar_resultado(
+                sucesso=False, retryable=True, status_code=status,
+                latency_seconds=time.monotonic() - inicio_chamada,
+            )
+            raise PncpColetaError(
+                f"falha ao decodificar corpo da pagina {pagina}",
+                endpoint=endpoint, page=pagina, status_code=status,
+                diagnostico=contexto_corpo,
+            ) from exc
+        contexto_resposta = {
+            **contexto_requisicao,
+            "status_code": status,
+            "duration_ms": round((time.monotonic() - inicio_chamada) * 1000, 2),
+            "content_type": _valor_cabecalho(content_type),
+            "content_length_header": _valor_cabecalho(content_length, limite=40),
+            "response_size_bytes": len(corpo_bytes),
+            "response_sha256": hashlib.sha256(corpo_bytes).hexdigest(),
+            "upstream_request_id": request_id,
+        }
         if status >= 400:
             retryable = classificar_status_http(status)
             self.protecao.registrar_resultado(
@@ -157,19 +221,32 @@ class ClientePncp:
                 retry_after=retry_after_para_timedelta(resposta.headers.get("Retry-After")) if status == 429 else None,
                 endpoint=endpoint,
                 page=pagina,
+                diagnostico=contexto_resposta,
             )
         try:
             corpo = resposta.json()
         except ValueError as exc:
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError(f"falha na pagina {pagina}: JSON invalido", endpoint=endpoint, page=pagina) from exc
+            if isinstance(exc, json.JSONDecodeError):
+                contexto_resposta.update({
+                    "json_error": exc.msg[:200],
+                    "json_error_position": exc.pos,
+                    "json_error_line": exc.lineno,
+                    "json_error_column": exc.colno,
+                })
+            else:
+                contexto_resposta["json_error"] = type(exc).__name__
+            raise PncpColetaError(
+                f"falha na pagina {pagina}: JSON invalido", endpoint=endpoint,
+                page=pagina, status_code=status, diagnostico=contexto_resposta,
+            ) from exc
         if not isinstance(corpo, dict):
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError("resposta PNCP nao e objeto JSON", endpoint=endpoint, page=pagina)
+            raise PncpColetaError("resposta PNCP nao e objeto JSON", endpoint=endpoint, page=pagina, status_code=status, diagnostico=contexto_resposta)
         itens = corpo.get("data", corpo.get("items"))
         if not isinstance(itens, list) or any(not isinstance(item, dict) for item in itens):
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError("resposta PNCP sem lista valida de contratacoes", endpoint=endpoint, page=pagina)
+            raise PncpColetaError("resposta PNCP sem lista valida de contratacoes", endpoint=endpoint, page=pagina, status_code=status, diagnostico=contexto_resposta)
         total = corpo.get("totalPaginas", corpo.get("totalPages"))
         if total is not None and (
             isinstance(total, bool)
@@ -179,9 +256,26 @@ class ClientePncp:
             or (pagina > total and itens)
         ):
             self.protecao.registrar_resultado(sucesso=False, retryable=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
-            raise PncpColetaError("metadado de paginacao PNCP invalido", endpoint=endpoint, page=pagina)
+            raise PncpColetaError("metadado de paginacao PNCP invalido", endpoint=endpoint, page=pagina, status_code=status, diagnostico=contexto_resposta)
         self.protecao.registrar_resultado(sucesso=True, status_code=status, latency_seconds=time.monotonic() - inicio_chamada)
         return PaginaContratacoes(itens, total)
+
+
+def _bytes_resposta(resposta: requests.Response) -> bytes:
+    """Obtém bytes já recebidos sem propagar o conteúdo para logs ou erros."""
+    conteudo = getattr(resposta, "content", b"")
+    if isinstance(conteudo, bytes):
+        return conteudo
+    if isinstance(conteudo, bytearray):
+        return bytes(conteudo)
+    texto = getattr(resposta, "text", "")
+    return texto.encode("utf-8", errors="replace") if isinstance(texto, str) else b""
+
+
+def _valor_cabecalho(valor: object, *, limite: int = 200) -> str | None:
+    if not isinstance(valor, (str, int, float)):
+        return None
+    return str(valor).replace("\r", "").replace("\n", "")[:limite] or None
 
 
 def agendar_publicacao(*, inicio: datetime, fim: datetime, modalidades: list[int], ufs: tuple[str, ...] | list[str] | None = None, tamanho_pagina: int = 50, prioridade: int = 70) -> list[NovoJob]:
