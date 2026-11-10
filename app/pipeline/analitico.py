@@ -267,16 +267,12 @@ def montar_base_analitica_tce(
         ("fornecedor_observado_em", "observado_em"),
     )
     resultado["fornecedor_e_me"] = resultado["porte_fornecedor"].eq("ME")
-    fornecedor_e_mpe = pd.Series(False, index=resultado.index, dtype="boolean")
-    fornecedor_e_mpe.loc[resultado["porte_fornecedor"].eq("EPP")] = True
-    me = resultado["porte_fornecedor"].eq("ME")
+    fornecedor_e_mpe = pd.Series(pd.NA, index=resultado.index, dtype="boolean")
+    porte_identificado = resultado["porte_fornecedor"].isin(("ME", "EPP", "DEMAIS"))
+    fornecedor_e_mpe.loc[porte_identificado] = False
+    fornecedor_e_mpe.loc[resultado["porte_fornecedor"].isin(("ME", "EPP"))] = True
     mei_confirmado = resultado["optante_mei"].eq(True).fillna(False)
-    nao_mei_confirmado = resultado["optante_mei"].eq(False).fillna(False)
-    fornecedor_e_mpe.loc[me & resultado["mei_discriminado"] & nao_mei_confirmado] = True
-    fornecedor_e_mpe.loc[me & resultado["mei_discriminado"] & mei_confirmado] = False
-    fornecedor_e_mpe.loc[
-        me & (~resultado["mei_discriminado"] | resultado["optante_mei"].isna())
-    ] = pd.NA
+    fornecedor_e_mpe.loc[resultado["mei_discriminado"] & mei_confirmado] = True
     resultado["fornecedor_e_mpe"] = fornecedor_e_mpe
 
     resultado["municipio_sede_fornecedor"] = _primeira_coluna(

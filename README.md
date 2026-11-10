@@ -276,8 +276,9 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 
 - `GET /pipeline/tce/contratos`: consulta e enriquece contratos do TCE-CE.
 - `GET /pipeline/tce/kpis/portes-por-mes`: calcula a participação mensal por porte.
-- `GET /pipeline/tce/overview`: calcula o overview estadual de ME; MEI integra demais portes.
-- `GET /pipeline/tce/overview/municipal`: calcula o overview de um município por período, código TCE e portes opcionais.
+- `GET /pipeline/tce/pagamentos/overview`: calcula pagamentos não estornados por exercício orçamentário e período civil.
+- `GET /pipeline/tce/overview`: calcula o overview estadual de empenhos líquidos de ME; MEI integra demais portes.
+- `GET /pipeline/tce/overview/municipal`: calcula o overview de empenhos líquidos de um município por período, código TCE e portes opcionais.
 - `POST /pipeline/tce/comparisons`: compara dois overviews usando somente dados armazenados.
 - `GET /pipeline/tce/despesas`: lista e pagina despesas publicadas armazenadas.
 - `GET /pipeline/tce/despesas/{chave_despesa}`: detalha uma despesa e retorna somente seu valor final.
@@ -421,7 +422,7 @@ Município/competência sem publicação não é tratado como valor zero.
 
 `GET /pipeline/tce/overview` recebe `data_inicial` e `data_final`; sem `codigo_municipio`, consolida os lotes publicados do Ceara. O KPI e o detalhamento geografico consideram somente ME. MEI fica excluido do recorte de ME e agregado em `OUTROS_PORTES` junto com EPP e DEMAIS na participacao por porte. A participacao de ME usa ME sobre ME + MEI + EPP + DEMAIS; portes nao identificados ficam fora do denominador.
 
-O KPI `total_compras_ME_centavos` contem somente o valor final das despesas de ME. Os demais valores monetarios do overview tambem sao finais em centavos. A resposta nao expoe valores brutos, anulacoes, valores liquidos nem medias.
+O KPI `total_compras_ME_centavos` contem somente empenhos líquidos de ME. A resposta informa `medida=EMPENHO_LIQUIDO`; não rotule esses campos como valor pago. Para pagamentos use `/pipeline/tce/pagamentos/overview`.
 
 No overview estadual, `destino_recursos` classifica diretamente pela UF da sede do fornecedor: `NO_CEARA`, `FORA_DO_CEARA` e `NAO_IDENTIFICADA`. A categoria estadual não depende do município comprador nem exige que o município de sede esteja identificado quando a UF é conhecida. O overview municipal mantém a distinção entre fornecedor do município comprador e de outro município do Ceará.
 
@@ -550,7 +551,7 @@ Exemplo:
 GET /pipeline/tce/despesas?start_date=2025-01-01&end_date=2025-12-31&municipality_tce_code=057&company_sizes=ME&expense_element_codes=39&page=1&page_size=50&sort_by=final_value&sort_order=desc
 ```
 
-Cada item usa `chave_despesa`, `numero_despesa`, `data_despesa` e `display_id` no formato `DESP-AAAA-NUMERO`. Em `valores`, retorna somente `valor_final_centavos`. `GET /pipeline/tce/despesas/{chave_despesa}` detalha a mesma despesa, sem valores brutos, anulacoes, valores liquidos, lista de anulacoes ou medias.
+Cada item usa `chave_despesa`, `numero_despesa`, `data_despesa` e `display_id` no formato `DESP-AAAA-NUMERO`. Em `valores`, `valor_final_centavos` é o campo legado de empenho líquido e `valor_empenho_liquido_centavos` explicita a mesma medida. `GET /pipeline/tce/despesas/{chave_despesa}` detalha o mesmo empenho. Nenhum desses campos representa valor pago.
 
 As rotas propagam `X-Request-ID` e usam o envelope padronizado de erro.
 
@@ -970,9 +971,9 @@ Publicações versionadas e importação dos dados reais: [histórico mensal](do
 
 ### Pagamentos da Prefeitura e Microempresas
 
-Para reproduzir os valores pagos do portal do TCE, use `python scripts/auditar_pagamentos_tce.py`. O fluxo usa notas de pagamento, exclui Câmara e estornos e aplica porte cadastral ME. O overview da API continua medindo os snapshots publicados. A ingestão incremental mensal de `notas_pagamentos` pode ser executada com `python scripts/ingestir_tce_pagamentos.py`; consulte [procedimento e escopo](docs/tce-notas-pagamentos.md) e [regras e reprodução da auditoria](docs/pagamentos-tce.md).
+Para valores pagos use `GET /pipeline/tce/pagamentos/overview` ou, em auditoria administrativa, `python scripts/auditar_pagamentos_tce.py`. Ambos usam `valor_nota_pagamento`; a rota lê somente snapshots publicados e não consulta fontes externas. O denominador validado segue o projeto `dados`: credores com CNPJ válido nos sete elementos monitorados, sem Câmara e sem pagamentos estornados. Falta de cadastro de porte não remove o pagamento. ME e MPE são medidas distintas: MPE segue ME + EPP + MEI quando o cadastro indicar. A coleta subdivide respostas que atingem 1.000 registros por órgão e unidade, pois paginação simples não comprova completude. Lotes produzidos antes dessa estratégia devem ser reprocessados. Consulte o [mapeamento com o projeto dados](docs/alinhamento-pagamentos-dados.md), o [procedimento incremental](docs/tce-notas-pagamentos.md) e as [regras de auditoria](docs/pagamentos-tce.md).
 
-As rotas analíticas de despesas e fornecedores incluem somente órgãos municipais classificados como Executivo pelo cadastro `/orgaos` do TCE, por município e exercício. Após aplicar a migration `0029_tce_classificacao_orgaos`, classifique os exercícios já publicados com `python scripts/sincronizar_classificacoes_orgaos_tce.py` (ou limite a Acaraú com `--municipio 004`). A Câmara e órgãos ainda sem classificação de alta confiança ficam fora dos cálculos; as linhas brutas de empenhos e anulações permanecem preservadas. Novas ingestões atualizam as classificações automaticamente.
+As rotas analíticas de despesas e fornecedores incluem somente órgãos municipais classificados como Executivo pelo cadastro `/orgaos` do TCE, por município e exercício. Após aplicar a migration `0029_tce_classificacao_orgaos`, classifique os exercícios já publicados com `python scripts/sincronizar_classificacoes_orgaos_tce.py` (ou limite a Acaraú com `--municipio 004`). Para pagamentos, a Câmara é o órgão cujo `codigo_tipo_unidade` normalizado é `02`, igual ao projeto `dados`; órgão ausente do cadastro interrompe a análise. As linhas brutas de empenhos e anulações permanecem preservadas. Novas ingestões atualizam as classificações automaticamente.
 
 Para ingerir empenhos, anulações e pagamentos do Ceará inteiro para um exercício orçamentário, use o orquestrador abaixo no Compose de produção:
 

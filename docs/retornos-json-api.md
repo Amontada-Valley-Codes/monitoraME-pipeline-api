@@ -86,15 +86,24 @@ também são `null`.
 ### `GET /pipeline/tce/kpis/portes-por-mes`
 
 ```json
-{"fonte":"TCE-CE","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004"},"totais":{"empenhos":0,"registros_kpi":0},"limite_resposta":100,"kpi":"portes_por_mes","dados":[{"ano_mes":"2025-01","porte":"ME","total_empenhos":0,"quantidade_empenhos":0,"total_compras":0,"valor_porte":0,"percentual_empenhos":0.0,"percentual_valor":0.0}]}
+{"fonte":"TCE-CE/SIM","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004","exercicio_orcamentario":2025},"medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","totais":{"pagamentos":0,"registros_kpi":0},"limite_resposta":100,"kpi":"participacao_por_porte_por_mes","dados":[]}
 ```
 
 ### `GET /pipeline/tce/overview`
 
-O overview sem município consolida o Ceará e considera somente ME no recorte principal. MEI integra os demais portes.
+O overview sem município consolida empenhos líquidos do Ceará e considera somente ME no recorte principal. MEI integra os demais portes. Não representa pagamentos.
 
 ```json
-{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":null},"escopo_territorial":"CEARA_INTEIRO","competencias_solicitadas":[],"competencias_processadas":[],"cobertura":{},"politica_atualizacao":{"modo":"SOMENTE_BANCO","atualizar_competencias":false,"atualizar_fornecedores":false},"totais_brutos":{"empenhos":0},"base_analitica":{"nome":"tce_empenhos_liquidos","base_calculo":"empenhos_tce"},"kpi":"overview_me","escopo":{"portes_considerados":["ME"],"regra_participacao_me":"ME / (ME + MEI + EPP + DEMAIS)"},"unidade_monetaria":"CENTAVOS","ranking_municipios_me":[{"posicao":1,"codigo_municipio_tce":"001","municipio":"Amontada","compras_me_centavos":500000,"quantidade_empenhos":12,"percentual_total_me":25.0}],"kpis":{"total_compras_ME_centavos":2000000},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}
+{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"medida":"EMPENHO_LIQUIDO","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":null},"totais_brutos":{"empenhos":0},"base_analitica":{"nome":"tce_empenhos_liquidos","base_calculo":"empenhos_tce"},"kpi":"overview_me","unidade_monetaria":"CENTAVOS","kpis":{"total_compras_ME_centavos":0},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}
+```
+
+### `GET /pipeline/tce/pagamentos/overview`
+
+O exercício orçamentário é independente do período civil. Valores são centavos
+de `valor_nota_pagamento` não estornado; ME e MPE são medidas separadas.
+
+```json
+{"fonte":"TCE-CE/SIM","medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","unidade_monetaria":"CENTAVOS","parametros":{"data_inicial":"2025-01-01","data_final":"2026-09-30","codigo_municipio":"004","exercicio_orcamentario":2025},"total_me_centavos":2426587108,"me_por_elemento_centavos":{"39":1302304413,"30":266583067,"51":692012187,"52":49006245,"32":28493190,"40":0,"35":88188006},"total_mpe_centavos":null,"criterio_mpe":{"regra":"ME + EPP + MEI quando indicado pelo cadastro","classificacao_completa":false},"controle_financeiro":{"total_centavos":13531152944,"reconciliado":true}}
 ```
 
 ### `GET /pipeline/tce/overview/municipal`

@@ -258,7 +258,7 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
         self.assertTrue(resumo["mei_discriminado"])
         self.assertEqual(resumo["estado_mpe"], "DISPONIVEL")
         self.assertIsNone(resumo["motivo_mpe"])
-        self.assertEqual(portes["totais"]["empenhos"], 2)
+        self.assertEqual(portes["totais"]["pagamentos"], 2)
         linha_me = next(linha for linha in portes["dados"] if linha["porte"] == "ME")
         self.assertEqual(linha_me["total_empenhos"], 2)
         self.assertEqual(linha_me["quantidade_empenhos"], 1)
@@ -267,15 +267,17 @@ class IndicadoresEmpenhosTest(unittest.TestCase):
 
 
 class ResolverMunicipioTceTest(unittest.TestCase):
-    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_estado_somente_banco")
-    @patch("app.pipeline.analisys.tce_analytics.contar_municipios_catalogados", return_value=0)
+    @patch("app.pipeline.analisys._consultar_overview_tce_estado")
     def test_overview_sem_municipio_consolida_ceara_somente_com_banco_local(
-        self, _listar_municipios, montar_base,
+        self, consultar_estado,
     ) -> None:
-        montar_base.return_value = (
-            pd.DataFrame(columns=["ano_mes", "valor", "porte_fornecedor", "origem_geografica", "natureza_despesa_codigo"]),
-            {"data_available": False, "totais": {"despesas": 0, "pagamentos": 0}},
-        )
+        consultar_estado.return_value = {
+            "parametros": {"codigo_municipio": None},
+            "escopo_territorial": {"tipo": "ESTADO"},
+            "origem_dados": "BANCO_LOCAL",
+            "consultas_externas": False,
+            "kpis": {"total_compras_ME_centavos": 0},
+        }
 
         resultado = analisys.consultar_overview_tce(
             data_inicial="2025-01-01",
@@ -288,9 +290,9 @@ class ResolverMunicipioTceTest(unittest.TestCase):
         self.assertEqual(resultado["origem_dados"], "BANCO_LOCAL")
         self.assertFalse(resultado["consultas_externas"])
         self.assertEqual(resultado["kpis"]["total_compras_ME_centavos"], 0)
-        montar_base.assert_called_once_with("2025-01-01", "2025-01-31")
+        consultar_estado.assert_called_once_with("2025-01-01", "2025-01-31")
 
-    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
+    @patch("app.pipeline.analisys.montar_base_analitica_tce_somente_banco")
     def test_overview_preserva_metadados_e_restringe_numerador_a_me(
         self,
         montar_base,
@@ -356,8 +358,9 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             registros=[{
                 "ano_mes": "2026-02", "data_referencia": "2026-02-02",
                 "valor_centavos": 1055, "natureza_despesa_codigo": "30",
-                "cnpj_fornecedor": None, "documento_fornecedor": None,
-                "tipo_documento_fornecedor": "2", "nome_fornecedor": "Fornecedor",
+                "cnpj_fornecedor": "02530104000133",
+                "documento_fornecedor": "02530104000133",
+                "tipo_documento_fornecedor": "1", "nome_fornecedor": "Fornecedor",
                 "codigo_municipio_tce": "004",
             }],
             competencias_ausentes=[],

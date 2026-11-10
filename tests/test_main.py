@@ -90,13 +90,13 @@ class MainTest(unittest.TestCase):
         self.assertIn("/pncp/editais/{external_id:path}", rotas)
         for rota_removida in (
             "/pipeline/tce/analise-territorial",
-            "/pipeline/tce/pagamentos/overview",
             "/pipeline/tce/portes/competencias",
             "/pipeline/tce/portes/historico/{cnpj}",
             "/pipeline/tce/portes/versoes/{versao}/{cnpj}",
             "/pipeline/tce/contratos",
         ):
             self.assertNotIn(rota_removida, rotas)
+        self.assertIn("/pipeline/tce/pagamentos/overview", rotas)
         self.assertNotIn("/pipeline/tce/kpis/me-por-mes", rotas)
         self.assertIn("/pipeline/tce/kpis/portes-por-mes", rotas)
         self.assertIn("/pipeline/tce/overview", rotas)

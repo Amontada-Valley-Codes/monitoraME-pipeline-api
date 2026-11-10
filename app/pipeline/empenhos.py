@@ -104,6 +104,7 @@ def _item(registro: dict[str, Any]) -> dict[str, Any]:
             "nome": NATUREZAS_DESPESA_MONITORADAS[elemento],
         },
         "valores": {
+            "valor_empenho_liquido_centavos": int(registro["valor_liquido_centavos"]),
             "valor_final_centavos": int(registro["valor_liquido_centavos"]),
         },
     }
@@ -152,6 +153,8 @@ def listar_empenhos(
         "source": "TCE-CE",
         "data_source": "LOCAL_DATABASE",
         "external_requests": False,
+        "measure": "NET_COMMITMENT",
+        "measure_description": "Empenho liquido: valor empenhado menos anulacoes; nao e valor pago.",
         "filters": {
             "uf": uf_normalizada,
             "municipality_tce_code": municipality_tce_code,
@@ -225,6 +228,8 @@ def obter_empenho(chave_empenho: str) -> dict[str, Any]:
         "source": "TCE-CE",
         "data_source": "LOCAL_DATABASE",
         "external_requests": False,
+        "measure": "NET_COMMITMENT",
+        "measure_description": "Empenho liquido: valor empenhado menos anulacoes; nao e valor pago.",
         **basico,
         "competencia": registro["competencia"],
         "classificacao_orcamentaria": {
