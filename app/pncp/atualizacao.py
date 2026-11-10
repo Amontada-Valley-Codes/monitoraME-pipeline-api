@@ -76,7 +76,7 @@ def coletar_atualizacao(job: JobReivindicado, cliente: ClientePncp, *, tamanho_p
     totais = {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0}
     while True:
         resposta = cliente.buscar_atualizacoes(inicio=job.window_start.date(), fim=job.window_end.date(), modalidade=modalidade, uf=uf, pagina=pagina, tamanho_pagina=tamanho_pagina)
-        if not resposta.itens and resposta.total_paginas and pagina < resposta.total_paginas:
+        if not resposta.itens and resposta.total_paginas:
             raise PncpColetaError(
                 "pagina de atualizacao incompleta",
                 endpoint="/v1/contratacoes/atualizacao",

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.pncp.ingestion import ClientePncp, PncpColetaError, agendar_publicacao, coletar_publicacao
 from app.pncp.protecao import PermissaoFonte, PncpProtegidoError
 from app.pncp.jobs import JobReivindicado
+from app.pncp.atualizacao import coletar_atualizacao
 
 
 class PublicacaoPncpTest(unittest.TestCase):
@@ -38,6 +39,46 @@ class PublicacaoPncpTest(unittest.TestCase):
         job = JobReivindicado(1, "incremental", "CONTRATACAO", "PNCP", "publicacao:2026-10-01:2026-10-02:modalidade:6:tamanho:100", "d", 1, 5, "t", None, datetime(2026,10,1,tzinfo=timezone.utc), datetime(2026,10,2,tzinfo=timezone.utc), 1)
         cliente = MagicMock(); cliente.buscar_publicacoes.return_value = type("P", (), {"itens": [], "total_paginas": 2})()
         with self.assertRaises(PncpColetaError): coletar_publicacao(job, cliente)
+
+    def test_pagina_final_vazia_de_atualizacao_nao_confirma_cursor(self) -> None:
+        job = JobReivindicado(
+            1, "incremental", "CONTRATACAO", "PNCP",
+            "atualizacao:2026-10-01:2026-10-02:modalidade:6:tamanho:50", "d",
+            1, 5, "t", None,
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc), 1,
+        )
+        cliente = MagicMock()
+        cliente.buscar_atualizacoes.return_value = type(
+            "P", (), {"itens": [], "total_paginas": 1}
+        )()
+
+        with (
+            unittest.mock.patch("app.pncp.atualizacao.confirmar_janela_job") as confirmar,
+            self.assertRaises(PncpColetaError),
+        ):
+            coletar_atualizacao(job, cliente)
+
+        confirmar.assert_not_called()
+
+    def test_resposta_vazia_de_atualizacao_com_zero_paginas_e_valida(self) -> None:
+        job = JobReivindicado(
+            1, "incremental", "CONTRATACAO", "PNCP",
+            "atualizacao:2026-10-01:2026-10-02:modalidade:6:tamanho:50", "d",
+            1, 5, "t", None,
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 10, 2, tzinfo=timezone.utc), 1,
+        )
+        cliente = MagicMock()
+        cliente.buscar_atualizacoes.return_value = type(
+            "P", (), {"itens": [], "total_paginas": 0}
+        )()
+
+        with unittest.mock.patch("app.pncp.atualizacao.confirmar_janela_job") as confirmar:
+            resultado = coletar_atualizacao(job, cliente)
+
+        self.assertEqual(resultado, {"NOVO": 0, "ALTERADO": 0, "INALTERADO": 0})
+        confirmar.assert_called_once()
 
     def test_429_respeita_retry_after_e_deixa_retry_para_o_job(self) -> None:
         resposta = MagicMock(status_code=429)
