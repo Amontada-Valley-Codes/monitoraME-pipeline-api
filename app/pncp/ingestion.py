@@ -223,6 +223,14 @@ class ClientePncp:
                 page=pagina,
                 diagnostico=contexto_resposta,
             )
+        if status == 204:
+            # O PNCP usa 204 para uma consulta sem resultados. Não há corpo
+            # JSON para decodificar; total_paginas=0 encerra a janela vazia.
+            self.protecao.registrar_resultado(
+                sucesso=True, status_code=status,
+                latency_seconds=time.monotonic() - inicio_chamada,
+            )
+            return PaginaContratacoes([], 0)
         try:
             corpo = resposta.json()
         except ValueError as exc:
