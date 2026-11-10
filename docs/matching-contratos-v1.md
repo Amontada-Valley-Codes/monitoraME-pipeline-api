@@ -25,6 +25,11 @@ endereço.
 }
 ```
 
+O perfil tambem aceita `business_description`, texto opcional de ate 150
+caracteres sobre a atuacao da empresa. O campo complementa somente a consulta
+semantica do CNAE principal; sua alteracao deve incrementar `profile_version`.
+Sua ausencia preserva o comportamento dos perfis existentes.
+
 São aceitos somente os portes `MEI`, `ME`, `EPP` e `DEMAIS`. Cada perfil deve
 ter entre 1 e 100 CNAEs únicos, exatamente um CNAE primário igual a
 `primary_cnae`, código CNAE de sete dígitos, código IBGE de município com sete

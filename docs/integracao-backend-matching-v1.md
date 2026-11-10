@@ -76,6 +76,8 @@ Campos necessários:
 | `profile_version` | string não vazia, até 100 caracteres | Versão/revisão do snapshot do perfil. Deve mudar quando mudarem dados relevantes enviados ao matching. |
 | `company_size` | `MEI`, `ME`, `EPP` ou `DEMAIS` | Porte conhecido pelo Backend. |
 | `primary_cnae` | CNAE de 7 dígitos | CNAE principal; precisa aparecer como o CNAE primário em `cnaes`. |
+| `version` | inteiro opcional | Versão numérica do perfil no Backend; `profile_version` continua identificando o snapshot enviado ao matching. |
+| `schema_version` | string numérica opcional | Versão do schema interno do perfil, por exemplo `"1"`; o envelope do batch continua usando `matching.v1`. |
 | `cnaes` | 1–100 itens únicos | Cada item contém `code`, `description` opcional e `is_primary`; exatamente um deve ter `is_primary: true`. Descrições alimentam as consultas semânticas. |
 | `location` | `{ municipality_code, state }` | Município IBGE com 7 dígitos e UF em maiúsculas. É a sede e não implica preferência geográfica. |
 
@@ -83,6 +85,10 @@ Preferências opcionais:
 
 | Campo | Tipo | Observação |
 |---|---|---|
+| `business_description` | string opcional, até 150 caracteres | Descrição da atuação da empresa escrita pelo usuário; complementa a consulta semântica do CNAE principal. Altere `profile_version` quando mudar o texto. |
+| `products_and_services` | lista opcional de `{ description, keywords }` | Texto adicional da oferta; entra no contexto semântico do CNAE principal. |
+| `regions` | lista opcional de `{ ibgeCode, uf }` | Regiões de interesse; `ibgeCode` e `uf` são usados como município e estado preferidos quando não houver preferências equivalentes explícitas. |
+| `modalities` | lista opcional de strings | Códigos de modalidade preferidos; usados quando `preferred_modality_codes` não for enviado. |
 | `categories` | lista de strings | Categorias de interesse explícitas, caso o Backend tenha uma taxonomia compatível. |
 | `operational_preferences` | objeto de valores string, boolean ou inteiro | Restrições/preferências operacionais explícitas e comparáveis com o edital. |
 | `participation_forms` | lista de strings ou `null` | Formas de participação aceitas pela empresa. |
@@ -107,6 +113,7 @@ Exemplo de requisição completa:
       "profile_version": "profile-2026-11-01T10:30:00Z",
       "company_size": "ME",
       "primary_cnae": "6201501",
+      "business_description": "Criamos sistemas sob medida para gestao de pequenas empresas.",
       "cnaes": [
         {
           "code": "6201501",
@@ -136,8 +143,9 @@ Exemplo de requisição completa:
 
 O serviço cria um vetor por CNAE com descrição disponível. CNAEs sem descrição
 no perfil nem no catálogo versionado são omitidos das consultas e reportados
-como ausência de dado; portanto, o Backend deve fornecer descrições confiáveis
-ou garantir que o Pipeline tenha catálogo correspondente.
+como ausência de dado, exceto o CNAE principal quando `business_description`
+fornecer contexto textual. O Backend deve fornecer descrições confiáveis ou
+garantir que o Pipeline tenha catálogo correspondente.
 
 ## Endpoints HTTP
 
@@ -263,7 +271,7 @@ Esperado: `200 OK` com página `MatchingResultsPage`:
       ],
       "profile_version": "profile-2026-11-01T10:30:00Z",
       "schema_version": "matching.v1",
-      "matching_version": "hybrid-matching-v4",
+      "matching_version": "hybrid-matching-v5",
       "taxonomy_version": "taxonomy-v1",
       "model_version": "e5@revision-sha",
       "processing_state": "completed",

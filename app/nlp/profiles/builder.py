@@ -32,7 +32,19 @@ def construir_perfil_semantico(
         (cnae.code, (cnae.description or catalog.get(cnae.code) or "").strip())
         for cnae in profile.cnaes
     ]
-    com_texto = [(code, description) for code, description in selecionados if description]
+    contextos = [profile.business_description] if profile.business_description else []
+    for servico in profile.products_and_services[:10]:
+        contexto_servico = " ".join([servico.description, *servico.keywords[:10]])
+        if contexto_servico:
+            contextos.append(contexto_servico)
+    contexto_empresa = " | ".join(contextos)[:1_200]
+    com_texto: list[tuple[str, str]] = []
+    for code, description in selecionados:
+        if code == profile.primary_cnae and contexto_empresa:
+            contexto = f"Contexto da empresa: {contexto_empresa}"
+            description = f"{description}. {contexto}" if description else contexto
+        if description:
+            com_texto.append((code, description))
     ausentes = tuple(code for code, description in selecionados if not description)
     batch = gerar_embeddings_perfis(model, [description for _, description in com_texto])
     consultas = tuple(

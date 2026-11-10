@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+import json
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -164,6 +166,48 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(len(encode.call_args.args[1]), 2)
         self.assertEqual(built.cnaes_sem_descricao, ())
 
+    def test_descricao_empresa_complementa_apenas_consulta_do_cnae_principal(self) -> None:
+        profile = empresa(
+            business_description="Instalamos redes e sistemas de segurança para lojas.",
+            products_and_services=[{
+                "description": "Instalação de câmeras e controle de acesso",
+                "keywords": ["CFTV", "alarme"],
+            }],
+            cnaes=[
+                {"code": "6201501", "description": "software sob encomenda", "is_primary": True},
+                {"code": "6202300", "description": "software customizavel", "is_primary": False},
+            ],
+        )
+        model = SimpleNamespace(model_version="e5@sha")
+        with patch(
+            "app.nlp.profiles.builder.gerar_embeddings_perfis",
+            return_value=EmbeddingBatch("e5@sha", "query", [[0.1] * 384, [0.2] * 384]),
+        ) as encode:
+            construir_perfil_semantico(profile, model)
+
+        textos = encode.call_args.args[1]
+        self.assertIn("Contexto da empresa: Instalamos redes e sistemas de segurança para lojas", textos[0])
+        self.assertIn("Instalação de câmeras e controle de acesso", textos[0])
+        self.assertNotIn("Instalamos redes", textos[1])
+        self.assertNotIn("controle de acesso", textos[1])
+
+    def test_descricao_altera_hash_sem_mudar_hash_legado_quando_ausente(self) -> None:
+        profile = empresa()
+        payload_legado = profile.model_dump(mode="json")
+        for field in (
+            "business_description", "version", "schema_version", "products_and_services",
+            "regions", "modalities",
+        ):
+            payload_legado.pop(field, None)
+        canonical = json.dumps([payload_legado], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        expected_legacy_hash = sha256(canonical.encode("utf-8")).hexdigest()
+
+        self.assertEqual(hash_payload([profile]), expected_legacy_hash)
+        self.assertNotEqual(
+            hash_payload([profile]),
+            hash_payload([empresa(business_description="Venda e manutenção de computadores.")]),
+        )
+
     def test_gate_rejeita_prazo_porte_e_suspensao_mas_nao_usa_territorio_como_gate(self) -> None:
         bad = oportunidade(
             deadline=NOW,
@@ -252,7 +296,7 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(job.job_type, "nlp_matching")
         self.assertEqual(first_dedupe, second_dedupe)
         self.assertIn("profile-1", job.scope_key)
-        self.assertIn("hybrid-matching-v4", job.scope_key)
+        self.assertIn("hybrid-matching-v5", job.scope_key)
 
     def test_batch_async_guarda_snapshot_minimo_e_enfileira_job_deduplicavel(self) -> None:
         session = MagicMock()

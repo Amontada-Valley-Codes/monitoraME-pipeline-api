@@ -49,6 +49,41 @@ class MatchingContractTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CompanyProfile.model_validate(profile)
 
+    def test_business_description_opcional_ate_150_caracteres(self) -> None:
+        profile = json.loads(FIXTURES.read_text(encoding="utf-8"))[0]
+        profile["business_description"] = "x" * 150
+        self.assertEqual(CompanyProfile.model_validate(profile).business_description, "x" * 150)
+        profile["business_description"] = "x" * 151
+        with self.assertRaises(ValidationError):
+            CompanyProfile.model_validate(profile)
+        profile["business_description"] = "   "
+        self.assertIsNone(CompanyProfile.model_validate(profile).business_description)
+
+    def test_aceita_formato_de_perfil_enviado_pelo_backend(self) -> None:
+        profile = CompanyProfile.model_validate({
+            "company_id": "d81b3ae3-c7e2-4c9e-863e-001fc6819ca5",
+            "profile_version": "hash-do-perfil",
+            "version": 3,
+            "schema_version": "1",
+            "company_size": "ME",
+            "primary_cnae": "6201501",
+            "business_description": "Criamos sistemas para pequenas empresas.",
+            "cnaes": [
+                {"code": "6201501", "description": "Desenvolvimento de software", "is_primary": True},
+                {"code": "6202300", "description": "Software customizável", "is_primary": False},
+            ],
+            "location": {"municipality_code": "3550308", "state": "SP"},
+            "products_and_services": [
+                {"description": "Desenvolvimento de software", "keywords": ["software", "sistemas"]},
+            ],
+            "regions": [{"ibgeCode": "3550308", "uf": "SP"}],
+            "modalities": ["6"],
+        })
+
+        self.assertEqual(profile.interested_states, ["SP"])
+        self.assertEqual(profile.interested_municipalities, ["3550308"])
+        self.assertEqual(profile.preferred_modality_codes, ["6"])
+
     def test_resultado_preserva_company_id_e_versoes(self) -> None:
         company_id = uuid4()
         result = MatchingResult(

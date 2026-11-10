@@ -179,6 +179,14 @@ Retorna itens estruturados, resultados por item, lotes identificados e cobertura
 
 Retorna o manifesto de documentos, URLs oficiais, disponibilidade e cobertura, sem baixar os arquivos.
 
+### `GET /pncp/editais/{external_id}/historico`
+
+Retorna os eventos do histórico persistido pelo enriquecimento assíncrono. A resposta contém `edital_id`, `historico` e `disponivel`; antes de o recurso ser coletado, ou quando o edital foi atualizado depois da coleta, `historico` é `null` e `disponivel` é `false`.
+
+```json
+{"edital_id":"00000000000000000001","historico":[{"categoriaLogManutencaoNome":"Contratação","tipoLogManutencaoNome":"Inclusão","logManutencaoDataInclusao":"2026-11-10T11:55:59"}],"disponivel":true}
+```
+
 ## Formato de erro
 
 Rotas com envelope de erro próprio (despesas, fornecedores, comparações e PNCP) retornam, por exemplo:

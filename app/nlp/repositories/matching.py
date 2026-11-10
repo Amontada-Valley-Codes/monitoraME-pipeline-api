@@ -17,8 +17,21 @@ from app.nlp.profiles.schemas import CompanyProfile
 from app.pncp.jobs import NovoJob, agendar_job_session
 
 
+def _profile_payload(profile: CompanyProfile) -> dict[str, object]:
+    payload = profile.model_dump(mode="json")
+    # Preserve the pre-extension canonical payload/hash for legacy profiles.
+    optional_empty_fields = (
+        "business_description", "version", "schema_version", "products_and_services",
+        "regions", "modalities",
+    )
+    for field in optional_empty_fields:
+        if not getattr(profile, field):
+            payload.pop(field, None)
+    return payload
+
+
 def hash_payload(profiles: Sequence[CompanyProfile]) -> str:
-    payload = [profile.model_dump(mode="json") for profile in profiles]
+    payload = [_profile_payload(profile) for profile in profiles]
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -32,11 +45,11 @@ def registrar_batch_session(
         if existing.payload_hash != payload_hash:
             raise ValueError("batch_id já existe associado a outro payload")
         if existing.profiles is None:
-            existing.profiles = [profile.model_dump(mode="json") for profile in profiles]
+            existing.profiles = [_profile_payload(profile) for profile in profiles]
         return existing, False
     batch = NlpMatchingBatch(
         batch_id=batch_id, payload_hash=payload_hash, status="RUNNING",
-        profiles=[profile.model_dump(mode="json") for profile in profiles],
+        profiles=[_profile_payload(profile) for profile in profiles],
         total_companies=len(profiles), processed_companies=0, failed_companies=0,
     )
     session.add(batch)
@@ -56,14 +69,14 @@ def enfileirar_batch_session(
     if batch is None:
         batch = NlpMatchingBatch(
             batch_id=batch_id, payload_hash=payload_hash,
-            profiles=[profile.model_dump(mode="json") for profile in profiles],
+            profiles=[_profile_payload(profile) for profile in profiles],
             status="PENDING", total_companies=len(profiles),
             processed_companies=0, failed_companies=0,
         )
         session.add(batch)
         session.flush()
     else:
-        batch.profiles = [profile.model_dump(mode="json") for profile in profiles]
+        batch.profiles = [_profile_payload(profile) for profile in profiles]
         batch.status = "PENDING"
         batch.total_companies = len(profiles)
         batch.processed_companies = 0

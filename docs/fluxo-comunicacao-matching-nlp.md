@@ -51,12 +51,15 @@ Validações importantes:
   oportunidade. A sede em `location` não é interpretada como preferência
   regional.
 
-O perfil semântico é montado com uma descrição por CNAE, sem concatenar
-atividades diferentes. Usa-se primeiro a descrição fornecida pelo Backend; se
-ausente, o pipeline procura descrição no catálogo CNAE versionado disponível
-no banco. CNAEs sem descrição utilizável não geram consulta vetorial e são
-registrados como ausência de evidência. Se nenhum CNAE gerar consulta, aquele
-perfil não produz candidatos e é contado como falha de perfil no batch.
+O perfil semantico e montado com uma descricao por CNAE, sem concatenar
+atividades diferentes. Usa-se primeiro a descricao fornecida pelo Backend; se
+ausente, o pipeline procura descricao no catalogo CNAE versionado disponivel
+no banco. O campo opcional `business_description` (ate 150 caracteres) e
+acrescentado somente a consulta do CNAE principal; se a descricao desse CNAE
+estiver ausente, o texto do usuario serve como consulta para ele. CNAEs sem
+descricao utilizavel continuam registrados como ausencia de evidencia. Se
+nenhum CNAE produzir consulta, o perfil nao produz candidatos e e contado
+como falha de perfil no batch.
 
 ## 2. Como o texto vira consulta NLP
 

@@ -1,6 +1,6 @@
 # Hybrid matching engine
 
-`calcular_matching` usa `hybrid-matching-v4`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados. Use um novo `batch_id` ao recalcular snapshots anteriores.
+`calcular_matching` usa `hybrid-matching-v5`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados. Use um novo `batch_id` ao recalcular snapshots anteriores.
 
 ## Relevance score
 
