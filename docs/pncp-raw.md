@@ -30,6 +30,14 @@ jitter. `attempts`, `next_run_at`, `last_error` e `last_error_context` permanece
 no job para auditoria e replay. O limite padrao e cinco tentativas totais,
 configuravel por variaveis `PNCP_*` descritas no `.env.example`.
 
+Falhas de transporte, parsing e estrutura incluem no contexto do job e no log
+`job_id`, escopo, endpoint, parametros de consulta, pagina, status HTTP,
+duracao, tipo e tamanho da resposta e SHA-256 do corpo. Erro JSON inclui
+mensagem e posicao do parser. Quando a fonte fornece `X-Request-ID`,
+`X-Correlation-ID` ou `traceparent`, o identificador e registrado para
+correlacao. O corpo completo ou uma amostra dele nao sao persistidos nem
+registrados; tokens, cookies e cabecalhos privados tambem nao sao copiados.
+
 ## Proteção da fonte
 
 `pncp_source_controls` mantém, no PostgreSQL e por fonte, o estado do circuito,

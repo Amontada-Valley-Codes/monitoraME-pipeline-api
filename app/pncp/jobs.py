@@ -577,9 +577,12 @@ class WorkerPncp:
                     )
             detalhes_falha: dict[str, Any] = {
                 "job_id": job.id,
+                "job_type": job.job_type,
+                "scope_key": job.scope_key,
                 "status": status,
                 "error": str(exc)[:2048],
                 "retryable": retryable,
+                "error_context": contexto,
             }
             if job.job_type == "enrich":
                 detalhes_falha.update(_detalhes_job_enriquecimento(job))
