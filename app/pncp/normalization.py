@@ -234,6 +234,19 @@ def normalizar_job(job: JobReivindicado) -> str:
                     session,
                     opportunity_keys=[(raw.source, raw.external_id)],
                 )
+                if raw.source == "PNCP":
+                    from app.pncp.enrichment import agendar_enriquecimento_session
+
+                    oportunidade = session.get(
+                        PncpOportunidade,
+                        {"source": raw.source, "external_id": raw.external_id},
+                    )
+                    if oportunidade is not None:
+                        agendar_enriquecimento_session(
+                            session,
+                            oportunidade=oportunidade,
+                            motivo="normalizacao_concluida",
+                        )
             # Um RAW valido pode perder por precedencia sem ser estruturalmente
             # invalido; uma avaliacao concluida resolve a quarentena estrutural.
             quarentena = session.get(PncpQuarentena, raw.id)

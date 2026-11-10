@@ -133,6 +133,25 @@ def obter_anexos_edital(external_id: str) -> dict[str, Any]:
         "removidos": sum(d.disponibilidade == "REMOVIDO" for d in documentos)}}
 
 
+def obter_historico_edital(external_id: str) -> dict[str, Any]:
+    """Retorna os eventos PNCP persistidos pelo enriquecimento assíncrono."""
+    with orm.main_session() as session:
+        oportunidade = session.get(PncpOportunidade, {"source": "PNCP", "external_id": external_id})
+        if oportunidade is None:
+            raise LookupError("Edital PNCP nao encontrado.")
+        enriquecimento = session.get(PncpEnriquecimento, {"source": "PNCP", "external_id": external_id})
+    historico_disponivel = bool(
+        enriquecimento
+        and enriquecimento.source_version_hash == oportunidade.payload_hash
+        and enriquecimento.history_hash is not None
+    )
+    return {
+        "edital_id": external_id,
+        "historico": enriquecimento.history_payload if historico_disponivel else None,
+        "disponivel": historico_disponivel,
+    }
+
+
 def obter_cobertura_anual(ano: int) -> dict[str, Any]:
     """Resume o estado persistido dos jobs de backfill de publicacao do ano."""
     with orm.main_session() as session:

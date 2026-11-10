@@ -149,6 +149,34 @@ class QualidadePncpTest(unittest.TestCase):
             self.assertEqual(normalizar_job(job), "NOVO")
         self.assertTrue(any(isinstance(c.args[0], PncpAvaliacaoQualidade) for c in confirmados))
 
+    def test_normalizar_job_agenda_enriquecimento_automaticamente(self):
+        registro = raw()
+        oportunidade = PncpOportunidade(**normalizar_payload(registro))
+        session = MagicMock()
+        session.get.side_effect = lambda modelo, chave: (
+            registro if modelo is RawPncpRecord
+            else oportunidade if modelo is PncpOportunidade
+            else None
+        )
+
+        @contextmanager
+        def transacao():
+            yield session
+
+        job = MagicMock(raw_record_id=registro.id)
+        with (
+            patch("app.pncp.normalization.orm.main_session", transacao),
+            patch("app.pncp.normalization.registrar_avaliacao_session"),
+            patch("app.pncp.normalization.registrar_eventos_alteracao_session"),
+            patch("app.pncp.normalization.sincronizar_corpus"),
+            patch("app.pncp.enrichment.agendar_enriquecimento_session") as agendar,
+        ):
+            resultado = normalizar_job(job)
+
+        self.assertEqual(resultado, "INALTERADO")
+        agendar.assert_called_once()
+        self.assertEqual(agendar.call_args.kwargs["motivo"], "normalizacao_concluida")
+
 
 class ReprocessamentoQualidadeTest(unittest.TestCase):
     @patch("app.pncp.normalization.registrar_eventos_alteracao_session")

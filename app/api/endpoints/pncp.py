@@ -108,6 +108,11 @@ def buscar_anexos_edital(external_id: str, request: Request, response: Response)
     return _executar(request, response, lambda: serving.obter_anexos_edital(external_id))
 
 
+@router.get("/editais/{external_id:path}/historico", summary="Lista histórico de um edital PNCP")
+def buscar_historico_edital(external_id: str, request: Request, response: Response):
+    return _executar(request, response, lambda: serving.obter_historico_edital(external_id))
+
+
 @router.get(
     "/editais/{external_id:path}",
     summary="Detalha uma oportunidade PNCP normalizada",
@@ -116,8 +121,8 @@ def buscar_anexos_edital(external_id: str, request: Request, response: Response)
         "normalizada local; não consulta o PNCP."
     ),
     response_description=(
-        "Objeto com dados principais e detalhe adicional quando existente. Itens e anexos "
-        "sao retornados separadamente nas subrotas /itens e /anexos."
+        "Objeto com dados principais e detalhe adicional quando existente. Itens, anexos e "
+        "histórico são retornados separadamente nas subrotas /itens, /anexos e /historico."
 
     ),
 )

@@ -216,7 +216,7 @@ def agendar_enriquecimento(args: argparse.Namespace) -> int:
                 agendados[external_id] = "NAO_ENCONTRADO"
                 continue
             agendados[external_id] = agendar_enriquecimento_session(session,
-                oportunidade=oportunidade, motivo="validacao_local")
+                oportunidade=oportunidade, motivo="validacao_local", recursos=args.recurso)
     resultados = [resultado for resultado in agendados.values() if isinstance(resultado, list)]
     jobs_agendados = [job for resultado in resultados for job in resultado]
     jobs_novos = sum(int(criado) for _, criado in jobs_agendados)
@@ -379,6 +379,10 @@ def main() -> int:
     alvo_enriquecimento.add_argument("--id", action="append")
     alvo_enriquecimento.add_argument("--todos-normalizados", action="store_true")
     enriquecer.add_argument("--limite", type=int, default=2000)
+    enriquecer.add_argument(
+        "--recurso", action="append", choices=("detail", "items", "documents", "history"),
+        help="Limita os jobs a um recurso; pode ser repetido. Sem esta opção agenda todos os recursos.",
+    )
     enriquecer.set_defaults(func=agendar_enriquecimento)
     enriquecer_run = comandos.add_parser("enriquecer")
     enriquecer_run.add_argument("--limite", type=int, default=10)

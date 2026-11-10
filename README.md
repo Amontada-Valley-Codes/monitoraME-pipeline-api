@@ -92,6 +92,10 @@ Variáveis usadas pela aplicação:
 | `PNCP_CONNECT_TIMEOUT_SECONDS` | Não | Timeout de conexão PNCP; padrão `10`. |
 | `PNCP_READ_TIMEOUT_SECONDS` | Não | Timeout de leitura PNCP; padrão `30`. |
 | `PNCP_MAX_ATTEMPTS` | Não | Tentativas totais de um job PNCP, incluindo a primeira; padrão `5`. |
+| `PNCP_ENRICHMENT_BASE_URL` / `PNCP_ENRICHMENT_TTL_HOURS` | Não | Base dos GETs públicos de enriquecimento e validade do cache; padrões `/api/pncp` e `24` horas. |
+| `PNCP_ENRICHMENT_ITEM_PAGE_SIZE` / `PNCP_ENRICHMENT_MAX_ITEM_PAGES` | Não | Tamanho e limite de páginas de itens; padrões `50` e `100`. |
+| `PNCP_ENRICHMENT_HISTORY_PAGE_SIZE` / `PNCP_ENRICHMENT_MAX_HISTORY_PAGES` | Não | Tamanho e limite de páginas de histórico; padrões `50` e `100`. |
+| `PNCP_ENRICHMENT_SCHEDULE_INTERVAL_SECONDS` | Não | Frequência em que o worker procura históricos ainda não agendados; padrão `30`. |
 | `PNCP_RETRY_INITIAL_SECONDS` | Não | Base do backoff exponencial com full jitter; padrão `2`. |
 | `PNCP_RETRY_MAX_SECONDS` | Não | Teto do backoff com full jitter; padrão `60`. |
 | `PNCP_REQUEST_INTERVAL_SECONDS` | Não | Espaçamento mínimo entre chamadas do cliente PNCP; padrão `2`. |
@@ -760,13 +764,24 @@ de normalização estiverem concluídos. Registros antigos sem esses campos na
 origem continuam com os campos anuais nulos até serem reprocessados de um RAW
 que os contenha.
 
-O enriquecimento sob demanda consulta todas as páginas de itens (limite
-`PNCP_ENRICHMENT_MAX_ITEM_PAGES`), consulta resultados por item e mantém um
+Após uma normalização válida, os quatro recursos de enriquecimento (detalhe,
+itens, documentos e histórico) são enfileirados automaticamente, cada um como
+job independente. O worker também procura históricos pendentes em oportunidades
+normalizadas anteriormente, em lotes contínuos; assim, a migração do histórico
+existente não exige comando manual. A frequência é configurada por
+`PNCP_ENRICHMENT_SCHEDULE_INTERVAL_SECONDS`.
+
+O enriquecimento consulta todas as páginas de itens e do histórico
+(limites `PNCP_ENRICHMENT_MAX_ITEM_PAGES` e
+`PNCP_ENRICHMENT_MAX_HISTORY_PAGES`), consulta resultados por item e mantém um
 manifesto de documentos sem baixar seus arquivos. `GET /pncp/editais/{id}`
 retorna os dados principais e o detalhe adicional; `GET /pncp/editais/{id}/itens`
 retorna itens estruturados, resultados, lotes e cobertura; `GET
 /pncp/editais/{id}/anexos` retorna o manifesto e a disponibilidade dos documentos
-sem baixar seus arquivos. `GET /health/pncp` inclui contagens de cobertura.
+sem baixar seus arquivos; `GET /pncp/editais/{id}/historico` retorna os eventos
+persistidos, ou `disponivel: false` enquanto o recurso ainda não foi coletado.
+Histórico, itens e documentos são jobs independentes: uma falha em um recurso não
+impede os demais. `GET /health/pncp` inclui contagens de cobertura.
 Consulte [o contrato e as limitações](docs/pncp-participacao-documentos.md)
 antes de usar lotes ou estados de resultado em matching.
 
@@ -833,8 +848,12 @@ docker compose run --rm --volume "${fixturesPath}:/fixtures:ro" api `
 
 A coleta é limitada a 2.000 IDs distintos e não avança cursor; pode retornar menos se o
 intervalo/modalidade não tiver esse volume. O limite de `normalizar` conta jobs RAW;
-`agendar-enriquecimento --limite 2000` seleciona até 2.000 oportunidades, criando
-até três jobs por edital. Deixe o worker de enriquecimento drenar a fila; ele respeita
+`agendar-enriquecimento --limite 2000` continua disponível para agendamento
+manual/replay, selecionando até 2.000 oportunidades e criando até quatro jobs
+por edital (detalhe, itens, documentos e histórico). Para agendar
+manualmente somente o histórico, use
+`agendar-enriquecimento --todos-normalizados --limite 2000 --recurso history`.
+Deixe o worker de enriquecimento drenar a fila; ele respeita
 rate limit e circuit breaker. Para uma execução manual curta, use
 `docker compose run --rm api python scripts/pncp_operacao.py enriquecer --limite 5`.
 `matching-nlp-worker` prepara o corpus e calcula embeddings continuamente,
