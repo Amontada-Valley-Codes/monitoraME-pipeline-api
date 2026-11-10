@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.models import NlpProcurementSegment, PncpItem, PncpOportunidade
+from app.nlp.embeddings.queue import agendar_embeddings_oportunidades_session
 
 
 CORPUS_VERSION = "pncp-text-v2"
@@ -82,6 +83,7 @@ class ResultadoSincronizacao:
     segments_unchanged: int = 0
     segments_without_text: int = 0
     stale_segments_deleted: int = 0
+    embedding_jobs_scheduled: int = 0
 
 
 def normalizar_texto(valor: str | None) -> str | None:
@@ -443,5 +445,9 @@ def sincronizar_corpus(
             resultado.stale_segments_deleted += len(chaves_obsoletas)
         if not dry_run:
             session.flush()
+            resultado.embedding_jobs_scheduled += agendar_embeddings_oportunidades_session(
+                session,
+                opportunity_keys=chaves,
+            )
 
     return resultado

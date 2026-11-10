@@ -1,4 +1,4 @@
-"""Agenda continuamente jobs PNCP sem consultar a API da fonte."""
+"""Coordena ciclos PNCP persistentes sem consultar a API da fonte."""
 from __future__ import annotations
 
 import argparse
@@ -19,18 +19,18 @@ logger = logging.getLogger("app.pncp.scheduler")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--once", action="store_true", help="executa um ciclo e encerra")
+    parser.add_argument("--once", action="store_true", help="avalia o ciclo atual uma vez e encerra")
     args = parser.parse_args()
-    intervalo = int(os.getenv("PNCP_SCHEDULER_INTERVAL_SECONDS", "3600"))
-    if intervalo < 10:
-        parser.error("PNCP_SCHEDULER_INTERVAL_SECONDS deve ser pelo menos 10")
+    intervalo = int(os.getenv("PNCP_SCHEDULER_POLL_SECONDS", "30"))
+    if intervalo < 5:
+        parser.error("PNCP_SCHEDULER_POLL_SECONDS deve ser pelo menos 5")
     config = ConfiguracaoAgendamentoPncp.do_ambiente()
     configurar_logging()
 
     while True:
         try:
             resultado = agendar_fluxos_pncp(config=config)
-            logger.info("Ciclo de agendamento PNCP concluido", extra=resultado)
+            logger.info("Estado do agendamento PNCP atualizado", extra=resultado)
         except Exception:
             logger.exception("Falha no ciclo de agendamento PNCP")
             if args.once:

@@ -131,8 +131,20 @@ validadas e seus registros persistidos; os jobs de normalizacao continuam
 independentes. Falhas na pagina seguinte preservam os RAWs anteriores para
 reutilizacao no replay.
 
-O comando `coletar-publicacao --ano AAAA` agenda um backfill persistente desde
-1 de janeiro ate o momento da execucao, em janelas semanais por modalidade.
+O primeiro ciclo do scheduler agenda automaticamente um backfill persistente de
+publicacoes desde `PNCP_SCHEDULER_BACKFILL_START_YEAR` (padrao 2021), em janelas
+semanais por UF e modalidade, ate o fim da ultima semana completa. O mesmo ciclo
+inclui publicacao e atualizacao recentes. O scheduler espera todos os jobs desse
+ciclo ficarem terminais; depois grava a conclusao e agenda o ciclo seguinte para
+quatro horas depois (`PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS=14400`). Enquanto os
+jobs rodam, o scheduler apenas consulta seus estados, sem enfileirar outro ciclo.
+As janelas usam cursores independentes e os retries transitórios esgotados no
+backfill sao reabertos em ciclos posteriores. O backfill pode ser desativado com
+`PNCP_SCHEDULER_BACKFILL_ENABLED=false`; altere o ano inicial somente se a
+cobertura historica desejada tiver outro limite.
+
+O comando `coletar-publicacao --ano AAAA` continua disponivel para agendar
+manualmente um ano específico, em janelas semanais.
 Cada janela pode ser acompanhada em `GET /pncp/cobertura/{ano}`; a rota informa
 contagens por estado e o status individual de cada janela/modalidade, alem da
 fila de normalizacao associada aos registros coletados. Os servicos Compose
