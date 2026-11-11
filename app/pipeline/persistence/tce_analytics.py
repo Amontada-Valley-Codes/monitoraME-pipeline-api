@@ -143,6 +143,7 @@ def carregar_snapshot_pagamentos_estaduais(
     *,
     data_inicial: date,
     data_final: date,
+    exercicio_orcamento: int | None = None,
 ) -> SnapshotPagamentosTce:
     """Le o snapshot estadual publicado, sem atualizar fontes ou tabelas."""
     competencias_publicadas: list[str] = []
@@ -151,6 +152,7 @@ def carregar_snapshot_pagamentos_estaduais(
             data_inicial=data_inicial,
             data_final=data_final,
             uf=UF_PADRAO,
+            exercicio_orcamento=exercicio_orcamento,
             competencias_publicadas=competencias_publicadas,
         )
     )

@@ -2,16 +2,13 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 import pandas as pd
-from app.core import database
 from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
 from app.pipeline import analitico, kpis
 from app.pipeline import tce_observability
 from app.pipeline.enrichment.fornecedores import (
     enriquecer_com_fornecedor,
-    extrair_cnpjs_distintos,
 )
 from app.pipeline.persistence import tce_analytics
-from app.pipeline.persistence import tce_despesas as tce_despesas_persistence
 
 class CompetenciasTceIndisponiveisError(RuntimeError):
     """Nenhuma competência solicitada possui uma publicação utilizável."""
@@ -294,7 +291,7 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         "competencias_pagamentos_incluidas": competencias_pagamentos,
         "pagamentos_estendidos_automaticamente": False,
         "competencias_ausentes": [],
-        "totais": {"pagamentos": len(registros), "despesas": len(registros)},
+        "totais": {"pagamentos": len(registros)},
         "data_available": bool(registros),
         "is_stale": False,
         "source_status": "CURRENT" if registros else "EMPTY",
@@ -307,11 +304,15 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
 
 
 def montar_base_analitica_pagamentos_tce_estado_somente_banco(
-    data_inicial: str, data_final: str,
+    data_inicial: str,
+    data_final: str,
+    *,
+    exercicio_orcamento: int | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     snapshot = tce_analytics.carregar_snapshot_pagamentos_estaduais(
         data_inicial=date.fromisoformat(data_inicial),
         data_final=date.fromisoformat(data_final),
+        exercicio_orcamento=exercicio_orcamento,
     )
     if snapshot.competencias_ausentes:
         amostra = snapshot.competencias_ausentes[:10]
@@ -341,7 +342,11 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
         base["valor_anulado"] = pd.NA
     return base, {
         "fonte": "TCE-CE/SIM",
-        "parametros": {"data_inicial": data_inicial, "data_final": data_final},
+        "parametros": {
+            "data_inicial": data_inicial,
+            "data_final": data_final,
+            "exercicio_orcamentario": exercicio_orcamento,
+        },
         "competencias_solicitadas": _competencias_entre_datas(data_inicial, data_final),
         "competencias_publicadas": sorted(set(competencias_pagamentos)),
         "competencias_pagamentos_incluidas": sorted(set(competencias_pagamentos)),
@@ -350,7 +355,7 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
             and max(competencias_pagamentos) > date.fromisoformat(data_final).strftime("%Y-%m")
         ),
         "competencias_ausentes": [],
-        "totais": {"pagamentos": len(registros), "despesas": len(registros)},
+        "totais": {"pagamentos": len(registros)},
         "data_available": bool(registros),
         "base_analitica": {"nome": "pagamentos_tce", "base_calculo": "PAGAMENTOS",
                            "dimensoes_empenho": ["natureza", "fornecedor"]},
@@ -405,7 +410,7 @@ def consultar_tce_indicadores_analiticos(
         "totais": _totais_tabelas(indicadores),
         "indicadores": tabelas_para_json(indicadores, limite=limite),
     }
-    if not metadados["data_available"] or not metadados["totais"]["despesas"]:
+    if not metadados["data_available"] or not metadados["totais"]["pagamentos"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta
 
@@ -443,7 +448,7 @@ def consultar_kpi_tce_portes_por_mes(
         "kpi": "participacao_por_porte_por_mes",
         "dados": dataframe_para_registros(resultado, limite=limite),
     }
-    if not metadados["data_available"] or not metadados["totais"]["despesas"]:
+    if not metadados["data_available"] or not metadados["totais"]["pagamentos"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta
 
@@ -560,16 +565,17 @@ def consultar_overview_tce(
     del throttle_fornecedores
     if codigo_municipio is None:
         return _consultar_overview_tce_estado(data_inicial, data_final)
-    base, metadados = montar_base_analitica_tce_somente_banco(
+    base, metadados = montar_base_analitica_pagamentos_tce_somente_banco(
         data_inicial,
         data_final,
         codigo_municipio=codigo_municipio,
+        exercicio_orcamento=date.fromisoformat(data_inicial).year,
     )
     overview = kpis.calcular_overview_me_mei(base, incluir_mei=False)
     resposta = {
         **metadados,
         "kpi": "overview_me_mei",
-        "medida": "EMPENHO_LIQUIDO",
+        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "escopo": {
             "portes_considerados": ["ME"],
             "portes_no_denominador_participacao": list(
@@ -581,7 +587,7 @@ def consultar_overview_tce(
         "unidade_monetaria": "CENTAVOS",
         **overview,
     }
-    if not metadados["data_available"] or not metadados["totais"]["despesas"]:
+    if not metadados["data_available"] or not metadados["totais"]["pagamentos"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta
 
@@ -615,13 +621,8 @@ def consultar_overview_municipal_tce(
         if filtros
         else list(kpis.PORTES_EMPRESARIAIS)
     )
-    base, metadados = montar_base_analitica_tce_somente_banco(
-        data_inicial,
-        data_final,
-        codigo_municipio=codigo_municipio,
-    )
     ano_exercicio = date.fromisoformat(data_inicial).year
-    base_pagamentos, metadados_pagamentos = (
+    base, metadados = (
         montar_base_analitica_pagamentos_tce_somente_banco(
             data_inicial,
             data_final,
@@ -633,18 +634,14 @@ def consultar_overview_municipal_tce(
         base,
         portes_considerados=portes,
     )
-    overview_pagamentos = kpis.calcular_overview_portes(
-        base_pagamentos,
-        portes_considerados=portes,
-    )
     if incluir_resumo_compras:
         raise ValueError(
-            "Resumo de pagamentos deve usar consultar_overview_pagamentos_tce."
+            "O resumo de compras ja integra o overview baseado em pagamentos."
         )
     resposta = {
         **metadados,
         "kpi": "overview_municipal_por_portes",
-        "medida": "EMPENHO_LIQUIDO",
+        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "escopo": {
             "portes_considerados": portes,
             "filtro_company_sizes": filtros,
@@ -654,16 +651,9 @@ def consultar_overview_municipal_tce(
             "regra_geografica": "TODOS_OS_PORTES_CONSIDERADOS",
         },
         "unidade_monetaria": "CENTAVOS",
-        "pagamentos": {
-            **metadados_pagamentos,
-            "kpi": "overview_municipal_pagamentos_por_portes",
-            "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
-            "unidade_monetaria": "CENTAVOS",
-            **overview_pagamentos,
-        },
         **overview,
     }
-    if not metadados["data_available"] or not metadados["totais"]["despesas"]:
+    if not metadados["data_available"] or not metadados["totais"]["pagamentos"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta
 
@@ -787,63 +777,19 @@ def consultar_participacao_me_por_natureza_tce(
         if filtros
         else list(kpis.PORTES_COMPRAS_CONSIDERADAS_OVERVIEW)
     )
+    exercicio = date.fromisoformat(data_inicial).year
     if codigo_municipio is None:
-        # O recorte estadual é estritamente local e reutiliza as mesmas partições
-        # publicadas e os mesmos enriquecimentos do overview estadual.
-        competencias = _competencias_entre_datas(data_inicial, data_final)
-        publicacoes = tce_despesas_persistence.listar_publicacoes_competencias_estado(
-            competencias=competencias,
-            uf=UF_PADRAO,
+        base, metadados = montar_base_analitica_pagamentos_tce_estado_somente_banco(
+            data_inicial,
+            data_final,
+            exercicio_orcamento=exercicio,
         )
-        if not publicacoes:
-            raise CompetenciasTceIndisponiveisError(
-                "Nenhuma competencia publicada para o Ceara no periodo solicitado."
-            )
-        empenhos = tce_despesas_persistence.listar_empenhos_liquidos_publicados(
-            codigo_municipio_tce=None,
-            data_inicial=date.fromisoformat(data_inicial),
-            data_final=date.fromisoformat(data_final),
-            uf=UF_PADRAO,
-        )
-        base_tce = pd.DataFrame(empenhos)
-        cnpjs = (
-            extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor"))
-            if not base_tce.empty
-            else []
-        )
-        caches = database.listar_fornecedores_cache(cnpjs) if cnpjs else {}
-        fornecedores_cache = []
-        for cnpj, cache in caches.items():
-            dados = dict(cache.get("dados_normalizados") or {})
-            dados.setdefault("cnpj", cnpj)
-            fornecedores_cache.append(dados)
-        if not base_tce.empty and fornecedores_cache:
-            base_tce = enriquecer_com_fornecedor(
-                base_tce, pd.DataFrame(fornecedores_cache), coluna_cnpj="cnpj_fornecedor"
-            )
-        base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
-        metadados: dict[str, Any] = {
-            "fonte": "TCE-CE",
-            "origem_dados": "BANCO_LOCAL",
-            "consultas_externas": False,
-            "parametros": {
-                "data_inicial": data_inicial,
-                "data_final": data_final,
-                "codigo_municipio": None,
-                "uf": UF_PADRAO,
-            },
-            "competencias_solicitadas": competencias,
-            "competencias_publicadas": sorted(
-                {str(item["competencia"]) for item in publicacoes}
-            ),
-            "totais_brutos": {"empenhos": len(empenhos)},
-        }
     else:
-        base, metadados = montar_base_analitica_tce(
+        base, metadados = montar_base_analitica_pagamentos_tce_somente_banco(
             data_inicial,
             data_final,
             codigo_municipio=codigo_municipio,
-            throttle_fornecedores=throttle_fornecedores,
+            exercicio_orcamento=exercicio,
         )
     return {
         **metadados,
@@ -856,6 +802,7 @@ def consultar_participacao_me_por_natureza_tce(
             "regra_natureza": "código de dois dígitos e descrição padronizada",
         },
         "unidade_monetaria": "CENTAVOS",
+        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "participacao_me_por_natureza": kpis.calcular_participacao_me_por_natureza(
             base, portes_considerados=portes
         ),
@@ -866,93 +813,52 @@ def _consultar_overview_tce_estado(
     data_inicial: str,
     data_final: str,
 ) -> dict[str, Any]:
-    """Consolida empenhos liquidos publicados de todo o Ceara."""
-    competencias = _competencias_entre_datas(data_inicial, data_final)
-    publicacoes = tce_despesas_persistence.listar_publicacoes_competencias_estado(
-        competencias=competencias,
-        uf=UF_PADRAO,
+    """Consolida pagamentos publicados de todo o Ceara."""
+    exercicio = date.fromisoformat(data_inicial).year
+    base, metadados = montar_base_analitica_pagamentos_tce_estado_somente_banco(
+        data_inicial,
+        data_final,
+        exercicio_orcamento=exercicio,
     )
-    falhas = tce_despesas_persistence.listar_falhas_competencias(
-        competencias=competencias,
-        uf=UF_PADRAO,
-    )
-    empenhos = (
-        tce_despesas_persistence.listar_empenhos_liquidos_publicados(
-            codigo_municipio_tce=None,
-            data_inicial=date.fromisoformat(data_inicial),
-            data_final=date.fromisoformat(data_final),
-            uf=UF_PADRAO,
-        )
-        if publicacoes else []
-    )
-    base_tce = pd.DataFrame(empenhos)
-    cnpjs = (
-        extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor"))
-        if not base_tce.empty else []
-    )
-    caches = database.listar_fornecedores_cache(cnpjs) if cnpjs else {}
-    fornecedores = []
-    for cnpj, cache in caches.items():
-        dados = dict(cache.get("dados_normalizados") or {})
-        dados.setdefault("cnpj", cnpj)
-        fornecedores.append(dados)
-    if not base_tce.empty and fornecedores:
-        base_tce = enriquecer_com_fornecedor(
-            base_tce,
-            pd.DataFrame(fornecedores),
-            coluna_cnpj="cnpj_fornecedor",
-        )
-    base = analitico.montar_base_analitica_tce(base_tce, uf_comprador=UF_PADRAO)
     overview = kpis.calcular_overview_me_mei(base, incluir_mei=False)
     ranking = kpis.calcular_ranking_municipios_overview_estadual(
         base,
         total_me_centavos=int(overview["kpis"]["total_compras_ME_centavos"]),
     )
-    municipios = {
-        str(item["codigo_municipio_tce"]): {
-            "codigo_tce": str(item["codigo_municipio_tce"]),
-            "codigo_ibge": str(item["codigo_municipio_ibge"]),
-            "nome": str(item["municipio"]),
-        }
-        for item in publicacoes
-    }
-    metadados_carga = tce_observability.construir_metadados_carga(
-        data_inicial=date.fromisoformat(data_inicial),
-        data_final=date.fromisoformat(data_final),
-        competencias_solicitadas=competencias,
-        publicacoes=publicacoes,
-        falhas=falhas,
-        registros=empenhos,
-        municipios_no_escopo=len(database.listar_municipios_ibge(UF_PADRAO)),
-    )
+    municipios = []
+    if not base.empty:
+        municipios = [
+            {"codigo_tce": str(codigo), "nome": str(nome)}
+            for codigo, nome in base[["codigo_municipio_tce", "municipio_comprador"]]
+            .drop_duplicates()
+            .itertuples(index=False, name=None)
+        ]
     resposta = {
         "fonte": "TCE-CE",
-        **metadados_carga,
+        **metadados,
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
-        "parametros": {"data_inicial": data_inicial, "data_final": data_final,
-                       "codigo_municipio": None, "uf": UF_PADRAO},
+        "parametros": {
+            **dict(metadados.get("parametros") or {}),
+            "codigo_municipio": None,
+            "uf": UF_PADRAO,
+            "exercicio_orcamentario": exercicio,
+        },
         "escopo_territorial": {
             "tipo": "ESTADO",
             "uf": UF_PADRAO,
             "nome": "Ceara",
-            "quantidade_municipios_com_publicacao": len(municipios),
-            "municipios_com_publicacao": sorted(
-                municipios.values(), key=lambda item: item["nome"]
-            ),
+            "quantidade_municipios_com_pagamentos": len(municipios),
+            "municipios_com_pagamentos": sorted(municipios, key=lambda item: item["nome"]),
         },
-        "competencias_solicitadas": competencias,
-        "competencias_publicadas": sorted(
-            {str(item["competencia"]) for item in publicacoes}
-        ),
-        "competencias_ausentes": metadados_carga["quality"]["missing_competencies"],
-        "totais_brutos": {"empenhos": len(empenhos)},
+        "totais_brutos": {"pagamentos": int(len(base))},
         "base_analitica": {
-            "nome": "tce_empenhos_liquidos",
-            "base_calculo": analitico.BASE_CALCULO_EMPENHOS_TCE,
+            "nome": "tce_pagamentos",
+            "base_calculo": "PAGAMENTOS",
+            "dimensoes_empenho": ["natureza", "fornecedor"],
         },
         "kpi": "overview_me",
-        "medida": "EMPENHO_LIQUIDO",
+        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "unidade_monetaria": "CENTAVOS",
         "escopo": {
             "portes_considerados": ["ME"],
@@ -965,6 +871,6 @@ def _consultar_overview_tce_estado(
         "ranking_municipios_me": ranking,
         **overview,
     }
-    if not metadados_carga["data_available"] or not empenhos:
+    if not metadados["data_available"] or not metadados["totais"]["pagamentos"]:
         resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
     return resposta

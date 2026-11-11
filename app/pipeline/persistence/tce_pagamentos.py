@@ -297,6 +297,7 @@ def listar_pagamentos_municipais_para_analise(
 
 def listar_pagamentos_estaduais_para_analise(
     *, data_inicial: date, data_final: date, uf: str,
+    exercicio_orcamento: int | None = None,
     competencias_publicadas: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Lista pagamentos estaduais somente quando todos os lotes municipais existem."""
@@ -317,6 +318,7 @@ def listar_pagamentos_estaduais_para_analise(
     for codigo in municipios:
         pagamentos, faltantes = listar_pagamentos_municipais_para_analise(
             codigo_municipio_tce=str(codigo), data_inicial=data_inicial, data_final=data_final,
+            exercicio_orcamento=exercicio_orcamento,
             competencias_publicadas=competencias_publicadas,
         )
         registros.extend(pagamentos)
