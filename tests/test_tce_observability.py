@@ -155,14 +155,14 @@ class MetadadosCargaTceTest(unittest.TestCase):
 
 
 class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
-    @patch("app.pipeline.analisys.montar_base_analitica_tce_somente_banco")
+    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
     def test_sem_carga_retorna_zero_monetario_taxas_nulas_sem_ingestao(
         self,
         montar_base,
     ) -> None:
         montar_base.return_value = (
             pd.DataFrame(columns=["ano_mes", "valor", "porte_fornecedor", "origem_geografica", "natureza_despesa_codigo"]),
-            {"data_available": False, "is_stale": False, "totais": {"pagamentos": 0, "despesas": 0}},
+            {"data_available": False, "is_stale": False, "totais": {"pagamentos": 0}},
         )
         resposta = analisys.consultar_overview_tce(
             data_inicial="2025-01-01",
@@ -176,6 +176,7 @@ class ConsultaAnaliticaSomenteBancoTest(unittest.TestCase):
         self.assertIsNone(resposta["kpis"]["percentual_participacao_me"])
         montar_base.assert_called_once_with(
             "2025-01-01", "2025-01-31", codigo_municipio="010",
+            exercicio_orcamento=2025,
         )
 
     @patch("app.pipeline.analisys.tce_analytics.carregar_snapshot_despesas")
