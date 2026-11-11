@@ -292,8 +292,8 @@ class ResolverMunicipioTceTest(unittest.TestCase):
         self.assertEqual(resultado["kpis"]["total_compras_ME_centavos"], 0)
         consultar_estado.assert_called_once_with("2025-01-01", "2025-01-31")
 
-    @patch("app.pipeline.analisys.montar_base_analitica_tce_somente_banco")
-    def test_overview_preserva_metadados_e_restringe_numerador_a_me(
+    @patch("app.pipeline.analisys.montar_base_analitica_pagamentos_tce_somente_banco")
+    def test_overview_usa_pagamentos_e_restringe_numerador_a_me(
         self,
         montar_base,
     ) -> None:
@@ -317,11 +317,11 @@ class ResolverMunicipioTceTest(unittest.TestCase):
                 ]
             ),
             {
-                "fonte": "TCE-CE",
+                "fonte": "TCE-CE/SIM",
                 "competencias_publicadas": ["2025-01"],
                 "competencias_ausentes": [],
                 "data_available": True,
-                "totais": {"despesas": 2},
+                "totais": {"pagamentos": 2},
             },
         )
 
@@ -336,6 +336,7 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             "2025-01-01",
             "2025-01-31",
             codigo_municipio="010",
+            exercicio_orcamento=2025,
         )
         self.assertEqual(resultado["competencias_publicadas"], ["2025-01"])
         self.assertEqual(resultado["escopo"]["portes_considerados"], ["ME"])
@@ -344,6 +345,7 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             ["ME", "MEI", "EPP", "DEMAIS"],
         )
         self.assertEqual(resultado["unidade_monetaria"], "CENTAVOS")
+        self.assertEqual(resultado["medida"], "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA")
         self.assertEqual(resultado["kpis"]["percentual_participacao_me"], 80.0)
         self.assertEqual(
             resultado["kpis"]["total_compras_ME_centavos"],

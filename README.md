@@ -277,15 +277,15 @@ um PostgreSQL persistente externo. O serviço `postgres` deste Compose conserva 
 - `GET /pipeline/tce/contratos`: consulta e enriquece contratos do TCE-CE.
 - `GET /pipeline/tce/kpis/portes-por-mes`: calcula a participação mensal por porte.
 - `GET /pipeline/tce/pagamentos/overview`: calcula pagamentos não estornados por exercício orçamentário e período civil.
-- `GET /pipeline/tce/overview`: calcula o overview estadual de empenhos líquidos de ME; MEI integra demais portes.
-- `GET /pipeline/tce/overview/municipal`: calcula o overview de empenhos líquidos de um município por período, código TCE e portes opcionais.
-- `POST /pipeline/tce/comparisons`: compara dois overviews usando somente dados armazenados.
+- `GET /pipeline/tce/overview`: calcula o overview estadual com pagamentos não estornados; MEI integra os demais portes. Empenhos associados fornecem apenas dimensões.
+- `GET /pipeline/tce/overview/municipal`: calcula o overview de pagamentos não estornados de um município por período, exercício orçamentário (ano de `data_inicial`), código TCE e portes opcionais. Empenhos associados fornecem apenas dimensões.
+- `GET /pipeline/tce/comparisons`: compara pagamentos de 2 a 4 municípios, recebidos como códigos TCE repetidos na query.
 - `GET /pipeline/tce/despesas`: lista e pagina despesas publicadas armazenadas.
 - `GET /pipeline/tce/despesas/{chave_despesa}`: detalha uma despesa e retorna somente seu valor final.
 - `GET /pipeline/tce/fornecedores`: lista fornecedores e valores no recorte.
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}`: retorna cadastro, indicadores e gráficos do fornecedor.
 - `GET /pipeline/tce/fornecedores/{tipo_documento}/{documento}/despesas`: pagina as despesas consideradas do fornecedor.
-- `GET /pipeline/tce/analitico/indicadores`: atualiza as competencias e calcula indicadores das despesas finais.
+- `GET /pipeline/tce/analitico/indicadores`: calcula indicadores financeiros usando pagamentos publicados; os empenhos associados fornecem dimensões.
 
 As rotas analíticas recebem datas no formato `YYYY-MM-DD`. Uma competência só entra no cálculo depois de ser coletada, validada e publicada. Falhas totais de atualização retornam `503`; meses que falharem durante uma consulta parcialmente bem-sucedida são sinalizados nos metadados.
 
@@ -420,9 +420,9 @@ Município/competência sem publicação não é tratado como valor zero.
 
 ### Overview estadual de ME
 
-`GET /pipeline/tce/overview` recebe `data_inicial` e `data_final`; sem `codigo_municipio`, consolida os lotes publicados do Ceara. O KPI e o detalhamento geografico consideram somente ME. MEI fica excluido do recorte de ME e agregado em `OUTROS_PORTES` junto com EPP e DEMAIS na participacao por porte. A participacao de ME usa ME sobre ME + MEI + EPP + DEMAIS; portes nao identificados ficam fora do denominador.
+`GET /pipeline/tce/overview` recebe `data_inicial` e `data_final`; sem `codigo_municipio`, consolida pagamentos publicados do Ceará vinculados ao exercício orçamentário do ano de `data_inicial`. O KPI e o detalhamento geográfico consideram somente ME. MEI fica excluído do recorte de ME e agregado em `OUTROS_PORTES` junto com EPP e DEMAIS na participação por porte. A participação de ME usa ME sobre ME + MEI + EPP + DEMAIS; portes não identificados ficam fora do denominador. Os valores vêm exclusivamente de pagamentos não estornados; empenhos vinculados só fornecem natureza e fornecedor.
 
-O KPI `total_compras_ME_centavos` contem somente empenhos líquidos de ME. A resposta informa `medida=EMPENHO_LIQUIDO`; não rotule esses campos como valor pago. Para pagamentos use `/pipeline/tce/pagamentos/overview`.
+O KPI `total_compras_ME_centavos` nas rotas `/overview` soma pagamentos não estornados de ME. A resposta informa `medida=VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA`. O endpoint `/pipeline/tce/pagamentos/overview` continua disponível quando o exercício orçamentário precisa ser informado explicitamente.
 
 No overview estadual, `destino_recursos` classifica diretamente pela UF da sede do fornecedor: `NO_CEARA`, `FORA_DO_CEARA` e `NAO_IDENTIFICADA`. A categoria estadual não depende do município comprador nem exige que o município de sede esteja identificado quando a UF é conhecida. O overview municipal mantém a distinção entre fornecedor do município comprador e de outro município do Ceará.
 
@@ -465,81 +465,21 @@ temporais e territoriais. Exemplo de item:
 }
 ```
 
-### Comparação de overviews
+### Comparação de municípios
 
-`POST /pipeline/tce/comparisons` recebe dois lados independentes e permite
-comparar períodos (`PERIODS`), municípios (`MUNICIPALITIES`) ou ambos
-(`MIXED`). Os municípios são informados pelo código IBGE e resolvidos para o
-código interno do TCE usando o mapeamento armazenado.
+`GET /pipeline/tce/comparisons` recebe de 2 a 4 códigos municipais do TCE como
+parâmetros repetidos `codigo_municipio_tce`, além de um período comum. Não usa
+body JSON. Exemplo:
 
-A rota é estritamente somente leitura. Ela não atualiza competências, não
-renova o cadastro de fornecedores e não consulta TCE-CE, IBGE ou OpenCNPJ.
-Autenticação e assinatura são responsabilidades do proxy que publica a API.
-
-Exemplo de comparação mista:
-
-```json
-{
-  "comparison_mode": "MIXED",
-  "left": {
-    "label": "Acaraú 2025",
-    "filters": {
-      "uf": "CE",
-      "municipality_ibge_code": "2300200",
-      "start_date": "2025-01-01",
-      "end_date": "2025-12-31",
-      "company_sizes": ["ME", "EPP", "MEI", "OTHER", "UNKNOWN"],
-      "supplier_origins": [],
-      "expense_element_codes": []
-    }
-  },
-  "right": {
-    "label": "Sobral 2024",
-    "filters": {
-      "uf": "CE",
-      "municipality_ibge_code": "2312908",
-      "start_date": "2024-01-01",
-      "end_date": "2024-12-31",
-      "company_sizes": ["ME", "EPP", "MEI", "OTHER", "UNKNOWN"],
-      "supplier_origins": [],
-      "expense_element_codes": []
-    }
-  }
-}
+```http
+GET /pipeline/tce/comparisons?codigo_municipio_tce=004&codigo_municipio_tce=010&codigo_municipio_tce=157&codigo_municipio_tce=057&data_inicial=2025-01-01&data_final=2025-12-31
 ```
 
-Listas vazias significam que a dimensão não restringe a base. Os portes
-aceitos são `ME`, `MEI`, `EPP`, `OTHER` e `UNKNOWN`; as origens aceitas são
-`NO_MUNICIPIO_COMPRADOR`, `EM_OUTRO_MUNICIPIO`, `FORA_DO_CEARA` e
-`ORIGEM_NAO_IDENTIFICADA`. Os elementos aceitos são `30`, `32`, `35`, `39`,
-`40`, `51` e `52`.
-
-`left.overview` e `right.overview` preservam todos os blocos do overview. O
-objeto `sections` acrescenta maior, menor e diferença absoluta para cada KPI,
-porte, elemento, destino e posição da série mensal. Competências publicadas
-sem movimento são válidas e aparecem com zero na seção mensal; competências
-sem publicação aparecem em `competencias_ausentes` e não são convertidas em
-zero.
-
-Erros da rota usam um envelope próprio e propagam `X-Request-ID` quando o
-cabeçalho é enviado pelo proxy:
-
-```json
-{
-  "error": {
-    "code": "INVALID_DATE_RANGE",
-    "message": "start_date deve ser menor ou igual a end_date.",
-    "details": [
-      {
-        "field": "left.filters.start_date",
-        "reason": "after_end_date",
-        "value": "2026-12-31"
-      }
-    ],
-    "request_id": "req_01K6ME9W3H"
-  }
-}
-```
+A resposta retorna o overview de cada município e uma matriz comparativa de
+KPIs, portes, elementos de despesa, evolução mensal e destino dos recursos. Os
+valores são de pagamentos não estornados associados ao exercício orçamentário
+do ano de `data_inicial`; empenhos fornecem somente as dimensões de natureza e
+fornecedor. A rota é somente leitura e usa dados já publicados localmente.
 
 ### Consulta de despesas armazenadas
 

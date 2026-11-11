@@ -4,8 +4,9 @@ from datetime import date
 from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import StringConstraints
 from app.api.errors import REQUEST_ID_HEADER, obter_request_id, resposta_erro
-from app.api.schemas.comparisons import CompanySize, SupplierOrigin, TceComparisonRequest
+from app.api.schemas.comparisons import CompanySize, SupplierOrigin
 from app.api.schemas.empenhos import EmpenhoSortField, SortOrder
 from app.api.schemas.fornecedores import SupplierDocumentType, SupplierSortField
 from app.core.config import CODIGO_MUNICIPIO_TCE_PADRAO, UF_PADRAO
@@ -28,6 +29,7 @@ router = APIRouter(
 )
 
 DATA_ISO_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+CodigoMunicipioTce = Annotated[str, StringConstraints(pattern=r"^\d{3}$")]
 
 
 def _data_inicial_query():
@@ -200,9 +202,9 @@ def tce_pagamentos_overview(
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview estadual de Microempresas (ME)",
     description=(
-        "Calcula empenhos liquidos (valor empenhado menos anulacoes) publicados no "
-        "banco local. Nao representa valor pago. Para pagamentos, use "
-        "/pipeline/tce/pagamentos/overview. A rota nao consulta fontes externas."
+        "Calcula o overview estadual com notas de pagamento nao estornadas. "
+        "Empenhos associados fornecem somente as dimensoes de natureza e fornecedor. "
+        "Usa snapshots locais e nao consulta fontes externas."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
@@ -239,10 +241,10 @@ def tce_overview(
     tags=["Indicadores TCE-CE"],
     summary="Consulta o overview de um municipio por periodo",
     description=(
-        "Calcula o overview municipal de empenhos liquidos publicados. Por padrao, "
-        "mostra todos os portes; company_sizes restringe o calculo. A resposta "
-        "tambem inclui um bloco pagamentos para o exercicio orcamentario do ano "
-        "de data_inicial e o periodo civil solicitado."
+        "Calcula o overview municipal com notas de pagamento nao estornadas para "
+        "o exercicio orcamentario do ano de data_inicial e o periodo civil solicitado. "
+        "Empenhos associados fornecem somente as dimensoes de natureza e fornecedor. "
+        "Por padrao mostra todos os portes; company_sizes restringe o calculo."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
@@ -348,34 +350,114 @@ def tce_overview_municipal_subscriber(
         raise _erro_pipeline(error) from error
 
 
-@router.post(
+@router.get(
     "/tce/comparisons",
-    tags=["Comparações TCE-CE"],
-    summary="Compara dois overviews armazenados do TCE-CE",
+    tags=["Comparacoes TCE-CE"],
+    summary="Compara pagamentos de dois a quatro municipios do TCE-CE",
     description=(
-        "Compara municipios, periodos ou ambos usando exclusivamente competencias "
-        "e fornecedores ja armazenados no banco. Nao executa ingestao nem consulta fontes externas."
+        "Selecione de 2 a 4 municipios repetindo `codigo_municipio_tce` na query. "
+        "Cada codigo TCE deve ter tres digitos, ser unico e existir no catalogo local. "
+        "Informe tambem `data_inicial` e `data_final` inclusivas no formato YYYY-MM-DD. "
+        "O periodo civil filtra a data do pagamento; o exercicio orcamentario usado "
+        "e o ano de `data_inicial`. Valores financeiros usam pagamentos publicados "
+        "nao estornados. Empenhos associados servem apenas como dimensoes de natureza "
+        "da despesa e fornecedor. A operacao e somente leitura.\n\n"
+        "Exemplo: `/pipeline/tce/comparisons?codigo_municipio_tce=004&codigo_municipio_tce=010&data_inicial=2025-01-01&data_final=2025-12-31`."
     ),
     response_description=(
-        "Objeto com `left` e `right` (rótulo, filtros e overview de cada recorte) e "
-        "`sections`, que compara KPIs, portes, elementos, evolução e destino dos recursos."
+        "Retorna `municipios` com o overview individual e `comparacao` com valores "
+        "por municipio para KPIs, portes, elementos de despesa, meses e destinos. "
+        "O campo `medida` identifica valores de pagamentos nao estornados."
     ),
     response_model=None,
     responses={
+        200: {
+            "description": "Comparacao dos pagamentos publicados para os municipios selecionados.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "fonte": "TCE-CE/SIM",
+                        "origem_dados": "BANCO_LOCAL",
+                        "consultas_externas": False,
+                        "data_available": True,
+                        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
+                        "parametros": {
+                            "codigo_municipio_tce": ["004", "010"],
+                            "data_inicial": "2025-01-01",
+                            "data_final": "2025-12-31",
+                            "exercicio_orcamentario": 2025,
+                        },
+                        "municipios": [
+                            {
+                                "codigo_municipio_tce": "004",
+                                "nome": "Acaraú",
+                                "overview": {
+                                    "kpis": {"total_compras_centavos": 125000}
+                                },
+                            },
+                            {
+                                "codigo_municipio_tce": "010",
+                                "nome": "Município exemplo",
+                                "overview": {
+                                    "kpis": {"total_compras_centavos": 98000}
+                                },
+                            }
+                        ],
+                        "comparacao": {
+                            "kpis": [
+                                {
+                                    "indicador": "total_compras_centavos",
+                                    "unidade": "CENTAVOS",
+                                    "valores": [
+                                        {
+                                            "codigo_municipio_tce": "004",
+                                            "municipio": "Acaraú",
+                                            "valor": 125000,
+                                        },
+                                        {
+                                            "codigo_municipio_tce": "010",
+                                            "municipio": "Município exemplo",
+                                            "valor": 98000,
+                                        }
+                                    ],
+                                }
+                            ],
+                            "participacao_por_porte_empresarial": [],
+                            "elementos_despesa": [],
+                            "evolucao_compras_consideradas": [],
+                            "destino_recursos": [],
+                        },
+                    }
+                }
+            },
+        },
         404: {"description": "Municipio nao encontrado no catalogo local."},
-        422: {"description": "Filtros invalidos ou dados locais indisponiveis."},
+        422: {"description": "Informe 2 a 4 codigos TCE unicos e validos, datas validas e snapshots completos."},
         500: {"description": "Falha inesperada ao consultar o banco local."},
     },
 )
 def tce_comparisons(
-    payload: TceComparisonRequest,
+    codigo_municipio_tce: Annotated[
+        list[CodigoMunicipioTce],
+        Query(
+            min_length=2,
+            max_length=4,
+            description="Repita para cada municipio TCE, por exemplo 004, 010, 157 e 057.",
+        ),
+    ],
+    data_inicial: Annotated[str, _data_inicial_query()],
+    data_final: Annotated[str, _data_final_query()],
     request: Request,
     response: Response,
 ) -> dict[str, Any] | JSONResponse:
     request_id = obter_request_id(request)
     response.headers[REQUEST_ID_HEADER] = request_id
     try:
-        return comparisons.consultar_comparacao_tce(payload.model_dump(mode="json"))
+        return comparisons.consultar_comparacao_tce(
+            codigo_municipio_tce=codigo_municipio_tce,
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
     except comparisons.ComparisonRequestError as error:
         logger.info(
             "Comparacao rejeitada pelos filtros ou dados locais",

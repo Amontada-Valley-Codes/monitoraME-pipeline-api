@@ -1,22 +1,13 @@
 from __future__ import annotations
 
 from datetime import date
-from itertools import zip_longest
-from numbers import Number
 from typing import Any
 
 import pandas as pd
 
 from app.core import database
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS, UF_PADRAO
-from app.pipeline import analitico, kpis
-from app.pipeline import tce_observability
-from app.pipeline.enrichment.fornecedores import (
-    enriquecer_com_fornecedor,
-    extrair_cnpjs_distintos,
-)
-from app.pipeline.persistence import tce_despesas as tce_despesas_persistence
-from app.pipeline.persistence import tce_analytics
+from app.pipeline import kpis, tce_observability
 
 
 _PORTES_FILTRO = {
@@ -74,18 +65,6 @@ def _validar_datas(filtros: dict[str, Any], *, lado: str) -> tuple[date, date]:
     return inicio, fim
 
 
-def _competencias(inicio: date, fim: date) -> list[str]:
-    resultado: list[str] = []
-    ano, mes = inicio.year, inicio.month
-    while (ano, mes) <= (fim.year, fim.month):
-        resultado.append(f"{ano:04d}-{mes:02d}")
-        if mes == 12:
-            ano, mes = ano + 1, 1
-        else:
-            mes += 1
-    return resultado
-
-
 def _validar_filtros(filtros: dict[str, Any], *, lado: str) -> tuple[date, date]:
     inicio, fim = _validar_datas(filtros, lado=lado)
     uf = str(filtros["uf"]).strip().upper()
@@ -122,63 +101,6 @@ def _validar_filtros(filtros: dict[str, Any], *, lado: str) -> tuple[date, date]
             ],
         )
     return inicio, fim
-
-
-def _validar_modo(payload: dict[str, Any]) -> None:
-    esquerdo = payload["left"]["filters"]
-    direito = payload["right"]["filters"]
-    municipio_diferente = (
-        esquerdo["uf"].upper(),
-        esquerdo["municipality_ibge_code"],
-    ) != (
-        direito["uf"].upper(),
-        direito["municipality_ibge_code"],
-    )
-    periodo_diferente = (
-        esquerdo["start_date"],
-        esquerdo["end_date"],
-    ) != (
-        direito["start_date"],
-        direito["end_date"],
-    )
-    modo = payload["comparison_mode"]
-    valido = {
-        "PERIODS": periodo_diferente and not municipio_diferente,
-        "MUNICIPALITIES": municipio_diferente and not periodo_diferente,
-        "MIXED": municipio_diferente and periodo_diferente,
-    }[modo]
-    if valido:
-        return
-
-    raise ComparisonRequestError(
-        "COMPARISON_MODE_MISMATCH",
-        "comparison_mode nao corresponde aos municipios e periodos informados.",
-        [
-            {
-                "field": "comparison_mode",
-                "reason": "mode_mismatch",
-                "value": modo,
-            }
-        ],
-    )
-
-
-def _fornecedores_somente_cache(cnpjs: list[str]) -> tuple[pd.DataFrame, set[str]]:
-    if not cnpjs:
-        return pd.DataFrame(), set()
-
-    cache_por_cnpj = database.listar_fornecedores_cache(cnpjs)
-    registros: list[dict[str, Any]] = []
-    for cnpj in cnpjs:
-        cache = cache_por_cnpj.get(cnpj)
-        if cache is None:
-            continue
-        dados = dict(cache.get("dados_normalizados") or {})
-        dados.setdefault("cnpj", cnpj)
-        dados["cache_desatualizado"] = bool(cache.get("cache_desatualizado"))
-        dados["cache_ultima_tentativa_status"] = cache.get("ultima_tentativa_status")
-        registros.append(dados)
-    return pd.DataFrame(registros), set(cache_por_cnpj)
 
 
 def _aplicar_filtros(base: pd.DataFrame, filtros: dict[str, Any]) -> pd.DataFrame:
@@ -218,106 +140,39 @@ def _montar_overview_local(
         raise ComparisonRequestError(
             "MUNICIPALITY_NOT_FOUND",
             "Municipio nao encontrado no catalogo local.",
-            [
-                {
-                    "field": f"{lado}.filters.municipality_ibge_code",
-                    "reason": "not_found",
-                    "value": codigo_ibge,
-                }
-            ],
+            [{
+                "field": f"{lado}.filters.municipality_ibge_code",
+                "reason": "not_found",
+                "value": codigo_ibge,
+            }],
             status_code=404,
         )
 
+    from app.pipeline.analisys import montar_base_analitica_pagamentos_tce_somente_banco
+
     codigo_tce = municipio["codigo_municipio_tce"]
-    competencias_solicitadas = _competencias(inicio, fim)
-    publicacoes = tce_despesas_persistence.listar_publicacoes_competencias(
-        codigo_municipio_tce=codigo_tce,
-        competencias=competencias_solicitadas,
-    )
-    competencias_publicadas = [
-        competencia
-        for competencia in competencias_solicitadas
-        if competencia in publicacoes
-    ]
-    competencias_ausentes = [
-        competencia
-        for competencia in competencias_solicitadas
-        if competencia not in publicacoes
-    ]
-    empenhos = (
-        tce_despesas_persistence.listar_empenhos_liquidos_publicados(
-            codigo_municipio_tce=codigo_tce,
-            data_inicial=inicio,
-            data_final=fim,
-        )
-        if competencias_publicadas
-        else []
-    )
-    competencias_validas = set(competencias_publicadas)
-    empenhos = [
-        empenho
-        for empenho in empenhos
-        if str(empenho.get("data_empenho", ""))[:7] in competencias_validas
-    ]
-
-    base_tce = pd.DataFrame(empenhos)
-    cnpjs = extrair_cnpjs_distintos(base_tce.get("cnpj_fornecedor")) if not base_tce.empty else []
-    fornecedores_df, cnpjs_em_cache = _fornecedores_somente_cache(cnpjs)
-    if not base_tce.empty and not fornecedores_df.empty:
-        base_tce = enriquecer_com_fornecedor(
-            base_tce,
-            fornecedores_df,
-            coluna_cnpj="cnpj_fornecedor",
-        )
-
-    base_analitica = analitico.montar_base_analitica_tce(
-        base_tce,
+    base_analitica, metadados = montar_base_analitica_pagamentos_tce_somente_banco(
+        inicio.isoformat(),
+        fim.isoformat(),
         codigo_municipio=codigo_tce,
-        municipio_comprador=municipio["nome"],
-        uf_comprador=uf,
+        exercicio_orcamento=inicio.year,
     )
     base_filtrada = _aplicar_filtros(base_analitica, filtros)
     overview = kpis.calcular_overview_me_mei(base_filtrada)
-    registros_com_cache = (
-        int(base_analitica["cnpj_fornecedor"].isin(cnpjs_em_cache).sum())
-        if not base_analitica.empty
+    pagamentos_com_fornecedor = int(len(base_analitica))
+    fornecedores_com_porte = (
+        int(base_analitica["porte_fornecedor"].ne("NAO_IDENTIFICADO").sum())
+        if pagamentos_com_fornecedor
         else 0
     )
-    cobertura_percentual = (
-        (registros_com_cache / len(base_analitica)) * 100
-        if len(base_analitica)
-        else 0.0
-    )
-
-    publicacoes_metadados = [
-        {
-            "codigo_municipio_tce": codigo_tce,
-            "competencia": competencia,
-            "publicado_em": publicado_em,
-        }
-        for competencia, publicado_em in publicacoes.items()
-    ]
-    falhas = tce_despesas_persistence.listar_falhas_competencias(
-        codigo_municipio_tce=codigo_tce,
-        competencias=competencias_solicitadas,
-    )
-    metadados_carga = tce_observability.construir_metadados_carga(
-        data_inicial=inicio,
-        data_final=fim,
-        competencias_solicitadas=competencias_solicitadas,
-        publicacoes=publicacoes_metadados,
-        falhas=falhas,
-        registros=empenhos,
-        municipios_no_escopo=1,
-        raizes_com_porte_historico=tce_analytics.carregar_raizes_historicas(empenhos),
-    )
-    resposta = {
-        "fonte": "TCE-CE",
-        **metadados_carga,
+    pagamento_metadados = {
+        "fonte": "TCE-CE/SIM",
+        **metadados,
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
         "status_exercicio": _status_exercicio(inicio, fim),
         "parametros": {
+            **dict(metadados.get("parametros") or {}),
             "data_inicial": filtros["start_date"],
             "data_final": filtros["end_date"],
             "uf": uf,
@@ -333,38 +188,24 @@ def _montar_overview_local(
             "codigo_ibge": municipio["codigo_municipio_ibge"],
             "codigo_tce": codigo_tce,
         },
-        "competencias_solicitadas": competencias_solicitadas,
-        "competencias_publicadas": competencias_publicadas,
-        "competencias_atualizadas": [],
-        "competencias_reutilizadas": competencias_publicadas,
-        "competencias_desatualizadas": [],
-        "competencias_ausentes": competencias_ausentes,
-        "falhas_competencias": [
-            {
-                "competencia": item["competencia"],
-                "usou_versao_publicada": item["competencia"] in publicacoes,
-            }
-            for item in falhas
-        ],
-        "politica_atualizacao": {
-            "modo": "SOMENTE_BANCO",
-            "atualizar_competencias": False,
-            "atualizar_fornecedores": False,
-        },
-        "totais_brutos": {"empenhos": len(empenhos)},
-        "totais_filtrados": {"empenhos": int(len(base_filtrada))},
+        "totais_brutos": {"pagamentos": int(len(base_analitica))},
+        "totais_filtrados": {"pagamentos": int(len(base_filtrada))},
         "cobertura_cadastral": {
-            "empenhos": int(len(base_analitica)),
-            "empenhos_com_cache": registros_com_cache,
-            "percentual": cobertura_percentual if len(base_analitica) else None,
+            "pagamentos_com_fornecedor": pagamentos_com_fornecedor,
+            "pagamentos_com_porte_identificado": fornecedores_com_porte,
+            "percentual": (
+                fornecedores_com_porte * 100 / pagamentos_com_fornecedor
+                if pagamentos_com_fornecedor
+                else None
+            ),
         },
         "base_analitica": {
-            "nome": "tce_empenhos_liquidos",
-            "base_calculo": analitico.BASE_CALCULO_EMPENHOS_TCE,
-            "municipio_comprador": municipio["nome"],
-            "colunas": list(analitico.COLUNAS_BASE_ANALITICA_TCE),
+            "nome": "tce_pagamentos",
+            "base_calculo": "PAGAMENTOS",
+            "dimensoes_empenho": ["natureza", "fornecedor"],
         },
         "kpi": "overview_me_mei",
+        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
         "escopo": {
             "portes_considerados": list(kpis.PORTES_OVERVIEW),
             "portes_no_denominador_participacao": list(
@@ -376,382 +217,163 @@ def _montar_overview_local(
         "unidade_monetaria": "CENTAVOS",
         **overview,
     }
-    if not metadados_carga["data_available"] or base_filtrada.empty:
-        resposta = tce_observability.tornar_percentuais_indisponiveis(resposta)
-    return resposta
+    if not metadados["data_available"] or base_filtrada.empty:
+        pagamento_metadados = tce_observability.tornar_percentuais_indisponiveis(
+            pagamento_metadados
+        )
+    return pagamento_metadados
 
 
-def _valor_numerico(valor: Any) -> int | float | None:
-    if isinstance(valor, bool) or not isinstance(valor, Number):
-        return None
-    return valor.item() if hasattr(valor, "item") else valor
-
-
-def _comparar_valores(
-    valor_esquerdo: Any,
-    valor_direito: Any,
+def consultar_comparacao_tce(
     *,
-    unidade: str,
-    label_esquerdo: str,
-    label_direito: str,
+    codigo_municipio_tce: list[str],
+    data_inicial: str,
+    data_final: str,
 ) -> dict[str, Any]:
-    esquerdo = _valor_numerico(valor_esquerdo)
-    direito = _valor_numerico(valor_direito)
-    valores = {
-        "left": {"source": "LEFT", "label": label_esquerdo, "value": esquerdo},
-        "right": {"source": "RIGHT", "label": label_direito, "value": direito},
-    }
-    if esquerdo is None or direito is None:
-        return {
-            "ordering": "UNAVAILABLE",
-            **valores,
-            "higher": None,
-            "lower": None,
-            "absolute_difference": None,
-            "unit": unidade,
+    """Compara pagamentos de dois a quatro municipios no mesmo periodo."""
+    import re
+
+    codigos = [str(codigo).strip() for codigo in codigo_municipio_tce]
+    if not 2 <= len(codigos) <= 4:
+        raise ComparisonRequestError(
+            "INVALID_MUNICIPALITY_COUNT",
+            "Informe de dois a quatro municipios para comparar.",
+            [{"field": "codigo_municipio_tce", "reason": "invalid_count", "value": len(codigos)}],
+            status_code=422,
+        )
+    invalidos = [codigo for codigo in codigos if not re.fullmatch(r"\d{3}", codigo)]
+    if invalidos:
+        raise ComparisonRequestError(
+            "INVALID_MUNICIPALITY_CODE",
+            "Os codigos TCE devem ter exatamente tres digitos.",
+            [{"field": "codigo_municipio_tce", "reason": "invalid_value", "value": invalidos}],
+        )
+    if len(set(codigos)) != len(codigos):
+        raise ComparisonRequestError(
+            "DUPLICATE_MUNICIPALITY_CODE",
+            "Informe cada municipio uma unica vez.",
+            [{"field": "codigo_municipio_tce", "reason": "duplicate_value", "value": codigos}],
+        )
+    inicio, fim = _validar_datas(
+        {"start_date": data_inicial, "end_date": data_final},
+        lado="periodo",
+    )
+
+    municipios = []
+    for codigo in codigos:
+        municipio = database.localizar_municipio_tce(codigo)
+        if municipio is None:
+            raise ComparisonRequestError(
+                "MUNICIPALITY_NOT_FOUND",
+                "Municipio nao encontrado no catalogo local.",
+                [{"field": "codigo_municipio_tce", "reason": "not_found", "value": codigo}],
+                status_code=404,
+            )
+        filtros = {
+            "uf": municipio["uf"],
+            "municipality_ibge_code": municipio["codigo_municipio_ibge"],
+            "start_date": inicio.isoformat(),
+            "end_date": fim.isoformat(),
+            "company_sizes": [],
+            "supplier_origins": [],
+            "expense_element_codes": [],
         }
+        overview = _montar_overview_local(filtros, lado=f"municipios.{codigo}")
+        municipios.append({
+            "codigo_municipio_tce": codigo,
+            "codigo_municipio_ibge": municipio["codigo_municipio_ibge"],
+            "nome": municipio["nome"],
+            "overview": overview,
+        })
 
-    diferenca = abs(esquerdo - direito)
-    if isinstance(esquerdo, int) and isinstance(direito, int):
-        diferenca = int(diferenca)
-    else:
-        diferenca = round(float(diferenca), 12)
-    if esquerdo == direito:
-        return {
-            "ordering": "TIE",
-            **valores,
-            "higher": valores["left"],
-            "lower": valores["right"],
-            "absolute_difference": diferenca,
-            "unit": unidade,
+    def serie(campo: str, chave: str, valores: tuple[str, ...]) -> list[dict[str, Any]]:
+        chaves = list(dict.fromkeys(
+            str(registro.get(chave))
+            for municipio in municipios
+            for registro in municipio["overview"].get(campo, [])
+        ))
+        resultado = []
+        for item_chave in chaves:
+            linha: dict[str, Any] = {chave: item_chave, "valores": []}
+            for municipio in municipios:
+                registro = next((item for item in municipio["overview"].get(campo, [])
+                                 if str(item.get(chave)) == item_chave), {})
+                if campo == "evolucao_compras_consideradas":
+                    valor_map = {
+                        "compras_consideradas_centavos": registro.get("compras_consideradas_centavos"),
+                        "microempresas_centavos": registro.get("microempresas_centavos"),
+                    }
+                else:
+                    valor_map = {nome: registro.get(nome) for nome in valores}
+                linha["valores"].append({
+                    "codigo_municipio_tce": municipio["codigo_municipio_tce"],
+                    "municipio": municipio["nome"],
+                    **valor_map,
+                })
+            resultado.append(linha)
+        return resultado
+
+    indicadores = list(dict.fromkeys(
+        indicador
+        for municipio in municipios
+        for indicador in municipio["overview"].get("kpis", {})
+    ))
+    kpis_comparados = [
+        {
+            "indicador": indicador,
+            "unidade": "CENTAVOS" if indicador.endswith("_centavos") else "PONTOS_PERCENTUAIS",
+            "valores": [
+                {
+                    "codigo_municipio_tce": municipio["codigo_municipio_tce"],
+                    "municipio": municipio["nome"],
+                    "valor": municipio["overview"].get("kpis", {}).get(indicador),
+                }
+                for municipio in municipios
+            ],
         }
-
-    maior, menor = (
-        (valores["left"], valores["right"])
-        if esquerdo > direito
-        else (valores["right"], valores["left"])
-    )
+        for indicador in indicadores
+    ]
+    portes = serie("participacao_por_porte_empresarial", "porte", ("valor_centavos", "percentual"))
+    elementos = serie("elementos_despesa", "codigo", ("valor_final_centavos",))
+    destinos = serie("destino_recursos", "destino", ("valor_centavos", "percentual"))
+    mensal = serie("evolucao_compras_consideradas", "periodo", ())
+    carregamentos = [item["overview"] for item in municipios]
     return {
-        "ordering": f"{maior['source']}_HIGHER",
-        **valores,
-        "higher": maior,
-        "lower": menor,
-        "absolute_difference": diferenca,
-        "unit": unidade,
-    }
-
-
-def _indexar(registros: list[dict[str, Any]], chave: str) -> dict[str, dict[str, Any]]:
-    return {str(registro[chave]): registro for registro in registros}
-
-
-def _secoes(
-    overview_esquerdo: dict[str, Any],
-    overview_direito: dict[str, Any],
-    *,
-    label_esquerdo: str,
-    label_direito: str,
-) -> dict[str, Any]:
-    def comparar(a: Any, b: Any, unidade: str) -> dict[str, Any]:
-        return _comparar_valores(
-            a,
-            b,
-            unidade=unidade,
-            label_esquerdo=label_esquerdo,
-            label_direito=label_direito,
-        )
-
-    kpis_esquerdo = overview_esquerdo["kpis"]
-    kpis_direito = overview_direito["kpis"]
-    secoes_kpis = []
-    for indicador in kpis_esquerdo:
-        unidade = "CENTAVOS" if indicador.endswith("_centavos") else "PONTOS_PERCENTUAIS"
-        secoes_kpis.append(
-            {
-                "indicator": indicador,
-                **comparar(kpis_esquerdo[indicador], kpis_direito.get(indicador), unidade),
-            }
-        )
-
-    portes_esquerdo = _indexar(overview_esquerdo["participacao_por_porte_empresarial"], "porte")
-    portes_direito = _indexar(overview_direito["participacao_por_porte_empresarial"], "porte")
-    secoes_portes = []
-    for porte in dict.fromkeys((*portes_esquerdo, *portes_direito)):
-        esquerdo = portes_esquerdo.get(porte, {})
-        direito = portes_direito.get(porte, {})
-        secoes_portes.append(
-            {
-                "porte": porte,
-                "valor_centavos": comparar(
-                    esquerdo.get("valor_centavos"), direito.get("valor_centavos"), "CENTAVOS"
-                ),
-                "percentual": comparar(
-                    esquerdo.get("percentual"), direito.get("percentual"), "PONTOS_PERCENTUAIS"
-                ),
-            }
-        )
-
-    elementos_esquerdo = _indexar(overview_esquerdo["elementos_despesa"], "codigo")
-    elementos_direito = _indexar(overview_direito["elementos_despesa"], "codigo")
-    secoes_elementos = []
-    for codigo in dict.fromkeys((*elementos_esquerdo, *elementos_direito)):
-        esquerdo = elementos_esquerdo.get(codigo, {})
-        direito = elementos_direito.get(codigo, {})
-        secoes_elementos.append(
-            {
-                "codigo": codigo,
-                "nome": esquerdo.get("nome") or direito.get("nome"),
-                **comparar(
-                    esquerdo.get("valor_final_centavos"),
-                    direito.get("valor_final_centavos"),
-                    "CENTAVOS",
-                ),
-            }
-        )
-
-    destinos_esquerdo = _indexar(overview_esquerdo["destino_recursos"], "destino")
-    destinos_direito = _indexar(overview_direito["destino_recursos"], "destino")
-    secoes_destinos = []
-    for destino in dict.fromkeys((*destinos_esquerdo, *destinos_direito)):
-        esquerdo = destinos_esquerdo.get(destino, {})
-        direito = destinos_direito.get(destino, {})
-        secoes_destinos.append(
-            {
-                "destino": destino,
-                "valor_centavos": comparar(
-                    esquerdo.get("valor_centavos"), direito.get("valor_centavos"), "CENTAVOS"
-                ),
-                "percentual": comparar(
-                    esquerdo.get("percentual"), direito.get("percentual"), "PONTOS_PERCENTUAIS"
-                ),
-            }
-        )
-
-    evolucao_esquerda = _indexar(
-        overview_esquerdo["evolucao_compras_consideradas"], "periodo"
-    )
-    evolucao_direita = _indexar(
-        overview_direito["evolucao_compras_consideradas"], "periodo"
-    )
-    publicadas_esquerda = set(overview_esquerdo["competencias_publicadas"])
-    publicadas_direita = set(overview_direito["competencias_publicadas"])
-
-    def registro_mensal(
-        competencia: str | None,
-        *,
-        evolucao: dict[str, dict[str, Any]],
-        publicadas: set[str],
-    ) -> dict[str, Any] | None:
-        if competencia is None or competencia not in publicadas:
-            return None
-        return evolucao.get(
-            competencia,
-            {
-                "periodo": competencia,
-                "compras_consideradas_centavos": 0,
-                "microempresas_centavos": 0,
-            },
-        )
-
-    serie_mensal = []
-    for posicao, (competencia_esquerda, competencia_direita) in enumerate(
-        zip_longest(
-            overview_esquerdo["competencias_solicitadas"],
-            overview_direito["competencias_solicitadas"],
-            fillvalue=None,
-        ),
-        start=1,
-    ):
-        esquerdo = registro_mensal(
-            competencia_esquerda,
-            evolucao=evolucao_esquerda,
-            publicadas=publicadas_esquerda,
-        ) or {}
-        direito = registro_mensal(
-            competencia_direita,
-            evolucao=evolucao_direita,
-            publicadas=publicadas_direita,
-        ) or {}
-        serie_mensal.append(
-            {
-                "position": posicao,
-                "left_period": competencia_esquerda,
-                "right_period": competencia_direita,
-                "left_published": competencia_esquerda in publicadas_esquerda,
-                "right_published": competencia_direita in publicadas_direita,
-                "compras_consideradas_centavos": comparar(
-                    esquerdo.get("compras_consideradas_centavos"),
-                    direito.get("compras_consideradas_centavos"),
-                    "CENTAVOS",
-                ),
-                "microempresas_centavos": comparar(
-                    esquerdo.get("microempresas_centavos"),
-                    direito.get("microempresas_centavos"),
-                    "CENTAVOS",
-                ),
-            }
-        )
-
-    return {
-        "kpis": secoes_kpis,
-        "participacao_por_porte_empresarial": secoes_portes,
-        "elementos_despesa": secoes_elementos,
-        "evolucao_compras_consideradas": serie_mensal,
-        "destino_recursos": secoes_destinos,
-    }
-
-
-def consultar_comparacao_tce(payload: dict[str, Any]) -> dict[str, Any]:
-    _validar_modo(payload)
-    overview_esquerdo = _montar_overview_local(payload["left"]["filters"], lado="left")
-    overview_direito = _montar_overview_local(payload["right"]["filters"], lado="right")
-    label_esquerdo = payload["left"]["label"]
-    label_direito = payload["right"]["label"]
-    qualidade_esquerda = overview_esquerdo["quality"]
-    qualidade_direita = overview_direito["quality"]
-    alertas = {
-        (item["code"], item["message"]): item
-        for item in (
-            qualidade_esquerda["alerts"] + qualidade_direita["alerts"]
-        )
-    }
-    codigos_municipais_no_escopo = {
-        str(lado["municipio"]["codigo_tce"])
-        for lado in (overview_esquerdo, overview_direito)
-    }
-    codigos_municipais_com_dados = {
-        str(lado["municipio"]["codigo_tce"])
-        for lado in (overview_esquerdo, overview_direito)
-        if lado["data_available"]
-    }
-    respostas = {
-        "fonte": "TCE-CE",
-        "data_available": (
-            overview_esquerdo["data_available"]
-            and overview_direito["data_available"]
-        ),
-        "data_as_of": max(
-            (
-                valor
-                for valor in (
-                    overview_esquerdo["data_as_of"],
-                    overview_direito["data_as_of"],
-                )
-                if valor is not None
-            ),
-            default=None,
-        ),
-        "last_successful_load_at": max(
-            (
-                valor
-                for valor in (
-                    overview_esquerdo["last_successful_load_at"],
-                    overview_direito["last_successful_load_at"],
-                )
-                if valor is not None
-            ),
-            default=None,
-        ),
-        "is_stale": overview_esquerdo["is_stale"] or overview_direito["is_stale"],
-        "stale_reason": list(dict.fromkeys(
-            overview_esquerdo["stale_reason"] + overview_direito["stale_reason"]
-        )),
-        "quality": {
-            "municipalities_with_data": len(codigos_municipais_com_dados),
-            "municipalities_in_scope": len(codigos_municipais_no_escopo),
-            "unknown_origin": {
-                "expenses": (
-                    qualidade_esquerda["unknown_origin"]["expenses"]
-                    + qualidade_direita["unknown_origin"]["expenses"]
-                ),
-                "value_centavos": (
-                    qualidade_esquerda["unknown_origin"]["value_centavos"]
-                    + qualidade_direita["unknown_origin"]["value_centavos"]
-                ),
-                "percent": None,
-            },
-            "historical_size_classification_coverage": {
-                "classified_expenses": (
-                    qualidade_esquerda["historical_size_classification_coverage"][
-                        "classified_expenses"
-                    ]
-                    + qualidade_direita["historical_size_classification_coverage"][
-                        "classified_expenses"
-                    ]
-                ),
-                "expenses_in_scope": (
-                    qualidade_esquerda["historical_size_classification_coverage"][
-                        "expenses_in_scope"
-                    ]
-                    + qualidade_direita["historical_size_classification_coverage"][
-                        "expenses_in_scope"
-                    ]
-                ),
-                "classification_unit": "CNPJ_BASICO",
-                "reference": "EXACT_MONTHLY_COMPETENCE",
-                "percent": None,
-            },
-            "partial_period": (
-                qualidade_esquerda["partial_period"]
-                or qualidade_direita["partial_period"]
-            ),
-            "missing_competencies": list(dict.fromkeys(
-                qualidade_esquerda["missing_competencies"]
-                + qualidade_direita["missing_competencies"]
-            )),
-            "competencies_with_incomplete_municipal_coverage": list(dict.fromkeys(
-                qualidade_esquerda[
-                    "competencies_with_incomplete_municipal_coverage"
-                ]
-                + qualidade_direita[
-                    "competencies_with_incomplete_municipal_coverage"
-                ]
-            )),
-            "alerts": list(alertas.values()),
-            "sides": {
-                "left": qualidade_esquerda,
-                "right": qualidade_direita,
-            },
-        },
+        "fonte": "TCE-CE/SIM",
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
-        "comparison_mode": payload["comparison_mode"],
-        "left": {
-            "label": label_esquerdo,
-            "filters": payload["left"]["filters"],
-            "overview": overview_esquerdo,
+        "data_available": all(item.get("data_available", False) for item in carregamentos),
+        "is_stale": any(item.get("is_stale", False) for item in carregamentos),
+        "stale_reason": list(dict.fromkeys(
+            reason for item in carregamentos for reason in item.get("stale_reason", [])
+        )),
+        "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
+        "parametros": {
+            "codigo_municipio_tce": codigos,
+            "data_inicial": inicio.isoformat(),
+            "data_final": fim.isoformat(),
+            "exercicio_orcamentario": inicio.year,
         },
-        "right": {
-            "label": label_direito,
-            "filters": payload["right"]["filters"],
-            "overview": overview_direito,
+        "municipios": municipios,
+        "comparacao": {
+            "kpis": kpis_comparados,
+            "participacao_por_porte_empresarial": portes,
+            "elementos_despesa": elementos,
+            "evolucao_compras_consideradas": mensal,
+            "destino_recursos": destinos,
         },
-        "sections": _secoes(
-            overview_esquerdo,
-            overview_direito,
-            label_esquerdo=label_esquerdo,
-            label_direito=label_direito,
-        ),
-    }
-    total_despesas = respostas["quality"]["historical_size_classification_coverage"][
-        "expenses_in_scope"
-    ]
-    if total_despesas:
-        respostas["quality"]["historical_size_classification_coverage"]["percent"] = round(
-            respostas["quality"]["historical_size_classification_coverage"][
-                "classified_expenses"
+        "quality": {
+            "municipios": [
+                {
+                    "codigo_municipio_tce": item["codigo_municipio_tce"],
+                    "municipio": item["nome"],
+                    "quality": item["overview"].get("quality", {}),
+                    "competencias_ausentes": item["overview"].get("competencias_ausentes", []),
+                }
+                for item in municipios
             ]
-            * 100
-            / total_despesas,
-            6,
-        )
-        respostas["quality"]["unknown_origin"]["percent"] = round(
-            respostas["quality"]["unknown_origin"]["expenses"] * 100 / total_despesas,
-            6,
-        )
-    if not respostas["data_available"]:
-        respostas = tce_observability.tornar_percentuais_indisponiveis(respostas)
-    return respostas
+        },
+    }
 
 
 __all__ = ["ComparisonRequestError", "consultar_comparacao_tce"]

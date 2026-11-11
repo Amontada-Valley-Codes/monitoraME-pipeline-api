@@ -29,10 +29,11 @@ principalmente contra `app/limpeza/limpar_despesas.py`,
   **empenhos líquidos**, não pagamentos. O campo legado
   `valor_final_centavos` foi preservado e o alias explícito
   `valor_empenho_liquido_centavos` foi acrescentado.
-- `GET /pipeline/tce/overview` continua representando **empenhos líquidos**.
-  `/overview/municipal` mantém esse resultado e inclui também o bloco
-  `pagamentos`, calculado pelas datas civis solicitadas e pelo exercício
-  orçamentário do ano de `data_inicial`.
+- `GET /pipeline/tce/overview`, `/overview/municipal` e as rotas de assinante
+  calculam valores exclusivamente com pagamentos publicados não estornados.
+  Empenhos associados são dimensões para natureza e fornecedor. O exercício
+  orçamentário usado pelas rotas `/overview` é o ano de `data_inicial`, separado
+  do período civil dos pagamentos.
 - `GET /pipeline/tce/pagamentos/overview` é o contrato de valores pagos. Aceita
   o par exato `data_inicial`/`data_final` ou, por compatibilidade,
   `referencia_final`; neste último caso o início é janeiro do exercício e o fim

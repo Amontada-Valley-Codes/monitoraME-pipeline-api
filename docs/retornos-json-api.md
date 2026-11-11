@@ -91,10 +91,10 @@ também são `null`.
 
 ### `GET /pipeline/tce/overview`
 
-O overview sem município consolida empenhos líquidos do Ceará e considera somente ME no recorte principal. MEI integra os demais portes. Não representa pagamentos.
+O overview sem município consolida pagamentos não estornados do Ceará vinculados ao exercício orçamentário do ano de `data_inicial`, dentro do período civil informado. Considera somente ME no recorte principal; MEI integra os demais portes. Empenhos associados fornecem apenas as dimensões de natureza e fornecedor.
 
 ```json
-{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"medida":"EMPENHO_LIQUIDO","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":null},"totais_brutos":{"empenhos":0},"base_analitica":{"nome":"tce_empenhos_liquidos","base_calculo":"empenhos_tce"},"kpi":"overview_me","unidade_monetaria":"CENTAVOS","kpis":{"total_compras_ME_centavos":0},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}
+{"fonte":"TCE-CE/SIM","origem_dados":"BANCO_LOCAL","consultas_externas":false,"medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":null,"exercicio_orcamentario":2025},"totais_brutos":{"pagamentos":0},"base_analitica":{"nome":"tce_pagamentos","base_calculo":"PAGAMENTOS","dimensoes_empenho":["natureza","fornecedor"]},"kpi":"overview_me","unidade_monetaria":"CENTAVOS","kpis":{"total_compras_ME_centavos":0},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}
 ```
 
 ### `GET /pipeline/tce/pagamentos/overview`
@@ -109,7 +109,7 @@ de `valor_nota_pagamento` não estornado; ME e MPE são medidas separadas.
 ### `GET /pipeline/tce/overview/municipal`
 
 ```json
-{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004","company_sizes":[]},"competencias_solicitadas":[],"competencias_processadas":[],"cobertura":{},"overview":{"kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_local":0.0,"percentual_compras_fora":0.0},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"evolucao_compras_por_portes":[],"destino_recursos":[]}}
+{"fonte":"TCE-CE/SIM","origem_dados":"BANCO_LOCAL","consultas_externas":false,"medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","parametros":{"data_inicial":"2025-01-01","data_final":"2025-01-31","codigo_municipio":"004","exercicio_orcamentario":2025,"company_sizes":[]},"totais":{"pagamentos":0},"base_analitica":{"nome":"pagamentos_tce","base_calculo":"PAGAMENTOS","dimensoes_empenho":["natureza","fornecedor"]},"kpi":"overview_municipal_por_portes","unidade_monetaria":"CENTAVOS","kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_local":0.0,"percentual_compras_fora":0.0},"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"evolucao_compras_por_portes":[],"destino_recursos":[]}
 ```
 
 ### `GET /public/municipios/{codigo_tce}/previa`
@@ -120,10 +120,19 @@ Recebe o código TCE-CE de três dígitos no caminho e `data_inicial` e `data_fi
 {"municipio":{"codigo_ibge":"2304400","codigo_tce":"004","nome":"Fortaleza","uf":"CE"},"periodo":{"data_inicial":"2025-01-01","data_final":"2025-01-31"},"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"data_available":true,"is_stale":false,"competencias_publicadas":["2025-01"],"kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_fornecedores_locais":0.0,"percentual_recursos_fora_municipio":0.0},"participacao_por_porte_empresarial":[],"resumo_compras":{"medida":"PAGAMENTOS_PUBLICADOS_ASSOCIADOS_A_EMPENHOS","regra_contagem_compras":"EMPENHOS_UNICOS_COM_PAGAMENTO_NO_PERIODO","unidade_monetaria":"CENTAVOS","valor_total_centavos":0,"quantidade_compras":0,"quantidade_fornecedores_identificados":0,"quantidade_fornecedores_sem_documento":0,"compras_na_cidade":{"quantidade_compras":0,"valor_centavos":0,"percentual_do_valor_total":0.0},"fornecedores":[],"fornecedores_exibidos":0,"limite_fornecedores":10}}
 ```
 
-### `POST /pipeline/tce/comparisons`
+### `GET /pipeline/tce/comparisons`
+
+Recebe de dois a quatro parâmetros `codigo_municipio_tce` repetidos e um
+período comum. A resposta inclui o overview de cada município e matrizes de
+valores por KPI, porte, elemento, mês e destino. Valores financeiros usam
+pagamentos não estornados; empenhos associados fornecem apenas dimensões.
+
+```http
+GET /pipeline/tce/comparisons?codigo_municipio_tce=004&codigo_municipio_tce=010&data_inicial=2025-01-01&data_final=2025-12-31
+```
 
 ```json
-{"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"comparison_mode":"MUNICIPALITY","left":{"label":"Município A","filters":{},"overview":{}},"right":{"label":"Município B","filters":{},"overview":{}},"sections":{"kpis":[],"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}}
+{"fonte":"TCE-CE/SIM","origem_dados":"BANCO_LOCAL","consultas_externas":false,"medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","parametros":{"codigo_municipio_tce":["004","010"],"data_inicial":"2025-01-01","data_final":"2025-12-31","exercicio_orcamentario":2025},"municipios":[],"comparacao":{"kpis":[],"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}}
 ```
 
 ### `GET /pipeline/tce/despesas`
