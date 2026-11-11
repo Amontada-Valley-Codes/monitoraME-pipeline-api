@@ -621,10 +621,21 @@ def consultar_overview_municipal_tce(
         codigo_municipio=codigo_municipio,
     )
     ano_exercicio = date.fromisoformat(data_inicial).year
+    base_pagamentos, metadados_pagamentos = (
+        montar_base_analitica_pagamentos_tce_somente_banco(
+            data_inicial,
+            data_final,
+            codigo_municipio=codigo_municipio,
+            exercicio_orcamento=ano_exercicio,
+        )
+    )
     overview = kpis.calcular_overview_portes(
         base,
         portes_considerados=portes,
-        ano_exercicio=ano_exercicio,
+    )
+    overview_pagamentos = kpis.calcular_overview_portes(
+        base_pagamentos,
+        portes_considerados=portes,
     )
     if incluir_resumo_compras:
         raise ValueError(
@@ -643,6 +654,13 @@ def consultar_overview_municipal_tce(
             "regra_geografica": "TODOS_OS_PORTES_CONSIDERADOS",
         },
         "unidade_monetaria": "CENTAVOS",
+        "pagamentos": {
+            **metadados_pagamentos,
+            "kpi": "overview_municipal_pagamentos_por_portes",
+            "medida": "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA",
+            "unidade_monetaria": "CENTAVOS",
+            **overview_pagamentos,
+        },
         **overview,
     }
     if not metadados["data_available"] or not metadados["totais"]["despesas"]:

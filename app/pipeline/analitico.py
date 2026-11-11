@@ -25,6 +25,7 @@ COLUNAS_BASE_ANALITICA_TCE = (
     "data_referencia",
     "ano",
     "ano_mes",
+    "exercicio_orcamento",
     "natureza_despesa_codigo",
     "natureza_despesa",
     "valor_empenhado",
@@ -209,6 +210,9 @@ def montar_base_analitica_tce(
     resultado["data_referencia"] = _primeira_coluna(base, ("data_empenho", "data_referencia"))
     resultado["ano"] = _ano(resultado["data_referencia"])
     resultado["ano_mes"] = _ano_mes(resultado["data_referencia"])
+    resultado["exercicio_orcamento"] = _serie_ou_padrao(
+        base, "exercicio_orcamento"
+    )
 
     codigos_natureza = _natureza_codigo(base)
     resultado["natureza_despesa_codigo"] = codigos_natureza

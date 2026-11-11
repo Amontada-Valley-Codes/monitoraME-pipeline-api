@@ -240,8 +240,9 @@ def tce_overview(
     summary="Consulta o overview de um municipio por periodo",
     description=(
         "Calcula o overview municipal de empenhos liquidos publicados. Por padrao, "
-        "mostra todos os portes; company_sizes restringe o calculo. Nao representa "
-        "valor pago; consumidores de pagamentos devem usar /tce/pagamentos/overview."
+        "mostra todos os portes; company_sizes restringe o calculo. A resposta "
+        "tambem inclui um bloco pagamentos para o exercicio orcamentario do ano "
+        "de data_inicial e o periodo civil solicitado."
     ),
     response_description=(
         "Objeto com KPIs e totais em centavos, evolução mensal, distribuição por porte "
