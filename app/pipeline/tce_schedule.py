@@ -27,7 +27,9 @@ from app.pipeline.ingestion import ibge, tce
 from app.pipeline.ingestion.fornecedores import sincronizar_fornecedores
 from app.pipeline.persistence.tce_despesas import (
     STATUS_PUBLICADO as STATUS_DESPESA_PUBLICADO,
+    STATUS_REJEITADO as STATUS_DESPESA_REJEITADO,
     listar_cnpjs_fornecedores_publicados,
+    obter_empenho_publicado_por_chave,
 )
 from app.pipeline.persistence.tce_pagamentos import (
     STATUS_PUBLICADO as STATUS_PAGAMENTO_PUBLICADO,
@@ -53,6 +55,30 @@ QUANTIDADE_MUNICIPIOS_CE = 184
 
 class FalhaPermanenteJobTce(RuntimeError):
     retryable = False
+
+
+class AnulacaoOrfaAguardandoEmpenho(RuntimeError):
+    """Rejeicao temporaria enquanto a chave referenciada nao foi publicada."""
+
+    retryable = True
+    retry_after = timedelta(minutes=15)
+
+    def __init__(self, *, codigo: str, competencia: str, run_id: int | None,
+                 problemas: list[dict[str, object]], chaves_ausentes: list[str]) -> None:
+        self.contexto = {
+            "categoria": "retry_dependencia_empenho",
+            "codigo_municipio_tce": codigo,
+            "competencia": competencia,
+            "run_id_rejeitado": run_id,
+            "problemas_rejeicao": problemas,
+            "chaves_empenho_ausentes": chaves_ausentes,
+        }
+        motivo = (
+            f"{len(chaves_ausentes)} empenho(s) ainda nao publicado(s)"
+            if chaves_ausentes
+            else "as chaves referenciadas foram publicadas apos a validacao"
+        )
+        super().__init__(f"Lote {codigo}/{competencia} rejeitado por ANULACAO_ORFA; {motivo}.")
 
 
 class LoteTceAindaEmExecucao(RuntimeError):
@@ -295,11 +321,70 @@ def _executar_catalogo(job: JobTceReivindicado) -> None:
 
 def _executar_despesas(job: JobTceReivindicado) -> None:
     _, codigo, competencia = job.scope_key.split("|")
+    with orm.main_session() as session:
+        rejeicao_anterior = session.scalar(
+            select(TceDespesaIngestionRun)
+            .where(
+                TceDespesaIngestionRun.codigo_municipio_tce == codigo,
+                TceDespesaIngestionRun.competencia == competencia,
+                TceDespesaIngestionRun.status == STATUS_DESPESA_REJEITADO,
+            )
+            .order_by(TceDespesaIngestionRun.id.desc())
+            .limit(1)
+        )
+    problemas_anteriores = list(rejeicao_anterior.problemas or []) if rejeicao_anterior else []
+    chaves_orfas = sorted({
+        str(problema["chave"])
+        for problema in problemas_anteriores
+        if problema.get("codigo") == "ANULACAO_ORFA" and problema.get("chave")
+    })
+    if chaves_orfas:
+        ausentes = [
+            chave for chave in chaves_orfas
+            if obter_empenho_publicado_por_chave(chave) is None
+        ]
+        if ausentes:
+            logger.info(
+                "Retry TCE aguardando publicacao de empenhos referenciados",
+                extra={
+                    "codigo_municipio": codigo,
+                    "competencia": competencia,
+                    "run_id_rejeitado": rejeicao_anterior.id,
+                    "chaves_ausentes": ausentes,
+                    "attempt": job.attempts,
+                    "max_attempts": job.max_attempts,
+                },
+            )
+            raise AnulacaoOrfaAguardandoEmpenho(
+                codigo=codigo,
+                competencia=competencia,
+                run_id=int(rejeicao_anterior.id),
+                problemas=problemas_anteriores,
+                chaves_ausentes=ausentes,
+            )
+
     resultado = executar_ingestao_competencia_tce(
         competencia,
         codigo_municipio_tce=codigo,
     )
     if resultado.status != STATUS_DESPESA_PUBLICADO:
+        chaves_orfas = sorted({
+            str(problema["chave"])
+            for problema in (getattr(resultado, "problemas", None) or [])
+            if problema.get("codigo") == "ANULACAO_ORFA" and problema.get("chave")
+        })
+        if chaves_orfas:
+            ausentes = [
+                chave for chave in chaves_orfas
+                if obter_empenho_publicado_por_chave(chave) is None
+            ]
+            raise AnulacaoOrfaAguardandoEmpenho(
+                codigo=codigo,
+                competencia=competencia,
+                run_id=resultado.run_id,
+                problemas=list(resultado.problemas),
+                chaves_ausentes=ausentes,
+            )
         raise FalhaPermanenteJobTce(
             f"Lote de despesas {codigo}/{competencia} terminou em {resultado.status}."
         )
@@ -387,6 +472,7 @@ def executar_job(job: JobTceReivindicado) -> None:
 
 __all__ = [
     "FalhaPermanenteJobTce",
+    "AnulacaoOrfaAguardandoEmpenho",
     "LoteTceAindaEmExecucao",
     "agendar_execucao_semanal",
     "executar_job",
