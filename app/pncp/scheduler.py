@@ -15,7 +15,7 @@ from app.core.models import IngestionJob, PncpSyncCursor
 from app.pncp.atualizacao import agendar_atualizacao
 from app.pncp.checkpoints import ChaveCursor, OVERLAP_PADRAO, proxima_janela
 from app.pncp.ingestion import (
-    MODALIDADES_PRIORITARIAS,
+    MODALIDADE_PREGAO_ELETRONICO,
     UFS_NORDESTE,
     agendar_backfill_anual,
     agendar_publicacao,
@@ -33,7 +33,7 @@ _CICLO_INTERVALO_PADRAO = 4 * 60 * 60
 @dataclass(frozen=True)
 class ConfiguracaoAgendamentoPncp:
     flows: tuple[str, ...] = ("publicacao", "atualizacao")
-    modalidades: tuple[int, ...] = MODALIDADES_PRIORITARIAS
+    modalidades: tuple[int, ...] = (MODALIDADE_PREGAO_ELETRONICO,)
     ufs: tuple[str, ...] | None = UFS_NORDESTE
     window_days: int = 1
     page_size: int = 50
@@ -52,8 +52,7 @@ class ConfiguracaoAgendamentoPncp:
         if invalidos:
             raise ValueError(f"fluxos PNCP nao suportados: {', '.join(sorted(invalidos))}")
         modalidades = _lista_inteiros(
-            "PNCP_SCHEDULER_MODALIDADES",
-            ",".join(str(codigo) for codigo in MODALIDADES_PRIORITARIAS),
+            "PNCP_SCHEDULER_MODALIDADES", str(MODALIDADE_PREGAO_ELETRONICO)
         )
         ufs_configuradas = os.getenv("PNCP_SCHEDULER_UFS", ",".join(UFS_NORDESTE)).strip()
         ufs = None if ufs_configuradas == "*" else tuple(

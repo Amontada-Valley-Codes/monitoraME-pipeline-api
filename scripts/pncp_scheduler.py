@@ -30,7 +30,20 @@ def main() -> int:
     while True:
         try:
             resultado = agendar_fluxos_pncp(config=config)
-            logger.info("Estado do agendamento PNCP atualizado", extra=resultado)
+            logger.info(
+                "Estado do agendamento PNCP atualizado",
+                extra={
+                    **resultado,
+                    "flows": config.flows,
+                    "modalidades": config.modalidades,
+                    "ufs": config.ufs,
+                    "window_days": config.window_days,
+                    "page_size": config.page_size,
+                    "backfill_enabled": config.backfill_enabled,
+                    "backfill_start_year": config.backfill_start_year,
+                    "cycle_interval_seconds": config.cycle_interval_seconds,
+                },
+            )
         except Exception:
             logger.exception("Falha no ciclo de agendamento PNCP")
             if args.once:
