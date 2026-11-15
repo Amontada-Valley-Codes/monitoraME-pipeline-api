@@ -183,6 +183,7 @@ WITH candidate AS (
       AND left(job_type, 4) = 'tce_'
       AND status IN ('PENDING', 'RETRY_WAIT')
       AND next_run_at <= now()
+      AND attempts < max_attempts
     ORDER BY priority DESC, next_run_at ASC, created_at ASC
     FOR UPDATE SKIP LOCKED
     LIMIT 1
@@ -300,6 +301,7 @@ def concluir_job_session(
         UPDATE ingestion_jobs
         SET status = 'SUCCEEDED', locked_by = NULL, lease_token = NULL,
             lease_until = NULL, heartbeat_at = NULL, last_error = NULL,
+            last_error_context = NULL,
             success_count = success_count + 1, updated_at = now()
         WHERE id = :job_id AND source = 'TCE-CE' AND status = 'RUNNING'
           AND lease_token = :lease_token
@@ -407,20 +409,37 @@ def recuperar_leases_expirados_session(session: Session) -> int:
     registros = session.execute(
         text("""
         UPDATE ingestion_jobs
-        SET status = 'PENDING', locked_by = NULL, lease_token = NULL,
+        SET status = CASE WHEN attempts >= max_attempts THEN 'FAILED' ELSE 'PENDING' END,
+            locked_by = NULL, lease_token = NULL,
             lease_until = NULL, heartbeat_at = NULL,
-            last_error = 'lease TCE expirado; job devolvido a fila',
+            last_error = CASE WHEN attempts >= max_attempts
+                THEN 'lease TCE expirado; limite de tentativas atingido'
+                ELSE 'lease TCE expirado; job devolvido a fila' END,
+            last_error_context = jsonb_build_object(
+                'categoria', 'lease_expirado', 'attempts', attempts,
+                'max_attempts', max_attempts,
+                'acao', CASE WHEN attempts >= max_attempts THEN 'falha_final' ELSE 'reagendado' END
+            ),
             next_run_at = now(), updated_at = now()
         WHERE source = 'TCE-CE' AND status = 'RUNNING' AND lease_until <= now()
-        RETURNING id, attempts
+        RETURNING id, attempts, max_attempts, status
         """)
     ).mappings().all()
     for registro in registros:
+        status = str(registro["status"])
+        attempts = int(registro["attempts"])
+        max_attempts = int(registro["max_attempts"])
         _evento(
             session,
             job_id=int(registro["id"]),
-            event_type="LEASE_EXPIRED",
-            attempt=int(registro["attempts"]),
+            event_type="LEASE_EXPIRED_FAILED" if status == FAILED else "LEASE_EXPIRED",
+            attempt=attempts,
+            details={
+                "categoria": "lease_expirado",
+                "status_resultante": status,
+                "attempts": attempts,
+                "max_attempts": max_attempts,
+            },
         )
     return len(registros)
 
@@ -557,7 +576,10 @@ class WorkerTce:
                         retryable=retryable,
                         retry_after=retry_after,
                         contexto={
-                            "categoria": type(error).__name__,
+                            **(getattr(error, "contexto", None) or {}),
+                            "categoria": (getattr(error, "contexto", None) or {}).get(
+                                "categoria", type(error).__name__
+                            ),
                             "retryable": retryable,
                             "scope_key": job.scope_key,
                         },

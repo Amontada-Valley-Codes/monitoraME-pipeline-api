@@ -126,19 +126,94 @@ class TceScheduleTest(unittest.TestCase):
                 schedule._sincronizar_catalogo()
 
     def test_handler_de_despesas_exige_publicacao(self) -> None:
-        with patch(
-            "app.pipeline.tce_schedule.executar_ingestao_competencia_tce",
-            return_value=SimpleNamespace(status="PUBLICADO"),
-        ) as executar:
+        session = MagicMock()
+        with (
+            patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
+            patch(
+                "app.pipeline.tce_schedule.executar_ingestao_competencia_tce",
+                return_value=SimpleNamespace(status="PUBLICADO"),
+            ) as executar,
+        ):
             schedule.executar_job(_job("tce_despesas", "despesas|010|2026-11"))
         executar.assert_called_once_with("2026-11", codigo_municipio_tce="010")
 
-        with patch(
-            "app.pipeline.tce_schedule.executar_ingestao_competencia_tce",
-            return_value=SimpleNamespace(status="REJEITADO"),
+        with (
+            patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
+            patch(
+                "app.pipeline.tce_schedule.executar_ingestao_competencia_tce",
+                return_value=SimpleNamespace(status="REJEITADO"),
+            ),
         ):
             with self.assertRaises(schedule.FalhaPermanenteJobTce):
                 schedule.executar_job(_job("tce_despesas", "despesas|010|2026-11"))
+
+    def test_anulacao_orfa_reagenda_com_diagnostico_e_intervalo(self) -> None:
+        resultado = SimpleNamespace(
+            status="REJEITADO",
+            run_id=91,
+            problemas=[{
+                "codigo": "ANULACAO_ORFA",
+                "chave": "chave-empenho-1",
+                "mensagem": "sem empenho publicado",
+            }],
+        )
+        session = MagicMock()
+        with (
+            patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
+            patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce", return_value=resultado),
+            patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value=None),
+        ):
+            with self.assertRaises(schedule.AnulacaoOrfaAguardandoEmpenho) as erro:
+                schedule.executar_job(_job("tce_despesas", "despesas|010|2026-11"))
+
+        self.assertTrue(erro.exception.retryable)
+        self.assertEqual(erro.exception.retry_after, timedelta(minutes=15))
+        self.assertEqual(erro.exception.contexto["run_id_rejeitado"], 91)
+        self.assertEqual(erro.exception.contexto["chaves_empenho_ausentes"], ["chave-empenho-1"])
+        self.assertEqual(erro.exception.contexto["problemas_rejeicao"], resultado.problemas)
+
+    def test_retry_orfa_verifica_dependencia_antes_de_baixar_novamente(self) -> None:
+        job = _job("tce_despesas", "despesas|010|2026-11")
+        job = JobTceReivindicado(**{**job.__dict__, "attempts": 1})
+        rejeicao = SimpleNamespace(
+            id=77,
+            problemas=[{"codigo": "ANULACAO_ORFA", "chave": "empenho-a"}],
+        )
+        session = MagicMock()
+        with (
+            patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
+            patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce") as executar,
+            patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value=None) as buscar,
+        ):
+            session.scalar.return_value = rejeicao
+            with self.assertRaises(schedule.AnulacaoOrfaAguardandoEmpenho) as erro:
+                schedule._executar_despesas(job)
+
+        buscar.assert_called_once_with("empenho-a")
+        executar.assert_not_called()
+        self.assertEqual(erro.exception.contexto["run_id_rejeitado"], 77)
+
+    def test_retry_orfa_reprocessa_apos_publicacao_do_empenho(self) -> None:
+        job = _job("tce_despesas", "despesas|010|2026-11")
+        job = JobTceReivindicado(**{**job.__dict__, "attempts": 2})
+        rejeicao = SimpleNamespace(
+            id=77,
+            problemas=[{"codigo": "ANULACAO_ORFA", "chave": "empenho-a"}],
+        )
+        session = MagicMock()
+        with (
+            patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
+            patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value={"chave": "empenho-a"}) as buscar,
+            patch(
+                "app.pipeline.tce_schedule.executar_ingestao_competencia_tce",
+                return_value=SimpleNamespace(status="PUBLICADO"),
+            ) as executar,
+        ):
+            session.scalar.return_value = rejeicao
+            schedule._executar_despesas(job)
+
+        buscar.assert_called_once_with("empenho-a")
+        executar.assert_called_once_with("2026-11", codigo_municipio_tce="010")
 
     def test_fornecedor_aguarda_barreira_sem_consultar_fonte(self) -> None:
         job = _job("tce_fornecedores", "fornecedores|2026|lote")

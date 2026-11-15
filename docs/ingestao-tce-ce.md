@@ -29,6 +29,14 @@ Os jobs de fornecedores só são liberados depois de não existirem jobs ativos 
 despesas ou pagamentos no mesmo lote. Falhas transitórias usam retry com backoff;
 falhas esgotadas ficam em `FAILED` e exigem replay explícito.
 
+Uma rejeição de despesas com `ANULACAO_ORFA` é tratada como dependência
+potencialmente temporária: o job aguarda 15 minutos, respeitando
+`TCE_JOB_MAX_ATTEMPTS`. Antes de consultar novamente o TCE, o worker verifica se
+os empenhos das rejeições anteriores já estão em lotes publicados. Se ainda
+faltarem, registra as chaves e o diagnóstico e aguarda o próximo retry; quando as
+tentativas se esgotam, o job termina em `FAILED`. Lease expirado também termina
+em `FAILED` quando o limite já foi atingido.
+
 Para iniciar ou conferir os serviços:
 
 ```bash

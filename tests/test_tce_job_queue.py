@@ -55,6 +55,7 @@ class TceJobQueueTest(unittest.TestCase):
         self.assertEqual(reservado.id, 7)
         statement, parametros = session.execute.call_args.args
         self.assertIn("FOR UPDATE SKIP LOCKED", statement.text)
+        self.assertIn("attempts < max_attempts", statement.text)
         self.assertIn("source = 'TCE-CE'", statement.text)
         self.assertIn("left(job_type, 4) = 'tce_'", statement.text)
         self.assertEqual(parametros["lease_seconds"], 1800)
@@ -81,15 +82,19 @@ class TceJobQueueTest(unittest.TestCase):
     def test_recuperador_nao_altera_jobs_de_outra_fonte(self) -> None:
         session = MagicMock()
         session.execute.return_value.mappings.return_value.all.return_value = [
-            {"id": 7, "attempts": 2}
+            {"id": 7, "attempts": 2, "max_attempts": 5, "status": "PENDING"},
+            {"id": 8, "attempts": 5, "max_attempts": 5, "status": "FAILED"},
         ]
 
-        self.assertEqual(queue.recuperar_leases_expirados_session(session), 1)
+        self.assertEqual(queue.recuperar_leases_expirados_session(session), 2)
 
         statement = session.execute.call_args.args[0]
         self.assertIn("source = 'TCE-CE'", statement.text)
         self.assertIn("lease_until <= now()", statement.text)
-        self.assertIn("status = 'PENDING'", statement.text)
+        self.assertIn("attempts >= max_attempts", statement.text)
+        self.assertIn("THEN 'FAILED' ELSE 'PENDING'", statement.text)
+        eventos = [chamada.args[0].event_type for chamada in session.add.call_args_list]
+        self.assertEqual(eventos, ["LEASE_EXPIRED", "LEASE_EXPIRED_FAILED"])
 
     def test_falha_transitoria_reagenda_e_falha_permanente_encerra(self) -> None:
         session = MagicMock()
