@@ -6,7 +6,9 @@ O pipeline consome dados públicos do PNCP. Ele não publica nem altera editais 
 
 ## Visão do fluxo
 
-O scheduler agenda janelas independentes de `publicacao` e `atualizacao`, por fluxo, UF e modalidade. No primeiro ciclo, também pode iniciar o backfill configurado. Cada ciclo acompanha os jobs que criou e só inicia outro depois que o ciclo anterior terminar e o intervalo configurado passar.
+O scheduler agenda janelas independentes de `publicacao` e `atualizacao`, por fluxo, UF e modalidade. A configuração padrão deste projeto agora restringe o escopo ao Ceará (`CE`), às modalidades PNCP de código 1 a 14 e inicia o backfill no ano de 2026, com janelas históricas de sete dias. Esses valores podem ser substituídos por `PNCP_SCHEDULER_UFS`, `PNCP_SCHEDULER_MODALIDADES`, `PNCP_SCHEDULER_BACKFILL_START_YEAR` e `PNCP_SCHEDULER_BACKFILL_WINDOW_DAYS`.
+
+No primeiro ciclo, o scheduler cria o backfill configurado. Cada ciclo acompanha os jobs que criou e só inicia outro depois que o ciclo anterior terminar e o intervalo configurado passar. A lista de modalidades deve ser conferida no domínio atual do PNCP; a API de consulta disponibiliza `GET /v1/modalidades?statusAtivo=true` para listar as modalidades ativas.
 
 ```mermaid
 flowchart TD

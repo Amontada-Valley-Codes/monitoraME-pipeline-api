@@ -15,7 +15,6 @@ from app.core.models import IngestionJob, PncpSyncCursor
 from app.pncp.atualizacao import agendar_atualizacao
 from app.pncp.checkpoints import ChaveCursor, OVERLAP_PADRAO, proxima_janela
 from app.pncp.ingestion import (
-    MODALIDADE_PREGAO_ELETRONICO,
     UFS_NORDESTE,
     agendar_backfill_anual,
     agendar_publicacao,
@@ -25,6 +24,7 @@ from app.pncp.jobs import NovoJob, agendar_job_session
 
 _ADVISORY_LOCK_ID = 0x504E435053434844
 _FLOWS_VALIDOS = frozenset(("publicacao", "atualizacao"))
+MODALIDADES_PNCP_PADRAO = tuple(range(1, 15))
 _CICLO_FLOW = "scheduler"
 _CICLO_SCOPE = "completo"
 _CICLO_INTERVALO_PADRAO = 4 * 60 * 60
@@ -33,14 +33,14 @@ _CICLO_INTERVALO_PADRAO = 4 * 60 * 60
 @dataclass(frozen=True)
 class ConfiguracaoAgendamentoPncp:
     flows: tuple[str, ...] = ("publicacao", "atualizacao")
-    modalidades: tuple[int, ...] = (MODALIDADE_PREGAO_ELETRONICO,)
-    ufs: tuple[str, ...] | None = UFS_NORDESTE
+    modalidades: tuple[int, ...] = MODALIDADES_PNCP_PADRAO
+    ufs: tuple[str, ...] | None = ("CE",)
     window_days: int = 1
     page_size: int = 50
     publication_priority: int = 70
     update_priority: int = 80
     backfill_enabled: bool = True
-    backfill_start_year: int = 2021
+    backfill_start_year: int = 2026
     backfill_window_days: int = 7
     backfill_priority: int = 20
     cycle_interval_seconds: int = _CICLO_INTERVALO_PADRAO
@@ -52,11 +52,12 @@ class ConfiguracaoAgendamentoPncp:
         if invalidos:
             raise ValueError(f"fluxos PNCP nao suportados: {', '.join(sorted(invalidos))}")
         modalidades = _lista_inteiros(
-            "PNCP_SCHEDULER_MODALIDADES", str(MODALIDADE_PREGAO_ELETRONICO)
+            "PNCP_SCHEDULER_MODALIDADES",
+            ",".join(str(codigo) for codigo in MODALIDADES_PNCP_PADRAO),
         )
-        ufs_configuradas = os.getenv("PNCP_SCHEDULER_UFS", ",".join(UFS_NORDESTE)).strip()
+        ufs_configuradas = os.getenv("PNCP_SCHEDULER_UFS", "CE").strip()
         ufs = None if ufs_configuradas == "*" else tuple(
-            uf.upper() for uf in _lista_texto("PNCP_SCHEDULER_UFS", ",".join(UFS_NORDESTE))
+            uf.upper() for uf in _lista_texto("PNCP_SCHEDULER_UFS", "CE")
         )
         if ufs is not None and (not ufs or any(uf not in UFS_NORDESTE for uf in ufs)):
             raise ValueError("PNCP_SCHEDULER_UFS deve conter UFs suportadas ou *")
@@ -69,7 +70,7 @@ class ConfiguracaoAgendamentoPncp:
             publication_priority=int(os.getenv("PNCP_SCHEDULER_PUBLICATION_PRIORITY", "70")),
             update_priority=int(os.getenv("PNCP_SCHEDULER_UPDATE_PRIORITY", "80")),
             backfill_enabled=os.getenv("PNCP_SCHEDULER_BACKFILL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
-            backfill_start_year=_inteiro_positivo("PNCP_SCHEDULER_BACKFILL_START_YEAR", 2021),
+            backfill_start_year=_inteiro_positivo("PNCP_SCHEDULER_BACKFILL_START_YEAR", 2026),
             backfill_window_days=_inteiro_positivo("PNCP_SCHEDULER_BACKFILL_WINDOW_DAYS", 7),
             backfill_priority=int(os.getenv("PNCP_SCHEDULER_BACKFILL_PRIORITY", "20")),
             cycle_interval_seconds=_inteiro_positivo("PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS", _CICLO_INTERVALO_PADRAO),
@@ -372,6 +373,7 @@ def agendar_fluxos_pncp(
 
 __all__ = [
     "ConfiguracaoAgendamentoPncp",
+    "MODALIDADES_PNCP_PADRAO",
     "agendar_fluxos_pncp",
     "agendar_fluxos_pncp_session",
 ]

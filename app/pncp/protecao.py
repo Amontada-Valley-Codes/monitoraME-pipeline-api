@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 import os
 
 from sqlalchemy import select
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.core import orm
 from app.core.models import PncpSourceControl
 
+
+logger = logging.getLogger(__name__)
 
 CLOSED = "CLOSED"
 OPEN = "OPEN"
@@ -84,6 +87,35 @@ def _agora() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _prazo_reserva_segundos() -> float:
+    """Prazo para considerar órfãs reservas sem atualização do estado global."""
+    timeout_connect = float(os.getenv("PNCP_CONNECT_TIMEOUT_SECONDS", "10"))
+    timeout_read = float(os.getenv("PNCP_READ_TIMEOUT_SECONDS", "30"))
+    return max(120.0, timeout_connect + timeout_read + 60.0)
+
+
+def _recuperar_reservas_obsoletas(
+    controle: PncpSourceControl,
+    *,
+    agora: datetime,
+    prazo_segundos: float,
+) -> int:
+    """Libera contador preso após encerramento de processo durante uma chamada."""
+    atualizado_em = controle.updated_at
+    if atualizado_em is None or atualizado_em.tzinfo is None:
+        return 0
+    idade = (agora - atualizado_em).total_seconds()
+    if controle.active_requests <= 0 or idade < prazo_segundos:
+        return 0
+
+    recuperadas = int(controle.active_requests)
+    controle.active_requests = 0
+    controle.half_open_in_flight = 0
+    controle.last_reason = f"reservas de requisicao expiradas recuperadas: {recuperadas}"
+    controle.updated_at = agora
+    return recuperadas
+
+
 def _controle_session(session: Session, *, source: str, politica: PoliticaProtecaoPncp) -> PncpSourceControl:
     # O upsert elimina a corrida de inicialização quando vários workers sobem juntos.
     session.execute(
@@ -105,6 +137,20 @@ def adquirir_permissao_session(
     """Reserva de forma serializada um slot global, sem manter transação no HTTP."""
     agora = agora or _agora()
     controle = _controle_session(session, source=source, politica=politica)
+    recuperadas = _recuperar_reservas_obsoletas(
+        controle,
+        agora=agora,
+        prazo_segundos=_prazo_reserva_segundos(),
+    )
+    if recuperadas:
+        logger.warning(
+            "Reservas de concorrencia PNCP obsoletas recuperadas",
+            extra={
+                "source": source,
+                "reservas_recuperadas": recuperadas,
+                "stale_after_seconds": _prazo_reserva_segundos(),
+            },
+        )
     if controle.circuit_state == OPEN:
         if controle.open_until is not None and controle.open_until > agora:
             return PermissaoFonte(False, controle.open_until - agora, "circuito aberto", OPEN)
