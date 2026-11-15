@@ -16,16 +16,16 @@ HTTP_TRANSITORIOS = frozenset({408, 429, 500, 502, 503, 504})
 class PoliticaRetryPncp:
     """Configuracao de retry; ``max_attempts`` inclui a primeira chamada."""
 
-    max_attempts: int = 5
-    initial_delay_seconds: float = 2.0
-    max_delay_seconds: float = 60.0
+    max_attempts: int = 8
+    initial_delay_seconds: float = 30.0
+    max_delay_seconds: float = 1800.0
 
     @classmethod
     def do_ambiente(cls) -> PoliticaRetryPncp:
         politica = cls(
-            max_attempts=int(os.getenv("PNCP_MAX_ATTEMPTS", "5")),
-            initial_delay_seconds=float(os.getenv("PNCP_RETRY_INITIAL_SECONDS", "2")),
-            max_delay_seconds=float(os.getenv("PNCP_RETRY_MAX_SECONDS", "60")),
+            max_attempts=int(os.getenv("PNCP_MAX_ATTEMPTS", "8")),
+            initial_delay_seconds=float(os.getenv("PNCP_RETRY_INITIAL_SECONDS", "30")),
+            max_delay_seconds=float(os.getenv("PNCP_RETRY_MAX_SECONDS", "1800")),
         )
         if politica.max_attempts < 1:
             raise ValueError("PNCP_MAX_ATTEMPTS deve ser maior que zero")

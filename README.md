@@ -83,7 +83,7 @@ Variáveis usadas pela aplicação:
 | `PNCP_SCHEDULER_POLL_SECONDS` | Não | Frequência para conferir conclusão/due date dos ciclos; padrão `30`. |
 | `PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS` | Não | Espera após concluir todos os jobs do ciclo antes de iniciar outro; padrão `14400` (4 horas). |
 | `PNCP_SCHEDULER_FLOWS` | Não | Fluxos recorrentes separados por vírgula; padrão `publicacao,atualizacao`. |
-| `PNCP_SCHEDULER_MODALIDADES` / `PNCP_SCHEDULER_UFS` | Não | Dimensões de coleta agendadas; padrões são modalidades prioritárias e UFs do Nordeste. Use `*` em UFs para todas. |
+| `PNCP_SCHEDULER_MODALIDADES` / `PNCP_SCHEDULER_UFS` | Não | Dimensões de coleta agendadas; modalidade padrão `6` (pregão eletrônico) e UFs padrão do Nordeste. Use `*` em UFs para todas as UFs. |
 | `PNCP_SCHEDULER_WINDOW_DAYS` / `PNCP_SCHEDULER_PAGE_SIZE` | Não | Tamanho máximo de cada janela e tamanho da página; padrões `1` dia e `50`. Janelas partem do cursor com overlap. |
 | `PNCP_SCHEDULER_BACKFILL_ENABLED` | Não | Inclui backfill histórico no primeiro ciclo; padrão `true`. |
 | `PNCP_SCHEDULER_BACKFILL_START_YEAR` / `PNCP_SCHEDULER_BACKFILL_WINDOW_DAYS` | Não | Ano inicial e largura semanal do backfill; padrões `2021` e `7` dias. |
@@ -91,13 +91,13 @@ Variáveis usadas pela aplicação:
 | `PNCP_SCHEDULER_PUBLICATION_PRIORITY` / `PNCP_SCHEDULER_UPDATE_PRIORITY` | Não | Prioridades dos jobs recorrentes; padrões `70` e `80`. |
 | `PNCP_CONNECT_TIMEOUT_SECONDS` | Não | Timeout de conexão PNCP; padrão `10`. |
 | `PNCP_READ_TIMEOUT_SECONDS` | Não | Timeout de leitura PNCP; padrão `30`. |
-| `PNCP_MAX_ATTEMPTS` | Não | Tentativas totais de um job PNCP, incluindo a primeira; padrão `5`. |
+| `PNCP_MAX_ATTEMPTS` | Não | Tentativas totais de um job PNCP, incluindo a primeira; padrão `8`. |
 | `PNCP_ENRICHMENT_BASE_URL` / `PNCP_ENRICHMENT_TTL_HOURS` | Não | Base dos GETs públicos de enriquecimento e validade do cache; padrões `/api/pncp` e `24` horas. |
 | `PNCP_ENRICHMENT_ITEM_PAGE_SIZE` / `PNCP_ENRICHMENT_MAX_ITEM_PAGES` | Não | Tamanho e limite de páginas de itens; padrões `50` e `100`. |
 | `PNCP_ENRICHMENT_HISTORY_PAGE_SIZE` / `PNCP_ENRICHMENT_MAX_HISTORY_PAGES` | Não | Tamanho e limite de páginas de histórico; padrões `50` e `100`. |
 | `PNCP_ENRICHMENT_SCHEDULE_INTERVAL_SECONDS` | Não | Frequência em que o worker procura históricos ainda não agendados; padrão `30`. |
-| `PNCP_RETRY_INITIAL_SECONDS` | Não | Base do backoff exponencial com full jitter; padrão `2`. |
-| `PNCP_RETRY_MAX_SECONDS` | Não | Teto do backoff com full jitter; padrão `60`. |
+| `PNCP_RETRY_INITIAL_SECONDS` | Não | Base do backoff exponencial com full jitter; padrão `30`. |
+| `PNCP_RETRY_MAX_SECONDS` | Não | Teto do backoff com full jitter; padrão `1800` segundos (30 minutos). |
 | `PNCP_REQUEST_INTERVAL_SECONDS` | Não | Espaçamento mínimo entre chamadas do cliente PNCP; padrão `2`. |
 | `PNCP_RATE_LIMIT_REQUESTS_PER_SECOND` | Não | Limite global compartilhado entre workers; padrão `2`. |
 | `PNCP_CONCURRENCY_INITIAL` / `PNCP_CONCURRENCY_MAX` | Não | Concorrência inicial e teto adaptativo; padrões `2` e `5`. |

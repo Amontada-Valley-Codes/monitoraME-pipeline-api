@@ -27,7 +27,7 @@ Timeout, `408`, `429` e `5xx` sao classificados como transitorios e o worker
 persiste `RETRY_WAIT` com backoff exponencial e *full jitter*; `400`, `401` e
 `403` vao diretamente para `FAILED`. Em `429`, `Retry-After` prevalece sobre o
 jitter. `attempts`, `next_run_at`, `last_error` e `last_error_context` permanecem
-no job para auditoria e replay. O limite padrao e cinco tentativas totais,
+no job para auditoria e replay. O limite padrao e oito tentativas totais,
 configuravel por variaveis `PNCP_*` descritas no `.env.example`.
 
 Falhas de transporte, parsing e estrutura incluem no contexto do job e no log
@@ -37,6 +37,31 @@ mensagem e posicao do parser. Quando a fonte fornece `X-Request-ID`,
 `X-Correlation-ID` ou `traceparent`, o identificador e registrado para
 correlacao. O corpo completo ou uma amostra dele nao sao persistidos nem
 registrados; tokens, cookies e cabecalhos privados tambem nao sao copiados.
+
+## Acompanhar o progresso da coleta
+
+O worker emite logs JSON estruturados ao iniciar e concluir cada job de coleta
+incremental ou backfill. Esses eventos incluem `job_id`, `job_type`, `flow`, `uf`, `modalidade`, janela,
+tentativa atual, tentativas restantes e duracao. Durante publicacao e
+atualizacao, cada pagina gera um evento com `pagina`, `paginas_totais`,
+`paginas_restantes`, quantidade de registros recebidos, contagem acumulada,
+duracao da pagina, RAW criados/reutilizados e jobs de normalizacao
+criados/reutilizados. Atualizacoes detalham as contagens
+`NOVO`, `ALTERADO` e `INALTERADO`, registros sem numero de controle e versoes
+antigas ignoradas.
+
+Ao terminar a janela, o evento de conclusao resume paginas e registros e informa
+`cursor_confirmado`. Esse evento so e emitido depois que todas as paginas
+validas foram persistidas e o cursor foi confirmado. Se houver falha, o log
+`Job PNCP falhou` informa o tipo de erro, status de retry, tentativas, tempo de
+espera calculado e contexto seguro da resposta. O scheduler registra junto dos
+contadores do ciclo quais fluxos, UFs e modalidades estao sendo agendados.
+
+Para acompanhar worker e scheduler em tempo real no Compose local:
+
+```bash
+docker compose logs -f pncp-worker-coleta pncp-scheduler
+```
 
 ## Proteção da fonte
 

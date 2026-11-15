@@ -258,10 +258,15 @@ def falhar_job_session(
         politica=politica,
     )
     status = RETRY_WAIT if decisao.repetir else FAILED
+    contexto_retry = {
+        **(contexto or {}),
+        "retry_reason": decisao.motivo,
+        "retry_seconds": decisao.atraso.total_seconds() if decisao.atraso else 0,
+    }
     parametros = {
         "job_id": job.id, "lease_token": job.lease_token, "status": status,
         "erro": erro[:2048],
-        "contexto": {**(contexto or {}), "retry_reason": decisao.motivo},
+        "contexto": contexto_retry,
         "retry_seconds": decisao.atraso.total_seconds() if decisao.atraso else 0,
     }
     statement = text("""
@@ -278,7 +283,7 @@ def falhar_job_session(
     if resultado.rowcount == 1:
         _registrar_evento_session(
             session, job_id=job.id, event_type=status, attempt=job.attempts,
-            details={**(contexto or {}), "retry_reason": decisao.motivo},
+            details=contexto_retry,
         )
         return status
     return None
@@ -532,6 +537,30 @@ class AgendadorPncp:
             time.sleep(interval_seconds)
 
 
+def _contexto_log_job(job: JobReivindicado, *, worker_id: str) -> dict[str, Any]:
+    flow = job.parameters.get("flow")
+    if not isinstance(flow, str):
+        flow = "publicacao" if job.scope_key.startswith("backfill:") else job.scope_key.split(":", 1)[0]
+    return {
+        "worker_id": worker_id,
+        "job_id": job.id,
+        "job_type": job.job_type,
+        "entity_type": job.entity_type,
+        "source": job.source,
+        "flow": flow,
+        "uf": job.parameters.get("uf"),
+        "modalidade": job.parameters.get("codigoModalidadeContratacao"),
+        "pagina_inicial": job.page,
+        "page_size": job.parameters.get("tamanhoPagina"),
+        "window_start": job.window_start,
+        "window_end": job.window_end,
+        "raw_record_id": job.raw_record_id,
+        "attempt": job.attempts,
+        "max_attempts": job.max_attempts,
+        "attempts_remaining": max(0, job.max_attempts - job.attempts),
+    }
+
+
 class WorkerPncp:
     """Executa um job por vez; o handler roda fora da transacao de reserva."""
 
@@ -552,6 +581,11 @@ class WorkerPncp:
         )
         if job is None:
             return False
+        inicio_execucao = time.monotonic()
+        contexto_job = _contexto_log_job(job, worker_id=self.worker_id)
+        registrar_progresso_coleta = job.job_type in {"incremental", "backfill"}
+        if registrar_progresso_coleta:
+            logger.info("Job PNCP iniciado", extra=contexto_job)
         try:
             self._executar_com_heartbeat(job)
         except Exception as exc:
@@ -575,15 +609,25 @@ class WorkerPncp:
                         session, job=job, erro=f"{type(exc).__name__}: {exc}",
                         retryable=retryable, retry_after=retry_after, contexto=contexto,
                     )
+                if status is not None:
+                    contexto_persistido = session.scalar(
+                        select(IngestionJob.last_error_context).where(IngestionJob.id == job.id)
+                    )
+                    if isinstance(contexto_persistido, dict):
+                        contexto = contexto_persistido
             detalhes_falha: dict[str, Any] = {
-                "job_id": job.id,
-                "job_type": job.job_type,
-                "scope_key": job.scope_key,
+                **contexto_job,
                 "status": status,
                 "error": str(exc)[:2048],
+                "error_type": type(exc).__name__,
                 "retryable": retryable,
                 "error_context": contexto,
+                "duration_seconds": round(time.monotonic() - inicio_execucao, 3),
             }
+            if retry_after is not None:
+                detalhes_falha["retry_after_seconds"] = retry_after.total_seconds()
+            if "retry_seconds" in contexto:
+                detalhes_falha["retry_seconds"] = contexto["retry_seconds"]
             if job.job_type == "enrich":
                 detalhes_falha.update(_detalhes_job_enriquecimento(job))
                 detalhes_falha.update(_contar_fila_enriquecimento())
@@ -592,11 +636,26 @@ class WorkerPncp:
             with orm.main_session() as session:
                 concluido = concluir_job_session(session, job_id=job.id, lease_token=job.lease_token)
             if not concluido:
-                logger.warning("Job PNCP perdeu lease antes da conclusao", extra={"job_id": job.id})
+                logger.warning(
+                    "Job PNCP perdeu lease antes da conclusao",
+                    extra={
+                        **contexto_job,
+                        "duration_seconds": round(time.monotonic() - inicio_execucao, 3),
+                    },
+                )
             elif job.job_type == "enrich":
                 detalhes = _detalhes_job_enriquecimento(job)
                 detalhes.update(_contar_fila_enriquecimento())
                 logger.info("Registro de enriquecimento PNCP concluido", extra={"job_id": job.id, **detalhes})
+            if concluido and registrar_progresso_coleta:
+                logger.info(
+                    "Job PNCP concluido",
+                    extra={
+                        **contexto_job,
+                        "status": SUCCEEDED,
+                        "duration_seconds": round(time.monotonic() - inicio_execucao, 3),
+                    },
+                )
         return True
 
     def _executar_com_heartbeat(self, job: JobReivindicado) -> None:

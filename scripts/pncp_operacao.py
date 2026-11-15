@@ -24,7 +24,7 @@ from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
 from app.pncp.ingestion import (
     ClientePncp,
-    MODALIDADES_PRIORITARIAS,
+    MODALIDADE_PREGAO_ELETRONICO,
     UFS_NORDESTE,
     agendar_backfill_anual,
     agendar_propostas_abertas,
@@ -59,7 +59,7 @@ def coletar(args: argparse.Namespace) -> int:
         raise ValueError("Backfill anual disponível apenas para publicações.")
     fim = datetime.now(timezone.utc)
     inicio = fim - timedelta(days=args.dias)
-    modalidades = args.modalidade or list(MODALIDADES_PRIORITARIAS)
+    modalidades = args.modalidade or [MODALIDADE_PREGAO_ELETRONICO]
     ufs = args.uf or list(UFS_NORDESTE)
     if args.fluxo == "publicacao":
         if args.ano is not None:
@@ -87,13 +87,13 @@ def coletar(args: argparse.Namespace) -> int:
 def coletar_propostas_em_aberto(args: argparse.Namespace) -> int:
     jobs = agendar_propostas_abertas(
         data_final=datetime.now(timezone.utc),
-        modalidades=args.modalidade,
+        modalidades=args.modalidade or [MODALIDADE_PREGAO_ELETRONICO],
         tamanho_pagina=args.tamanho_pagina,
     )
     ids = [agendar_job(job)[0] for job in jobs]
     worker = _worker_coleta(args.tamanho_pagina)
     executados = sum(worker.executar_uma_vez() for _ in jobs)
-    print({"fluxo": "propostas-abertas", "jobs": ids, "executados": executados, "modalidades": args.modalidade or "todas"})
+    print({"fluxo": "propostas-abertas", "jobs": ids, "executados": executados, "modalidades": args.modalidade or [MODALIDADE_PREGAO_ELETRONICO]})
     return 0 if executados == len(jobs) else 2
 
 
@@ -180,7 +180,7 @@ def coletar_amostra_abertas(args: argparse.Namespace) -> int:
                 salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(
                     entity_type="CONTRATACAO", external_id=external_id, payload=payload,
                     collected_at=datetime.now(timezone.utc),
-                    run_id=f"amostra-abertas:{data_final.isoformat()}:{args.modalidade or 'todas'}",
+                    run_id=f"amostra-abertas:{data_final.isoformat()}:{args.modalidade or MODALIDADE_PREGAO_ELETRONICO}",
                 ))
             external_ids.append(external_id)
             if len(external_ids) >= args.limite:
@@ -194,7 +194,7 @@ def coletar_amostra_abertas(args: argparse.Namespace) -> int:
     print({
         "fluxo": "propostas-abertas", "limite": args.limite,
         "persistidos": len(external_ids), "paginas_lidas": paginas_lidas,
-        "data_final": data_final.isoformat(), "modalidade": args.modalidade or "todas",
+        "data_final": data_final.isoformat(), "modalidade": args.modalidade or MODALIDADE_PREGAO_ELETRONICO,
         "cursor_avancado": False, "normalizacao_agendada": len(external_ids),
     })
     return 0 if external_ids else 2
