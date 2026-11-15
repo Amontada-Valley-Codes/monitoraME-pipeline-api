@@ -543,17 +543,6 @@ class PncpSourceControl(MainBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
-class PncpRequestLease(MainBase):
-    """Reserva temporaria identificada de uma chamada HTTP ao PNCP."""
-
-    __tablename__ = "pncp_request_leases"
-    __table_args__ = (Index("idx_pncp_request_leases_expiration", "source", "expires_at"),)
-
-    token: Mapped[str] = mapped_column(Text, primary_key=True)
-    source: Mapped[str] = mapped_column(Text, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
 class TceDespesaIngestionRun(MainBase):
     __tablename__ = "tce_despesa_ingestion_runs"
     __table_args__ = (
