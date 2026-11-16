@@ -44,6 +44,18 @@ class MetadadosCargaTceTest(unittest.TestCase):
         argumentos.update(sobrescritos)
         return tce_observability.construir_metadados_carga(**argumentos)
 
+    def test_ultima_atualizacao_concluida_usa_iso_utc_e_aceita_ausencia(self) -> None:
+        self.assertEqual(
+            tce_observability.ultima_atualizacao_concluida([
+                "2025-02-05T09:00:00-03:00",
+                datetime(2025, 2, 5, 11, 59, tzinfo=timezone.utc),
+            ]),
+            "2025-02-05T12:00:00+00:00",
+        )
+        self.assertIsNone(
+            tce_observability.ultima_atualizacao_concluida([None, ""])
+        )
+
     def test_publicacao_sem_movimento_e_dado_disponivel_com_zero_conhecido(self) -> None:
         metadados = self._metadados()
 

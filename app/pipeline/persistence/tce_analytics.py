@@ -30,6 +30,7 @@ class SnapshotPagamentosTce:
     competencias_publicadas: list[str]
     fornecedores_cache: dict[str, dict[str, Any]]
     municipio_comprador: str | None = None
+    publicacoes_concluidas_em: list[datetime] = field(default_factory=list)
 
 
 def _cnpjs(registros: list[dict[str, Any]]) -> list[str]:
@@ -120,6 +121,7 @@ def carregar_snapshot_pagamentos_municipais(
 ) -> SnapshotPagamentosTce:
     """Le o snapshot municipal publicado, sem atualizar fontes ou tabelas."""
     competencias_publicadas: list[str] = []
+    publicacoes_concluidas_em: list[datetime] = []
     registros, competencias_ausentes = (
         tce_pagamentos.listar_pagamentos_municipais_para_analise(
             codigo_municipio_tce=codigo_municipio_tce,
@@ -127,6 +129,7 @@ def carregar_snapshot_pagamentos_municipais(
             data_final=data_final,
             exercicio_orcamento=exercicio_orcamento,
             competencias_publicadas=competencias_publicadas,
+            publicacoes_concluidas_em=publicacoes_concluidas_em,
         )
     )
     municipio = database.localizar_municipio_tce(codigo_municipio_tce)
@@ -136,6 +139,7 @@ def carregar_snapshot_pagamentos_municipais(
         competencias_publicadas=sorted(set(competencias_publicadas)),
         fornecedores_cache=_fornecedores_cache(registros),
         municipio_comprador=municipio["nome"] if municipio else None,
+        publicacoes_concluidas_em=publicacoes_concluidas_em,
     )
 
 
@@ -147,6 +151,7 @@ def carregar_snapshot_pagamentos_estaduais(
 ) -> SnapshotPagamentosTce:
     """Le o snapshot estadual publicado, sem atualizar fontes ou tabelas."""
     competencias_publicadas: list[str] = []
+    publicacoes_concluidas_em: list[datetime] = []
     registros, competencias_ausentes = (
         tce_pagamentos.listar_pagamentos_estaduais_para_analise(
             data_inicial=data_inicial,
@@ -154,6 +159,7 @@ def carregar_snapshot_pagamentos_estaduais(
             uf=UF_PADRAO,
             exercicio_orcamento=exercicio_orcamento,
             competencias_publicadas=competencias_publicadas,
+            publicacoes_concluidas_em=publicacoes_concluidas_em,
         )
     )
     return SnapshotPagamentosTce(
@@ -161,6 +167,7 @@ def carregar_snapshot_pagamentos_estaduais(
         competencias_ausentes=competencias_ausentes,
         competencias_publicadas=sorted(set(competencias_publicadas)),
         fornecedores_cache=_fornecedores_cache(registros),
+        publicacoes_concluidas_em=publicacoes_concluidas_em,
     )
 
 

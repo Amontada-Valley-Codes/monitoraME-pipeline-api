@@ -85,6 +85,7 @@ def listar_pagamentos_para_analise(
     *, codigo_municipio_tce: str, exercicio_orcamento: int,
     data_inicial: date, data_final: date,
     competencias_publicadas: list[str] | None = None,
+    publicacoes_concluidas_em: list[datetime] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Le pagamentos publicados no periodo civil, para um orcamento independente."""
     database.init_db()
@@ -105,6 +106,12 @@ def listar_pagamentos_para_analise(
             return [], ausentes
         if competencias_publicadas is not None:
             competencias_publicadas.extend(competencias)
+        if publicacoes_concluidas_em is not None:
+            publicacoes_concluidas_em.extend(
+                run.publicado_em
+                for competencia in competencias
+                if (run := por_competencia[competencia]).publicado_em is not None
+            )
         classificacoes = session.scalars(select(TceOrgaoClassificacao).where(
             TceOrgaoClassificacao.codigo_municipio_tce == codigo_municipio_tce,
             TceOrgaoClassificacao.exercicio_orcamento == exercicio_orcamento,
@@ -247,6 +254,7 @@ def listar_pagamentos_municipais_para_analise(
     *, codigo_municipio_tce: str, data_inicial: date, data_final: date,
     exercicio_orcamento: int | None = None,
     competencias_publicadas: list[str] | None = None,
+    publicacoes_concluidas_em: list[datetime] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Combina exercícios orçamentários publicados no período de pagamento."""
     if data_inicial > data_final:
@@ -288,6 +296,7 @@ def listar_pagamentos_municipais_para_analise(
             data_inicial=data_inicial,
             data_final=data_final,
             competencias_publicadas=competencias_publicadas,
+            publicacoes_concluidas_em=publicacoes_concluidas_em,
         )
         registros.extend(pagamentos)
         ausentes.extend({"exercicio_orcamento": str(exercicio), "competencia": item}
@@ -299,6 +308,7 @@ def listar_pagamentos_estaduais_para_analise(
     *, data_inicial: date, data_final: date, uf: str,
     exercicio_orcamento: int | None = None,
     competencias_publicadas: list[str] | None = None,
+    publicacoes_concluidas_em: list[datetime] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Lista pagamentos estaduais somente quando todos os lotes municipais existem."""
     from app.core.models import IbgeMunicipio
@@ -320,6 +330,7 @@ def listar_pagamentos_estaduais_para_analise(
             codigo_municipio_tce=str(codigo), data_inicial=data_inicial, data_final=data_final,
             exercicio_orcamento=exercicio_orcamento,
             competencias_publicadas=competencias_publicadas,
+            publicacoes_concluidas_em=publicacoes_concluidas_em,
         )
         registros.extend(pagamentos)
         ausentes.extend({"codigo_municipio": str(codigo), **item} for item in faltantes)

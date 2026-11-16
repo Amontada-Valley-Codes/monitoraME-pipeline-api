@@ -75,6 +75,7 @@ def obter_previa_municipal(
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
         "data_available": bool(overview.get("data_available")),
+        "last_successful_load_at": overview.get("last_successful_load_at"),
         "is_stale": bool(overview.get("is_stale", False)),
         "competencias_publicadas": overview.get("competencias_publicadas", []),
         "kpis": overview.get("kpis", {}),

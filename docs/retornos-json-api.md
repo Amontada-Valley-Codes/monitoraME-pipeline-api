@@ -59,7 +59,11 @@ analíticos e comparação compartilham estes campos:
 ```
 
 `data_as_of` é o último dia coberto por uma competência publicada no recorte.
-`last_successful_load_at` é a publicação mais recente nesse escopo. `stale_reason`
+`last_successful_load_at` é a publicação mais recente nesse escopo. Para as
+análises baseadas em pagamentos, ele é calculado exclusivamente a partir de
+`publicado_em` dos lotes `PUBLICADO` que atendem ao município, exercício e
+competências consultados. O valor usa ISO 8601 em UTC (`+00:00`) e é `null`
+quando não há instante de conclusão disponível. `stale_reason`
 é uma lista de códigos estáveis (`LATEST_LOAD_FAILED`, `SNAPSHOT_EXPIRED` e/ou
 `PUBLICATION_TIMESTAMP_MISSING`);
 ausência de publicação é informada separadamente por `data_available` e por um
@@ -117,7 +121,7 @@ de `valor_nota_pagamento` não estornado; ME e MPE são medidas separadas.
 Recebe o código TCE-CE de três dígitos no caminho e `data_inicial` e `data_final` no formato `YYYY-MM-DD`. A rota é pública, somente leitura, e usa dados locais publicados. `resumo_compras.valor_total_centavos` mede pagamentos publicados associados a empenhos, não o valor contratado. `quantidade_compras` conta empenhos distintos com pagamento no período. A contagem e o valor local classificam a sede do fornecedor; fornecedores sem endereço cadastral suficiente não são classificados como locais.
 
 ```json
-{"municipio":{"codigo_ibge":"2304400","codigo_tce":"004","nome":"Fortaleza","uf":"CE"},"periodo":{"data_inicial":"2025-01-01","data_final":"2025-01-31"},"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"data_available":true,"is_stale":false,"competencias_publicadas":["2025-01"],"kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_fornecedores_locais":0.0,"percentual_recursos_fora_municipio":0.0},"participacao_por_porte_empresarial":[],"resumo_compras":{"medida":"PAGAMENTOS_PUBLICADOS_ASSOCIADOS_A_EMPENHOS","regra_contagem_compras":"EMPENHOS_UNICOS_COM_PAGAMENTO_NO_PERIODO","unidade_monetaria":"CENTAVOS","valor_total_centavos":0,"quantidade_compras":0,"quantidade_fornecedores_identificados":0,"quantidade_fornecedores_sem_documento":0,"compras_na_cidade":{"quantidade_compras":0,"valor_centavos":0,"percentual_do_valor_total":0.0},"fornecedores":[],"fornecedores_exibidos":0,"limite_fornecedores":10}}
+{"municipio":{"codigo_ibge":"2304400","codigo_tce":"004","nome":"Fortaleza","uf":"CE"},"periodo":{"data_inicial":"2025-01-01","data_final":"2025-01-31"},"fonte":"TCE-CE","origem_dados":"BANCO_LOCAL","consultas_externas":false,"data_available":true,"last_successful_load_at":"2025-02-05T12:30:00+00:00","is_stale":false,"competencias_publicadas":["2025-01"],"kpis":{"total_compras_centavos":0,"percentual_participacao_me":0.0,"total_compras_ME_centavos":0,"percentual_compras_fornecedores_locais":0.0,"percentual_recursos_fora_municipio":0.0},"participacao_por_porte_empresarial":[],"resumo_compras":{"medida":"PAGAMENTOS_PUBLICADOS_ASSOCIADOS_A_EMPENHOS","regra_contagem_compras":"EMPENHOS_UNICOS_COM_PAGAMENTO_NO_PERIODO","unidade_monetaria":"CENTAVOS","valor_total_centavos":0,"quantidade_compras":0,"quantidade_fornecedores_identificados":0,"quantidade_fornecedores_sem_documento":0,"compras_na_cidade":{"quantidade_compras":0,"valor_centavos":0,"percentual_do_valor_total":0.0},"fornecedores":[],"fornecedores_exibidos":0,"limite_fornecedores":10}}
 ```
 
 ### `GET /pipeline/tce/comparisons`

@@ -37,6 +37,7 @@ def _municipio(codigo: str, ibge: str, nome: str) -> dict[str, str]:
 
 def _overview(valor: int) -> dict[str, object]:
     return {
+        "last_successful_load_at": "2025-02-05T12:30:00+00:00",
         "data_available": True,
         "is_stale": False,
         "stale_reason": [],
@@ -117,6 +118,10 @@ class ComparacaoTceTest(unittest.TestCase):
         )
 
         self.assertEqual(resultado["medida"], "VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA")
+        self.assertEqual(
+            resultado["last_successful_load_at"],
+            "2025-02-05T12:30:00+00:00",
+        )
         self.assertEqual(resultado["parametros"]["codigo_municipio_tce"], ["004", "010", "157", "057"])
         self.assertEqual([item["codigo_municipio_tce"] for item in resultado["municipios"]], ["004", "010", "157", "057"])
         linha_total = next(item for item in resultado["comparacao"]["kpis"] if item["indicador"] == "total_compras_centavos")

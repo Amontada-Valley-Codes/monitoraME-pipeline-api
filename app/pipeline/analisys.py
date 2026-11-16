@@ -293,6 +293,9 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         "competencias_ausentes": [],
         "totais": {"pagamentos": len(registros)},
         "data_available": bool(registros),
+        "last_successful_load_at": tce_observability.ultima_atualizacao_concluida(
+            snapshot.publicacoes_concluidas_em
+        ),
         "is_stale": False,
         "source_status": "CURRENT" if registros else "EMPTY",
         "quality": {"coverage": "COMPLETE", "missing_competencies": []},
@@ -357,6 +360,9 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
         "competencias_ausentes": [],
         "totais": {"pagamentos": len(registros)},
         "data_available": bool(registros),
+        "last_successful_load_at": tce_observability.ultima_atualizacao_concluida(
+            snapshot.publicacoes_concluidas_em
+        ),
         "base_analitica": {"nome": "pagamentos_tce", "base_calculo": "PAGAMENTOS",
                            "dimensoes_empenho": ["natureza", "fornecedor"]},
         "unidade_monetaria": "CENTAVOS",
