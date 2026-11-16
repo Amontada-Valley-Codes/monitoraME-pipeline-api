@@ -33,6 +33,73 @@ def _job(tipo: str, escopo: str) -> JobTceReivindicado:
 
 
 class TceScheduleTest(unittest.TestCase):
+    def test_recuperacao_orfa_busca_empenho_e_reingere_competencia_de_origem(self) -> None:
+        chave = "010|202600|04|01|2026-05-04|04050076"
+        empenho_bruto = {
+            "codigo_municipio": "010",
+            "exercicio_orcamento": 202600,
+            "codigo_orgao": "04",
+            "codigo_unidade_orcamentaria": "01",
+            "data_emissao_empenho": "2026-05-04T00:00:00",
+            "numero_empenho": "04050076",
+            "data_referencia_doc": 202605,
+            "codigo_elemento_despesa": "33903000",
+            "valor_empenhado": "100.00",
+            "codigo_tipo_negociante": "1",
+        }
+        with (
+            patch(
+                "app.pipeline.tce_schedule.tce.buscar_documentos_exercicio",
+                return_value=[empenho_bruto],
+            ) as buscar,
+            patch(
+                "app.pipeline.tce_schedule.executar_ingestao_competencia_tce",
+                return_value=SimpleNamespace(status="PUBLICADO", run_id=123),
+            ) as ingerir,
+            patch(
+                "app.pipeline.tce_schedule.obter_empenho_publicado_por_chave",
+                return_value={"chave_empenho": chave},
+            ) as publicado,
+        ):
+            ausentes = schedule._recuperar_empenhos_referenciados(
+                codigo_municipio_tce="010",
+                competencia_dependente="2026-06",
+                chaves_ausentes=[chave],
+            )
+
+        self.assertEqual(ausentes, [])
+        buscar.assert_called_once_with(
+            "notas_empenhos",
+            codigo_municipio="010",
+            exercicio=2026,
+            codigo_orgao="04",
+            codigo_unidade_orcamentaria="01",
+        )
+        ingerir.assert_called_once_with("2026-05", codigo_municipio_tce="010")
+        publicado.assert_called_once_with(chave)
+
+    def test_recuperacao_orfa_mantem_chave_ausente_quando_fonte_nao_a_retorna(self) -> None:
+        chave = "010|202600|04|01|2026-05-04|04050076"
+        with (
+            patch(
+                "app.pipeline.tce_schedule.tce.buscar_documentos_exercicio",
+                return_value=[],
+            ),
+            patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce") as ingerir,
+            patch(
+                "app.pipeline.tce_schedule.obter_empenho_publicado_por_chave",
+                return_value=None,
+            ),
+        ):
+            ausentes = schedule._recuperar_empenhos_referenciados(
+                codigo_municipio_tce="010",
+                competencia_dependente="2026-06",
+                chaves_ausentes=[chave],
+            )
+
+        self.assertEqual(ausentes, [chave])
+        ingerir.assert_not_called()
+
     def test_referencia_semanal_e_domingo_as_duas_em_fortaleza(self) -> None:
         fuso = ZoneInfo("America/Fortaleza")
         horario = datetime(2026, 11, 8, 2, tzinfo=fuso)
@@ -162,6 +229,10 @@ class TceScheduleTest(unittest.TestCase):
             patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
             patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce", return_value=resultado),
             patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value=None),
+            patch(
+                "app.pipeline.tce_schedule._recuperar_empenhos_referenciados",
+                side_effect=lambda **kwargs: kwargs["chaves_ausentes"],
+            ),
         ):
             with self.assertRaises(schedule.AnulacaoOrfaAguardandoEmpenho) as erro:
                 schedule.executar_job(_job("tce_despesas", "despesas|010|2026-11"))
@@ -184,6 +255,10 @@ class TceScheduleTest(unittest.TestCase):
             patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
             patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce") as executar,
             patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value=None) as buscar,
+            patch(
+                "app.pipeline.tce_schedule._recuperar_empenhos_referenciados",
+                side_effect=lambda **kwargs: kwargs["chaves_ausentes"],
+            ),
         ):
             session.scalar.return_value = rejeicao
             with self.assertRaises(schedule.AnulacaoOrfaAguardandoEmpenho) as erro:

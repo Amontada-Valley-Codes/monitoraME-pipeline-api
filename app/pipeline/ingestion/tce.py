@@ -552,8 +552,33 @@ def buscar_documentos_exercicio(
         params["data_referencia_doc"] = parametros_competencia_tce(
             competencia, codigo_municipio,
         )["data_referencia_doc"]
+    elif endpoint == "notas_empenhos":
+        if codigo_orgao is None or codigo_unidade_orcamentaria is None:
+            raise ValueError(
+                "Consulta de empenhos sem competencia exige orgao e unidade orcamentaria."
+            )
     elif endpoint not in {"orgaos", "unidades_orcamentarias"}:
         raise ValueError("Competencia obrigatoria para documentos financeiros.")
+
+    if endpoint == "notas_empenhos" and competencia is None:
+        parametros_log = {
+            "codigo_municipio": str(codigo_municipio).strip(),
+            "exercicio_orcamento": exercicio * 100,
+            "codigo_orgao": str(codigo_orgao),
+            "codigo_unidade_orcamentaria": str(codigo_unidade_orcamentaria),
+        }
+        return executar_com_log_ingestao(
+            fonte="TCE-CE",
+            etapa="buscar_empenhos_dependencia_anulacao",
+            parametros=parametros_log,
+            totais={"endpoint": endpoint},
+            executar=lambda: listar_registros(
+                endpoint,
+                params,
+                preservar_decimais=True,
+                falhar_ao_esgotar=True,
+            ),
+        )
     return listar_registros(
         endpoint, params, preservar_decimais=True, falhar_ao_esgotar=True,
     )
