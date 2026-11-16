@@ -24,11 +24,13 @@ from app.core import orm
 from app.pncp.atualizacao import agendar_atualizacao, coletar_atualizacao
 from app.pncp.ingestion import (
     ClientePncp,
+    MODALIDADES_PNCP_PADRAO,
     MODALIDADE_PREGAO_ELETRONICO,
     UFS_NORDESTE,
     agendar_backfill_anual,
     agendar_propostas_abertas,
     agendar_publicacao,
+    coletar_propostas_abertas,
     coletar_publicacao,
 )
 from app.pncp.jobs import WorkerPncp, agendar_job, replay_jobs
@@ -48,6 +50,8 @@ def _worker_coleta(tamanho_pagina: int, job_type: str = "incremental") -> Worker
             coletar_publicacao(job, cliente, tamanho_pagina=tamanho_pagina)
         elif job.scope_key.startswith("atualizacao:"):
             coletar_atualizacao(job, cliente, tamanho_pagina=tamanho_pagina)
+        elif job.scope_key.startswith("propostas-abertas:"):
+            coletar_propostas_abertas(job, cliente, tamanho_pagina=tamanho_pagina)
         else:
             raise ValueError(f"fluxo incremental desconhecido: {job.scope_key}")
 
@@ -87,13 +91,14 @@ def coletar(args: argparse.Namespace) -> int:
 def coletar_propostas_em_aberto(args: argparse.Namespace) -> int:
     jobs = agendar_propostas_abertas(
         data_final=datetime.now(timezone.utc),
-        modalidades=args.modalidade or [MODALIDADE_PREGAO_ELETRONICO],
+        modalidades=args.modalidade or list(MODALIDADES_PNCP_PADRAO),
+        ufs=args.uf or ("CE",),
         tamanho_pagina=args.tamanho_pagina,
     )
     ids = [agendar_job(job)[0] for job in jobs]
     worker = _worker_coleta(args.tamanho_pagina)
     executados = sum(worker.executar_uma_vez() for _ in jobs)
-    print({"fluxo": "propostas-abertas", "jobs": ids, "executados": executados, "modalidades": args.modalidade or [MODALIDADE_PREGAO_ELETRONICO]})
+    print({"fluxo": "propostas-abertas", "jobs": ids, "executados": executados, "ufs": args.uf or ["CE"], "modalidades": args.modalidade or list(MODALIDADES_PNCP_PADRAO)})
     return 0 if executados == len(jobs) else 2
 
 
@@ -167,6 +172,7 @@ def coletar_amostra_abertas(args: argparse.Namespace) -> int:
         pagina = cliente.buscar_propostas_abertas(
             data_final=data_final,
             modalidade=args.modalidade,
+            uf=args.uf,
             pagina=pagina_numero,
             tamanho_pagina=args.tamanho_pagina,
         )
@@ -180,7 +186,7 @@ def coletar_amostra_abertas(args: argparse.Namespace) -> int:
                 salvar_raw_e_agendar_normalizacao_session(session, RegistroRawPncp(
                     entity_type="CONTRATACAO", external_id=external_id, payload=payload,
                     collected_at=datetime.now(timezone.utc),
-                    run_id=f"amostra-abertas:{data_final.isoformat()}:{args.modalidade or MODALIDADE_PREGAO_ELETRONICO}",
+                    run_id=f"amostra-abertas:{data_final.isoformat()}:{args.uf}:{args.modalidade or 'todas'}",
                 ))
             external_ids.append(external_id)
             if len(external_ids) >= args.limite:
@@ -194,7 +200,7 @@ def coletar_amostra_abertas(args: argparse.Namespace) -> int:
     print({
         "fluxo": "propostas-abertas", "limite": args.limite,
         "persistidos": len(external_ids), "paginas_lidas": paginas_lidas,
-        "data_final": data_final.isoformat(), "modalidade": args.modalidade or MODALIDADE_PREGAO_ELETRONICO,
+        "data_final": data_final.isoformat(), "uf": args.uf, "modalidade": args.modalidade,
         "cursor_avancado": False, "normalizacao_agendada": len(external_ids),
     })
     return 0 if external_ids else 2
@@ -347,6 +353,7 @@ def main() -> int:
         comando.add_argument("--janela-dias", type=int, default=7)
     propostas = comandos.add_parser("coletar-propostas-abertas")
     propostas.add_argument("--modalidade", type=int, action="append", default=[])
+    propostas.add_argument("--uf", choices=UFS_NORDESTE, action="append", default=[])
     propostas.add_argument("--tamanho-pagina", type=int, default=50)
     propostas.set_defaults(func=coletar_propostas_em_aberto)
     normalizador = comandos.add_parser("normalizar")
@@ -370,6 +377,7 @@ def main() -> int:
         help="Busca manualmente apenas contratações com recebimento de propostas aberto",
     )
     amostra_abertas.add_argument("--modalidade", type=int)
+    amostra_abertas.add_argument("--uf", choices=UFS_NORDESTE, default="CE")
     amostra_abertas.add_argument("--limite", type=int, choices=range(1, 201), default=20)
     amostra_abertas.add_argument("--tamanho-pagina", type=int, choices=range(10, 51), default=20)
     amostra_abertas.add_argument("--max-paginas", type=int, choices=range(1, 21), default=10)

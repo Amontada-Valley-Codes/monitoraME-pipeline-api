@@ -9,8 +9,7 @@ import socket
 import time
 from typing import Any
 
-from app.pncp.atualizacao import coletar_atualizacao
-from app.pncp.ingestion import ClientePncp, coletar_publicacao
+from app.pncp.ingestion import ClientePncp, coletar_propostas_abertas
 from app.pncp.jobs import WorkerPncp, recuperar_leases_expirados
 from app.pncp.normalization import normalizar_job
 from app.pncp.enrichment import ClienteEnriquecimentoPncp, agendar_historicos_pendentes, enriquecer_job
@@ -37,16 +36,13 @@ def executar_coleta() -> None:
     worker_identity = f"{socket.gethostname()}:{os.getpid()}"
 
     def processar(job: Any) -> None:
-        if job.scope_key.startswith(("publicacao:", "backfill:")):
-            coletar_publicacao(job, cliente)
-        elif job.scope_key.startswith("atualizacao:"):
-            coletar_atualizacao(job, cliente)
+        if job.scope_key.startswith("propostas-abertas:"):
+            coletar_propostas_abertas(job, cliente)
         else:
-            raise ValueError(f"fluxo PNCP desconhecido: {job.scope_key}")
+            raise ValueError(f"worker PNCP habilitado somente para propostas abertas: {job.scope_key}")
 
     workers = (
         WorkerPncp(f"pncp-worker-incremental:{worker_identity}", processar, job_type="incremental"),
-        WorkerPncp(f"pncp-worker-backfill:{worker_identity}", processar, job_type="backfill"),
     )
     intervalo_ocioso = float(os.getenv("PNCP_WORKER_IDLE_SECONDS", "1"))
     ultimo_recovery = time.monotonic() - 30

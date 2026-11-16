@@ -13,9 +13,8 @@ class ConfiguracaoAgendamentoPncpTest(unittest.TestCase):
             config = ConfiguracaoAgendamentoPncp.do_ambiente()
 
         self.assertEqual(config.ufs, ("CE",))
+        self.assertEqual(config.flows, ("propostas_abertas",))
         self.assertEqual(config.modalidades, tuple(range(1, 15)))
-        self.assertEqual(config.backfill_start_year, 2026)
-        self.assertEqual(config.backfill_window_days, 7)
         self.assertEqual(MODALIDADES_PNCP_PADRAO, config.modalidades)
 
     def test_ambiente_pode_sobrescrever_recorte_padrao(self) -> None:
@@ -24,7 +23,7 @@ class ConfiguracaoAgendamentoPncpTest(unittest.TestCase):
             {
                 "PNCP_SCHEDULER_UFS": "CE",
                 "PNCP_SCHEDULER_MODALIDADES": "6,8",
-                "PNCP_SCHEDULER_BACKFILL_START_YEAR": "2026",
+                "PNCP_SCHEDULER_FLOWS": "propostas_abertas",
             },
             clear=True,
         ):
@@ -32,6 +31,15 @@ class ConfiguracaoAgendamentoPncpTest(unittest.TestCase):
 
         self.assertEqual(config.ufs, ("CE",))
         self.assertEqual(config.modalidades, (6, 8))
+
+    def test_recusa_fluxos_que_incluem_editais_encerrados(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"PNCP_SCHEDULER_FLOWS": "publicacao,atualizacao"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "fluxos PNCP nao suportados"):
+                ConfiguracaoAgendamentoPncp.do_ambiente()
 
 
 if __name__ == "__main__":

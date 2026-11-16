@@ -1,116 +1,102 @@
-# Jobs de ingestão do PNCP
+# Jobs PNCP: propostas com recebimento aberto
 
-Este guia explica como os jobs do PNCP descobrem contratações, preservam as respostas originais, atualizam a visão normalizada e executam enriquecimentos. A fila persistente é a tabela PostgreSQL `ingestion_jobs`, compartilhada com outros módulos e filtrada pelos workers por `source = "PNCP"` e tipo de job.
+O pipeline PNCP mantém oportunidades públicas para os consumidores do MonitoraME. A coleta automatizada deste deployment busca somente contratações que ainda recebem propostas, pela consulta `GET /v1/contratacoes/proposta`. O scheduler limita o escopo ao Ceará (`CE`) e percorre as modalidades configuradas (por padrão, códigos 1 a 14). Não agenda consultas de publicação, atualização ou backfill histórico.
 
-O pipeline consome dados públicos do PNCP. Ele não publica nem altera editais e as rotas de leitura servem dados locais, sem consultar a fonte externa a cada requisição.
+Esse endpoint é próprio para consultar contratações com recebimento de propostas aberto. Ele aceita a data final da consulta e filtros opcionais por modalidade e UF. Os filtros reduzem o conjunto consultado; a condição de recebimento aberto é determinada pela consulta oficial do PNCP.
 
-## Visão do fluxo
-
-O scheduler agenda janelas independentes de `publicacao` e `atualizacao`, por fluxo, UF e modalidade. A configuração padrão deste projeto agora restringe o escopo ao Ceará (`CE`), às modalidades PNCP de código 1 a 14 e inicia o backfill no ano de 2026, com janelas históricas de sete dias. Esses valores podem ser substituídos por `PNCP_SCHEDULER_UFS`, `PNCP_SCHEDULER_MODALIDADES`, `PNCP_SCHEDULER_BACKFILL_START_YEAR` e `PNCP_SCHEDULER_BACKFILL_WINDOW_DAYS`.
-
-No primeiro ciclo, o scheduler cria o backfill configurado. Cada ciclo acompanha os jobs que criou e só inicia outro depois que o ciclo anterior terminar e o intervalo configurado passar. A lista de modalidades deve ser conferida no domínio atual do PNCP; a API de consulta disponibiliza `GET /v1/modalidades?statusAtivo=true` para listar as modalidades ativas.
+## Fluxo principal
 
 ```mermaid
 flowchart TD
-    A[PNCP scheduler] --> B[Planeja janelas por fluxo, UF e modalidade]
-    B --> C{Primeiro ciclo?}
-    C -- Sim --> D[Agenda publicacao e atualizacao mais backfill inicial]
-    C -- Nao --> E[Agenda janelas incrementais com overlap]
-    D --> F[Fila ingestion_jobs no PostgreSQL]
-    E --> F
-    F --> G[Worker de coleta reserva incremental ou backfill]
-    G --> H[Cliente consulta paginas publicas do PNCP]
-    H --> I[Transacao salva RAW e agenda normalize]
-    I --> J[Cursor avanca apos todas as paginas validas]
-    I --> K[Worker de normalizacao]
-    K --> L[Upsert versionado da oportunidade]
-    L --> M[Agenda jobs de enriquecimento]
-    M --> N[Worker de enriquecimento busca detalhe, itens ou documentos]
-    L --> O[Consumidores leem dados normalizados locais]
-    N --> O
+    A[Scheduler PNCP a cada 4 horas] --> B[Cria jobs por UF e modalidade]
+    B --> C[Fila PostgreSQL ingestion_jobs]
+    C --> D[Worker reserva job incremental com lease]
+    D --> E[GET contratacoes proposta com dataFinal, uf e modalidade]
+    E --> F{Consulta concluida?}
+    F -- Nao --> G[Retry limitado com next_run_at]
+    G --> C
+    F -- Sim --> H[Persiste cada resposta RAW]
+    H --> I[Agenda normalize na mesma transacao]
+    I --> J[Worker normaliza e atualiza oportunidade]
+    J --> K[Agenda enriquecimentos complementares]
+    K --> L[Consumidores leem dados locais]
 ```
 
-## Tipos de job
+Cada job representa uma combinação de UF, modalidade e data final. Com a configuração padrão, são criados até 14 jobs por ciclo para o Ceará. Os jobs usam deduplicação e a fila considera somente itens PNCP. A coleta percorre todas as páginas válidas e persiste RAW antes da normalização; retries são idempotentes e não dependem de cursor histórico. O ciclo do scheduler só agenda uma nova rodada após os jobs do ciclo anterior terminarem e o intervalo configurado passar.
 
-| Tipo | Responsabilidade |
-|---|---|
-| `incremental` | Coletar janela de publicação ou atualização prevista pelo scheduler. |
-| `backfill` | Recuperar janelas históricas com prioridade menor e capacidade reservada. |
-| `normalize` | Processar um registro RAW identificado por `raw_record_id`. |
-| `enrich` | Consultar sob demanda recursos complementares, como detalhe, itens ou documentos. |
+## Configuração
 
-Agendamentos explícitos, como propostas abertas, usam os fluxos próprios descritos no contrato e não avançam o cursor incremental. O scheduler usa chave de deduplicação para evitar ocorrências equivalentes; o índice parcial impede duplicação entre jobs ativos.
+| Variável | Padrão | Uso |
+|---|---:|---|
+| `PNCP_SCHEDULER_FLOWS` | `propostas_abertas` | Único fluxo aceito pelo scheduler recorrente. Fluxos de publicação ou atualização interrompem a configuração para evitar coleta fora do escopo. |
+| `PNCP_SCHEDULER_UFS` | `CE` | UFs consultadas; `*` significa todas as UFs do Nordeste suportadas pelo projeto. |
+| `PNCP_SCHEDULER_MODALIDADES` | `1,2,...,14` | Modalidades consultadas, separadas por vírgula. |
+| `PNCP_SCHEDULER_PAGE_SIZE` | `50` | Registros máximos por página, limitado pela API a 50. |
+| `PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS` | `14400` | Intervalo mínimo de quatro horas entre ciclos completos. |
+| `PNCP_SCHEDULER_BACKFILL_ENABLED` | `false` | Backfill histórico permanece desativado. |
 
-## Da coleta ao RAW
+O endpoint de propostas abertas retorna somente contratações abertas segundo os critérios do PNCP no momento da consulta. Uma oportunidade pode deixar de receber propostas depois de coletada; o status deve ser atualizado por nova consulta/enriquecimento conforme as políticas do pipeline.
 
-O coletor percorre e valida todas as páginas da janela. Cada item é persistido como JSON original na tabela de RAW, com hash SHA-256, identidade, data de coleta e referência ao job/página. A escrita do RAW e o agendamento do job `normalize` acontecem na mesma transação. Assim, uma falha posterior não perde a resposta original e retries podem reutilizar o RAW já gravado.
+## Etapas de persistência
 
-O cursor só avança depois que todas as páginas válidas da janela estiverem persistidas. Se a coleta falhar antes da confirmação, a janela é repetida desde o início; a deduplicação de RAW torna a repetição idempotente. A resposta vazia que representa fim válido de paginação é aceita.
+1. O worker reserva o job usando transação curta, `FOR UPDATE SKIP LOCKED`, lease e token.
+2. O cliente consulta todas as páginas do endpoint de propostas abertas, incluindo os filtros `uf` e `codigoModalidadeContratacao` do job.
+3. Cada contratação é salva como RAW com hash e identidade externa; o job `normalize` é agendado na mesma transação.
+4. A normalização atualiza a visão canônica com proteção contra regressão de versão.
+5. Enriquecimento consulta detalhes, itens, documentos e histórico sem bloquear a coleta básica.
 
-## Normalização e enriquecimento
+O fluxo de propostas abertas não confirma nem avança cursor de publicação/atualização. RAW permite reprocessar a normalização sem baixar novamente o edital. As rotas de leitura servem dados locais e não chamam o PNCP.
 
-O worker de normalização lê o RAW e atualiza a oportunidade canônica. Hashes e precedência de versão impedem que uma resposta antiga substitua uma versão mais recente. Alterações persistidas geram eventos idempotentes. Conteúdo estruturalmente inválido permanece disponível em RAW e recebe diagnóstico de quarentena.
-
-Após a normalização, o pipeline agenda enriquecimentos ligados à versão da oportunidade. O worker busca recursos complementares e só os salva se a versão ainda for atual; assim, uma resposta atrasada não sobrescreve enriquecimento de uma versão mais nova. A coleta básica e a normalização continuam independentes do sucesso do enriquecimento.
-
-## Estados, retries e leases
+## Estados, retry e lease
 
 | Estado | Significado |
 |---|---|
-| `PENDING` | Aguardando a primeira execução ou retomada. |
-| `RUNNING` | Reservado por worker com lease e token ativo. |
-| `RETRY_WAIT` | Falha transitória; aguarda `next_run_at`. |
-| `SUCCEEDED` | Trabalho concluído. |
+| `PENDING` | Job aguardando execução. |
+| `RUNNING` | Job reservado com lease ativo. |
+| `RETRY_WAIT` | Falha transitória aguardando `next_run_at`. |
+| `SUCCEEDED` | Todas as páginas foram processadas. |
 | `FAILED` | Falha permanente ou limite de tentativas atingido; replay é explícito. |
-| `QUARANTINED` | Registro mantido para diagnóstico estrutural; pode ser reprocessado após correção validada. |
+| `QUARANTINED` | Registro mantido para diagnóstico estrutural. |
 
-Workers reservam jobs com `FOR UPDATE SKIP LOCKED` em transação curta e fazem chamadas HTTP fora da transação. Heartbeat renova o lease; conclusão, falha e quarentena validam o `lease_token` atual. Jobs esgotados não são reivindicados. Leases expirados retornam à fila respeitando o limite, e os que já o atingiram terminam em `FAILED`.
-
-Timeout, HTTP 408, 429 e 5xx são tratados como transitórios com backoff e jitter. `Retry-After` é respeitado para 429. Erros de autorização e requisição inválida não recebem retry cego. O circuito de proteção compartilhado reduz a pressão sobre a fonte; quando está `OPEN`, os jobs são adiados sem chamar o PNCP.
+Workers usam `lease_token` para impedir que uma execução antiga conclua um job já retomado. Leases expirados elegíveis retornam à fila; os que já esgotaram tentativas terminam em `FAILED`. Timeout, HTTP 429 e erros 5xx recebem retry limitado com backoff; `Retry-After` é respeitado. Um circuito de proteção aberto adia os jobs sem consultar a API.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING: scheduler ou produtor agenda
-    PENDING --> RUNNING: worker reserva com lease
-    RETRY_WAIT --> RUNNING: horario do retry e tentativas disponiveis
-    RUNNING --> SUCCEEDED: etapa concluida
-    RUNNING --> RETRY_WAIT: erro transitorio ou circuito OPEN
+    [*] --> PENDING: scheduler agenda
+    PENDING --> RUNNING: worker reserva
+    RETRY_WAIT --> RUNNING: retry devido e tentativas disponíveis
+    RUNNING --> SUCCEEDED: páginas persistidas
+    RUNNING --> RETRY_WAIT: falha transitória
     RUNNING --> FAILED: erro permanente ou limite atingido
-    RUNNING --> QUARANTINED: falha estrutural de normalizacao
-    RUNNING --> PENDING: lease expirou e ha tentativas
-    RUNNING --> FAILED: lease expirou no limite
-    FAILED --> PENDING: replay explicito
-    QUARANTINED --> PENDING: replay explicito apos diagnostico
+    RUNNING --> PENDING: lease expirado com tentativas restantes
+    RUNNING --> FAILED: lease expirado no limite
+    FAILED --> PENDING: replay explícito
+    QUARANTINED --> PENDING: replay após diagnóstico
 ```
 
-## Recuperação, replay e observabilidade
+Eventos ficam em `ingestion_job_events`, com tipo, tentativa e contexto sanitizado. Logs incluem identificador do job, UF, modalidade, página, duração e contagens RAW/normalização, sem registrar payload completo, credenciais ou dados pessoais desnecessários.
 
-Os workers PNCP recuperam periodicamente leases expirados e registram eventos de início, sucesso, falha, quarentena, lease e replay em `ingestion_job_events`. Contexto do job inclui escopo e diagnóstico sanitizado; payloads RAW, credenciais e cabeçalhos privados não devem ir para logs.
+## Operação
 
-`FAILED` e `QUARANTINED` exigem replay explícito, selecionado pelo menor escopo possível. O replay mantém o erro anterior para auditoria, registra evento e não cria uma segunda cópia de um job equivalente que já esteja ativo. É possível selecionar um job pelo ID, um fluxo ou uma janela; seletores de janela exigem início e fim com fuso horário.
+O Compose executa scheduler, worker de coleta, normalização e enriquecimento em processos separados, conectados ao mesmo PostgreSQL. Os serviços e arquivos Compose devem corresponder à instalação implantada.
 
-## Executar, acompanhar e reprocessar
-
-O Compose mantém scheduler, coleta, normalização e enriquecimento em serviços separados, todos conectados ao mesmo PostgreSQL. Para iniciar ou conferir os processos:
+Para conferir o backlog e os erros:
 
 ```bash
-docker compose -f compose.production.yaml up -d pncp-scheduler pncp-worker-coleta pncp-worker-normalizacao pncp-worker-enriquecimento
-docker compose -f compose.production.yaml ps pncp-scheduler pncp-worker-coleta pncp-worker-normalizacao pncp-worker-enriquecimento
-docker compose -f compose.production.yaml logs -f pncp-scheduler pncp-worker-coleta pncp-worker-normalizacao pncp-worker-enriquecimento
+python scripts/pncp_operacao.py status
 ```
 
-Para consultar o estado agregado das filas e fluxos no banco local:
+Para coleta manual e limitada de propostas abertas no Ceará, com todas as modalidades por padrão:
 
 ```bash
-docker compose -f compose.production.yaml run --rm api python scripts/pncp_operacao.py status
+python scripts/pncp_operacao.py coletar-propostas-abertas --uf CE
 ```
 
-Para repetir um job específico em estado terminal:
+É possível restringir modalidades repetindo `--modalidade`, por exemplo `--modalidade 6 --modalidade 8`. O comando manual agenda e executa jobs da fila; não cria backfill.
 
-```bash
-docker compose -f compose.production.yaml run --rm api python scripts/replay_pncp_jobs.py --job-id 123
-```
+`FAILED` e `QUARANTINED` exigem replay explícito depois que o diagnóstico for entendido. Antes de operar a fila, confirme que os jobs escolhidos são do escopo desejado. Para este deployment, jobs antigos de `publicacao`, `atualizacao` e `backfill` devem ser encerrados antes de iniciar os workers novos, pois a fila é persistente entre versões do código.
 
-O replay também pode selecionar um fluxo com `--flow publicacao` ou `--flow atualizacao`. Para limitar à janela, use `--janela --inicio 2026-01-01T00:00:00+00:00 --fim 2026-01-02T00:00:00+00:00`. O seletor de janela exige ambos os limites ISO-8601 com fuso horário. Antes de reprocessar, confirme que o problema foi resolvido; para falhas de normalização, o RAW permanece guardado e disponível para diagnóstico.
+## Referências oficiais da consulta
 
-Não avance cursores manualmente. Uma janela incompleta será repetida pelo job e poderá reutilizar RAW já persistido. `GET /health/pncp` é uma consulta local ao PostgreSQL e informa backlog, falhas, quarentenas e leases expirados sem chamar a API do PNCP.
+- Swagger da API PNCP Consultas: <https://pncp.gov.br/api/consulta/swagger-ui/index.html>
+- Manual da API PNCP Consultas: <https://www.gov.br/pncp/pt-br/pncp/manuais/ManualPNCPAPIConsultasVerso1.0.pdf/@@download/file>

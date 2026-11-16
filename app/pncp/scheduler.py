@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-import json
 import os
+from zoneinfo import ZoneInfo
 from uuid import uuid4
 
 from sqlalchemy import func, select, text
@@ -12,19 +12,16 @@ from sqlalchemy.orm import Session
 
 from app.core import orm
 from app.core.models import IngestionJob, PncpSyncCursor
-from app.pncp.atualizacao import agendar_atualizacao
-from app.pncp.checkpoints import ChaveCursor, OVERLAP_PADRAO, proxima_janela
 from app.pncp.ingestion import (
+    MODALIDADES_PNCP_PADRAO,
     UFS_NORDESTE,
-    agendar_backfill_anual,
-    agendar_publicacao,
+    agendar_propostas_abertas,
 )
 from app.pncp.jobs import NovoJob, agendar_job_session
 
 
 _ADVISORY_LOCK_ID = 0x504E435053434844
-_FLOWS_VALIDOS = frozenset(("publicacao", "atualizacao"))
-MODALIDADES_PNCP_PADRAO = tuple(range(1, 15))
+_FLOWS_VALIDOS = frozenset(("propostas_abertas",))
 _CICLO_FLOW = "scheduler"
 _CICLO_SCOPE = "completo"
 _CICLO_INTERVALO_PADRAO = 4 * 60 * 60
@@ -32,22 +29,16 @@ _CICLO_INTERVALO_PADRAO = 4 * 60 * 60
 
 @dataclass(frozen=True)
 class ConfiguracaoAgendamentoPncp:
-    flows: tuple[str, ...] = ("publicacao", "atualizacao")
+    flows: tuple[str, ...] = ("propostas_abertas",)
     modalidades: tuple[int, ...] = MODALIDADES_PNCP_PADRAO
     ufs: tuple[str, ...] | None = ("CE",)
-    window_days: int = 1
     page_size: int = 50
-    publication_priority: int = 70
-    update_priority: int = 80
-    backfill_enabled: bool = True
-    backfill_start_year: int = 2026
-    backfill_window_days: int = 7
-    backfill_priority: int = 20
+    open_proposals_priority: int = 70
     cycle_interval_seconds: int = _CICLO_INTERVALO_PADRAO
 
     @classmethod
     def do_ambiente(cls) -> ConfiguracaoAgendamentoPncp:
-        flows = _lista_texto("PNCP_SCHEDULER_FLOWS", "publicacao,atualizacao")
+        flows = _lista_texto("PNCP_SCHEDULER_FLOWS", "propostas_abertas")
         invalidos = set(flows) - _FLOWS_VALIDOS
         if invalidos:
             raise ValueError(f"fluxos PNCP nao suportados: {', '.join(sorted(invalidos))}")
@@ -65,14 +56,8 @@ class ConfiguracaoAgendamentoPncp:
             flows=flows,
             modalidades=modalidades,
             ufs=ufs,
-            window_days=_inteiro_positivo("PNCP_SCHEDULER_WINDOW_DAYS", 1),
             page_size=_inteiro_positivo("PNCP_SCHEDULER_PAGE_SIZE", 50),
-            publication_priority=int(os.getenv("PNCP_SCHEDULER_PUBLICATION_PRIORITY", "70")),
-            update_priority=int(os.getenv("PNCP_SCHEDULER_UPDATE_PRIORITY", "80")),
-            backfill_enabled=os.getenv("PNCP_SCHEDULER_BACKFILL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
-            backfill_start_year=_inteiro_positivo("PNCP_SCHEDULER_BACKFILL_START_YEAR", 2026),
-            backfill_window_days=_inteiro_positivo("PNCP_SCHEDULER_BACKFILL_WINDOW_DAYS", 7),
-            backfill_priority=int(os.getenv("PNCP_SCHEDULER_BACKFILL_PRIORITY", "20")),
+            open_proposals_priority=int(os.getenv("PNCP_SCHEDULER_OPEN_PROPOSALS_PRIORITY", "70")),
             cycle_interval_seconds=_inteiro_positivo("PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS", _CICLO_INTERVALO_PADRAO),
         )
         config.validar()
@@ -80,19 +65,13 @@ class ConfiguracaoAgendamentoPncp:
 
     def validar(self) -> None:
         if not self.flows or set(self.flows) - _FLOWS_VALIDOS:
-            raise ValueError("flows deve incluir publicacao e/ou atualizacao")
+            raise ValueError("flows deve ser somente propostas_abertas")
         if not self.modalidades or any(codigo < 1 for codigo in self.modalidades):
             raise ValueError("modalidades deve conter codigos positivos")
         if self.ufs is not None and (not self.ufs or any(uf not in UFS_NORDESTE for uf in self.ufs)):
             raise ValueError("ufs deve conter UFs suportadas ou ser None")
-        if self.window_days < 1:
-            raise ValueError("window_days deve ser positivo")
         if not 1 <= self.page_size <= 50:
             raise ValueError("page_size deve estar entre 1 e 50")
-        if self.backfill_start_year < 2021 or self.backfill_start_year > datetime.now(timezone.utc).year:
-            raise ValueError("backfill_start_year deve estar entre 2021 e o ano atual")
-        if self.backfill_window_days < 1:
-            raise ValueError("backfill_window_days deve ser positivo")
         if self.cycle_interval_seconds < 1:
             raise ValueError("cycle_interval_seconds deve ser positivo")
 
@@ -120,83 +99,6 @@ def _inteiro_positivo(nome: str, padrao: int) -> int:
     return valor
 
 
-def _scope_cursor(uf: str | None, modalidade: int) -> str:
-    return f"uf:{uf}:modalidade:{modalidade}" if uf else f"modalidade:{modalidade}"
-
-
-def _planejar_job(
-    session: Session,
-    *,
-    flow: str,
-    modalidade: int,
-    uf: str | None,
-    agora: datetime,
-    config: ConfiguracaoAgendamentoPncp,
-) -> NovoJob:
-    scope_cursor = _scope_cursor(uf, modalidade)
-    chave = ChaveCursor("PNCP", "CONTRATACAO", flow, scope_cursor)
-    cursor = session.get(
-        PncpSyncCursor,
-        {
-            "source": chave.source,
-            "entity_type": chave.entity_type,
-            "flow": chave.flow,
-            "scope_key": chave.scope_key,
-        },
-    )
-    inicio, fim = proxima_janela(
-        chave,
-        now=agora,
-        size=timedelta(days=config.window_days),
-        last_confirmed_end=cursor.last_confirmed_end if cursor else None,
-        overlap=OVERLAP_PADRAO,
-    )
-    if inicio > agora:
-        raise ValueError(f"cursor futuro impede planejar janela: {flow}/{scope_cursor}")
-    fim = min(fim, inicio + timedelta(days=config.window_days))
-    ufs = (uf,) if uf is not None else None
-    if flow == "publicacao":
-        return agendar_publicacao(
-            inicio=inicio,
-            fim=fim,
-            modalidades=[modalidade],
-            ufs=ufs,
-            tamanho_pagina=config.page_size,
-            prioridade=config.publication_priority,
-        )[0]
-    return agendar_atualizacao(
-        inicio=inicio,
-        fim=fim,
-        modalidades=[modalidade],
-        ufs=ufs,
-        tamanho_pagina=config.page_size,
-        prioridade=config.update_priority,
-    )[0]
-
-
-def _planejar_backfill(config: ConfiguracaoAgendamentoPncp, *, agora: datetime) -> list[NovoJob]:
-    """Gera janelas históricas completas até o início da semana corrente.
-
-    A fronteira semanal estável evita criar uma nova janela parcial a cada ciclo;
-    publicacao/atualizacao recorrentes cobrem o período corrente.
-    """
-    inicio_semana = (agora - timedelta(days=agora.weekday())).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    cutoff = inicio_semana - timedelta(seconds=1)
-    jobs: list[NovoJob] = []
-    for ano in range(config.backfill_start_year, agora.year + 1):
-        jobs.extend(agendar_backfill_anual(
-            ano=ano,
-            modalidades=list(config.modalidades),
-            ufs=config.ufs,
-            agora=cutoff,
-            tamanho_janela_dias=config.backfill_window_days,
-            tamanho_pagina=config.page_size,
-        ))
-    return [replace(job, priority=config.backfill_priority) for job in jobs]
-
-
 def _cursor_ciclo(session: Session) -> PncpSyncCursor | None:
     return session.get(PncpSyncCursor, {
         "source": "PNCP", "entity_type": "CONTRATACAO",
@@ -213,16 +115,15 @@ def _vincular_ciclo(job: NovoJob, ciclo_id: str) -> NovoJob:
 
 
 def _jobs_ciclo(session: Session, *, config: ConfiguracaoAgendamentoPncp, agora: datetime) -> list[NovoJob]:
-    jobs = [
-        _planejar_job(
-            session, flow=flow, modalidade=modalidade, uf=uf,
-            agora=agora, config=config,
-        )
-        for flow in config.flows
-        for uf in (config.ufs or (None,))
-        for modalidade in config.modalidades
-    ]
-    return jobs
+    del session  # Propostas abertas não usam cursor histórico.
+    agora_fortaleza = agora.astimezone(ZoneInfo("America/Fortaleza"))
+    return agendar_propostas_abertas(
+        data_final=agora_fortaleza,
+        modalidades=list(config.modalidades),
+        ufs=config.ufs,
+        tamanho_pagina=config.page_size,
+        prioridade=config.open_proposals_priority,
+    )
 
 
 def _agendar_ciclo_session(
@@ -230,16 +131,12 @@ def _agendar_ciclo_session(
     *,
     config: ConfiguracaoAgendamentoPncp,
     agora: datetime,
-    incluir_backfill: bool,
 ) -> tuple[str, dict[str, int]]:
     ciclo_id = str(uuid4())
     jobs = [
         _vincular_ciclo(job, ciclo_id)
         for job in _jobs_ciclo(session, config=config, agora=agora)
     ]
-    backfill_jobs = _planejar_backfill(config, agora=agora) if incluir_backfill and config.backfill_enabled else []
-    jobs.extend(_vincular_ciclo(job, ciclo_id) for job in backfill_jobs)
-
     agendados = 0
     ja_ativos = 0
     existentes_ativos = session.scalars(
@@ -263,32 +160,10 @@ def _agendar_ciclo_session(
         _, criado = agendar_job_session(session, job)
         agendados += int(criado)
 
-    # Janelas históricas que esgotaram tentativas voltam a ser tentadas no ciclo
-    # seguinte, com no máximo uma nova rodada a cada ciclo completo.
-    reparos = session.execute(text("""
-        WITH reparados AS (
-          UPDATE ingestion_jobs
-        SET status = 'PENDING', attempts = 0, locked_by = NULL, lease_token = NULL,
-            lease_until = NULL, heartbeat_at = NULL, next_run_at = now(),
-            replay_count = replay_count + 1, last_replayed_at = now(), updated_at = now(),
-            parameters = parameters || CAST(:cycle_parameters AS jsonb)
-        WHERE source = 'PNCP' AND job_type = 'backfill' AND status = 'FAILED'
-          AND coalesce(last_error_context->>'retryable', 'false') = 'true'
-        RETURNING id
-        )
-        INSERT INTO ingestion_job_events (job_id, event_type, details)
-        SELECT id, 'REPLAYED', CAST(:event_details AS jsonb) FROM reparados
-        RETURNING job_id
-    """), {
-        "cycle_parameters": json.dumps({"scheduler_cycle_id": ciclo_id}),
-        "event_details": json.dumps({"source": "PNCP", "reason": "automatic_backfill_retry", "scheduler_cycle_id": ciclo_id}),
-    }).all() if config.backfill_enabled and not incluir_backfill else []
-
     return ciclo_id, {
         "ciclo_jobs_avaliados": len(jobs),
         "ciclo_jobs_criados": agendados,
         "ciclo_jobs_existentes_associados": ja_ativos,
-        "ciclo_backfill_reparados": len(reparos),
     }
 
 
@@ -350,9 +225,8 @@ def agendar_fluxos_pncp_session(
     if instante < proxima_execucao:
         return {"aguardando_proximo_ciclo": 1, "proxima_execucao_em": proxima_execucao.isoformat()}
 
-    primeiro_ciclo = cursor.last_confirmed_end is None
     ciclo_id, resultado = _agendar_ciclo_session(
-        session, config=config, agora=instante, incluir_backfill=primeiro_ciclo,
+        session, config=config, agora=instante,
     )
     cursor.status = "RUNNING"
     cursor.last_run_id = ciclo_id
