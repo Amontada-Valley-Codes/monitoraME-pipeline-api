@@ -1,6 +1,6 @@
 # Jobs PNCP: propostas com recebimento aberto
 
-O pipeline PNCP mantém oportunidades públicas para os consumidores do MonitoraME. A coleta automatizada deste deployment busca somente contratações que ainda recebem propostas, pela consulta `GET /v1/contratacoes/proposta`. O scheduler limita o escopo ao Ceará (`CE`) e percorre as modalidades configuradas (por padrão, códigos 1 a 14). Não agenda consultas de publicação, atualização ou backfill histórico.
+O pipeline PNCP mantém oportunidades públicas para os consumidores do MonitoraME. A coleta automatizada deste deployment busca somente contratações que ainda recebem propostas, pela consulta `GET /v1/contratacoes/proposta`. O scheduler limita o escopo ao Ceará (`CE`) e percorre as modalidades configuradas (por padrão, códigos 1 a 14 e 16 a 18). O `dataFinal` é calculado como a data local atual mais o horizonte configurado; o padrão de 410 dias foi escolhido para consultar prazos futuros, em vez de restringir a busca aos encerramentos do dia. Não agenda consultas de publicação, atualização ou backfill histórico.
 
 Esse endpoint é próprio para consultar contratações com recebimento de propostas aberto. Ele aceita a data final da consulta e filtros opcionais por modalidade e UF. Os filtros reduzem o conjunto consultado; a condição de recebimento aberto é determinada pela consulta oficial do PNCP.
 
@@ -30,9 +30,10 @@ Cada job representa uma combinação de UF, modalidade e data final. Com a confi
 |---|---:|---|
 | `PNCP_SCHEDULER_FLOWS` | `propostas_abertas` | Único fluxo aceito pelo scheduler recorrente. Fluxos de publicação ou atualização interrompem a configuração para evitar coleta fora do escopo. |
 | `PNCP_SCHEDULER_UFS` | `CE` | UFs consultadas; `*` significa todas as UFs do Nordeste suportadas pelo projeto. |
-| `PNCP_SCHEDULER_MODALIDADES` | `1,2,...,14` | Modalidades consultadas, separadas por vírgula. |
+| `PNCP_SCHEDULER_MODALIDADES` | `1,2,...,14,16,17,18` | Modalidades consultadas, separadas por vírgula. |
 | `PNCP_SCHEDULER_PAGE_SIZE` | `50` | Registros máximos por página, limitado pela API a 50. |
 | `PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS` | `14400` | Intervalo mínimo de quatro horas entre ciclos completos. |
+| `PNCP_SCHEDULER_OPEN_PROPOSALS_HORIZON_DAYS` | `410` | Quantos dias no futuro usar como `dataFinal` para localizar propostas abertas; aumente se houver prazos além desse horizonte. |
 | `PNCP_SCHEDULER_BACKFILL_ENABLED` | `false` | Backfill histórico permanece desativado. |
 
 O endpoint de propostas abertas retorna somente contratações abertas segundo os critérios do PNCP no momento da consulta. Uma oportunidade pode deixar de receber propostas depois de coletada; o status deve ser atualizado por nova consulta/enriquecimento conforme as políticas do pipeline.

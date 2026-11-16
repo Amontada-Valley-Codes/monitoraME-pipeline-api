@@ -64,6 +64,10 @@ class PropostasAbertasPncpTest(unittest.TestCase):
             {job.parameters["codigoModalidadeContratacao"] for job in jobs},
             set(MODALIDADES_PNCP_PADRAO),
         )
+        self.assertEqual(
+            {job.parameters["dataFinal"] for job in jobs},
+            {"2027-12-30"},
+        )
 
     def test_coletor_salva_raw_sem_confirmar_cursor(self) -> None:
         job = JobReivindicado(
