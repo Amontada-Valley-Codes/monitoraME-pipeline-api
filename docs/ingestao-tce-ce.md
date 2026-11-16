@@ -51,6 +51,14 @@ Para reativar conscientemente um job `FAILED`:
 docker compose -f compose.production.yaml run --rm api python scripts/tce_jobs.py replay --job-id 123
 ```
 
+Para revisar os jobs de despesas `FAILED` de um município antes de reativá-los em lote, faça primeiro uma prévia:
+
+```bash
+docker compose --env-file .env -f compose.production.yaml exec -T tce-worker python scripts/tce_jobs.py replay-failed --job-type tce_despesas --scope-prefix 'despesas|026|'
+```
+
+Após conferir os IDs e diagnósticos listados, acrescente `--confirm` para aplicar o replay. O comando não altera jobs fora dos filtros informados e não substitui a investigação de falhas que persistirem.
+
 O scheduler faz catch-up da última janela devida após reinício. A chave do lote
 impede duplicação quando mais de uma instância avalia o mesmo domingo.
 
