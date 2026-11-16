@@ -37,6 +37,47 @@ class TceIngestionTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "YYYY-MM"):
             tce.parametros_competencia_tce("2025-13", "010")
 
+    def test_buscar_empenhos_sem_competencia_exige_orgao_e_unidade(self) -> None:
+        with self.assertRaisesRegex(ValueError, "exige orgao e unidade"):
+            tce.buscar_documentos_exercicio(
+                "notas_empenhos",
+                codigo_municipio="010",
+                exercicio=2026,
+            )
+
+    def test_buscar_empenhos_sem_competencia_filtra_orgao_e_unidade(self) -> None:
+        with (
+            patch("app.pipeline.ingestion.tce.listar_registros", return_value=[]) as listar,
+            patch(
+                "app.pipeline.ingestion.tce.executar_com_log_ingestao",
+                side_effect=lambda **kwargs: kwargs["executar"](),
+            ) as logar,
+        ):
+            registros = tce.buscar_documentos_exercicio(
+                "notas_empenhos",
+                codigo_municipio="010",
+                exercicio=2026,
+                codigo_orgao="04",
+                codigo_unidade_orcamentaria="01",
+            )
+
+        self.assertEqual(registros, [])
+        listar.assert_called_once_with(
+            "notas_empenhos",
+            {
+                "codigo_municipio": "010",
+                "exercicio_orcamento": 202600,
+                "codigo_orgao": "04",
+                "codigo_unidade_orcamentaria": "01",
+            },
+            preservar_decimais=True,
+            falhar_ao_esgotar=True,
+        )
+        self.assertEqual(
+            logar.call_args.kwargs["etapa"],
+            "buscar_empenhos_dependencia_anulacao",
+        )
+
     @patch("app.pipeline.ingestion.tce.requests.get")
     def test_buscar_dados_tce_preserva_decimal_quando_solicitado(self, get) -> None:
         resposta = MagicMock()
