@@ -18,10 +18,12 @@ os.environ.setdefault("OPENCNPJ_BASE_URL", "https://api.opencnpj.org")
 os.environ.setdefault("UF_PADRAO", "CE")
 os.environ.setdefault("CODIGO_MUNICIPIO_TCE_PADRAO", "010")
 
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
 
 from app import main
+from app.api.schemas.empenhos import SortOrder
+from app.api.schemas.fornecedores import SupplierSortField
 from app.pipeline import empenhos, fornecedores
 
 
@@ -130,6 +132,29 @@ class FornecedoresTest(unittest.TestCase):
         self.assertEqual(resultado["items"][0]["valores"]["valor_final_centavos"], 90_000)
         self.assertEqual(resultado["pagination"]["total_pages"], 2)
 
+    @patch("app.pipeline.fornecedores.tce_fornecedores.listar_fornecedores_publicados_paginados")
+    def test_listagem_sem_dados_retorna_colecao_vazia(self, listar) -> None:
+        listar.return_value = {"total": 0, "registros": []}
+
+        resultado = fornecedores.listar_fornecedores(
+            start_date="2025-01-01",
+            end_date="2025-12-31",
+            uf="CE",
+            municipality_tce_code=None,
+            company_sizes=[],
+            supplier_origins=[],
+            expense_element_codes=[],
+            search=None,
+            page=1,
+            page_size=50,
+            sort_by="final_value",
+            sort_order="desc",
+        )
+
+        self.assertEqual(resultado["items"], [])
+        self.assertEqual(resultado["pagination"]["total_items"], 0)
+        self.assertEqual(resultado["pagination"]["total_pages"], 0)
+
     @patch("app.pipeline.fornecedores.tce_fornecedores.obter_resumo_fornecedor_publicado")
     def test_detalhe_retorna_cadastro_graficos_e_participacao(self, obter) -> None:
         obter.return_value = _resumo()
@@ -190,6 +215,101 @@ class FornecedoresTest(unittest.TestCase):
                 expense_element_codes=[],
             )
         self.assertEqual(contexto.exception.code, "INVALID_SUPPLIER_DOCUMENT")
+
+    @patch(
+        "app.pipeline.fornecedores.tce_fornecedores.obter_resumo_fornecedor_publicado",
+        return_value=None,
+    )
+    def test_detalhe_inexistente_retorna_404_logico(self, _obter) -> None:
+        with self.assertRaises(empenhos.EmpenhoRequestError) as contexto:
+            fornecedores.obter_fornecedor(
+                tipo_documento="CNPJ",
+                documento="05537536000164",
+                start_date="2025-01-01",
+                end_date="2025-12-31",
+                uf="CE",
+                municipality_tce_code=None,
+                company_sizes=[],
+                supplier_origins=[],
+                expense_element_codes=[],
+            )
+
+        self.assertEqual(contexto.exception.code, "SUPPLIER_NOT_FOUND")
+        self.assertEqual(contexto.exception.status_code, 404)
+
+    @patch(
+        "app.pipeline.fornecedores.tce_despesas.listar_empenhos_publicados_paginados"
+    )
+    def test_despesas_de_fornecedor_inexistente_retornam_404_logico(
+        self,
+        listar,
+    ) -> None:
+        listar.return_value = {"total": 0, "registros": []}
+
+        with self.assertRaises(empenhos.EmpenhoRequestError) as contexto:
+            fornecedores.listar_empenhos_fornecedor(
+                tipo_documento="CNPJ",
+                documento="05537536000164",
+                start_date="2025-01-01",
+                end_date="2025-12-31",
+                uf="CE",
+                municipality_tce_code=None,
+                company_sizes=[],
+                supplier_origins=[],
+                expense_element_codes=[],
+                search=None,
+                page=1,
+                page_size=50,
+                sort_by="final_value",
+                sort_order="desc",
+            )
+
+        self.assertEqual(contexto.exception.code, "SUPPLIER_NOT_FOUND")
+        self.assertEqual(contexto.exception.status_code, 404)
+
+    @patch(
+        "app.api.endpoints.pipeline.fornecedores.listar_fornecedores",
+        side_effect=RuntimeError("detalhe interno sensivel"),
+    )
+    @patch("app.api.endpoints.pipeline.logger.exception")
+    def test_falha_interna_e_rastreavel_sem_expor_detalhes(
+        self,
+        registrar_excecao,
+        _listar,
+    ) -> None:
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/pipeline/tce/fornecedores",
+            "headers": [(b"x-request-id", b"req_fornecedores")],
+        })
+        response = Response()
+
+        resposta = main.tce_fornecedores(
+            request=request,
+            response=response,
+            start_date="2025-01-01",
+            end_date="2025-12-31",
+            uf="CE",
+            municipality_tce_code=None,
+            company_sizes=None,
+            supplier_origins=None,
+            expense_element_codes=None,
+            search=None,
+            page=1,
+            page_size=50,
+            sort_by=SupplierSortField.FINAL_VALUE,
+            sort_order=SortOrder.DESC,
+        )
+        corpo = json.loads(resposta.body)
+
+        self.assertEqual(resposta.status_code, 500)
+        self.assertEqual(corpo["error"]["request_id"], "req_fornecedores")
+        self.assertNotIn("sensivel", resposta.body.decode())
+        self.assertEqual(
+            registrar_excecao.call_args.kwargs["extra"],
+            {"request_id": "req_fornecedores", "error_type": "RuntimeError"},
+        )
 
     def test_validacao_da_rota_usa_envelope_padronizado(self) -> None:
         request = Request({
