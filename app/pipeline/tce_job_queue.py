@@ -449,7 +449,12 @@ def recuperar_leases_expirados() -> int:
         return recuperar_leases_expirados_session(session)
 
 
-def replay_job_session(session: Session, *, job_id: int) -> bool:
+def replay_job_session(
+    session: Session,
+    *,
+    job_id: int,
+    event_details: dict[str, object] | None = None,
+) -> bool:
     """Reativa explicitamente um job TCE encerrado em FAILED."""
     if job_id < 1:
         raise ValueError("job_id deve ser positivo")
@@ -483,7 +488,7 @@ def replay_job_session(session: Session, *, job_id: int) -> bool:
         session,
         job_id=int(resultado),
         event_type="REPLAYED",
-        details={"selector_job_id": job_id},
+        details={"selector_job_id": job_id, **(event_details or {})},
     )
     return True
 
@@ -491,6 +496,159 @@ def replay_job_session(session: Session, *, job_id: int) -> bool:
 def replay_job(*, job_id: int) -> bool:
     with orm.main_session() as session:
         return replay_job_session(session, job_id=job_id)
+
+
+def recuperar_falhas_orfas_legadas_session(
+    session: Session,
+    *,
+    limit: int = 1000,
+) -> list[int]:
+    """Reabre uma vez jobs legados marcados como permanentes por ANULACAO_ORFA."""
+    if not 1 <= limit <= 5000:
+        raise ValueError("limit deve estar entre 1 e 5000.")
+    candidatos = session.execute(
+        text("""
+        SELECT job.id
+        FROM ingestion_jobs AS job
+        WHERE job.source = 'TCE-CE'
+          AND job.job_type = 'tce_despesas'
+          AND job.status = 'FAILED'
+          AND job.last_error_context->>'categoria' = 'FalhaPermanenteJobTce'
+          AND job.last_error LIKE
+              'FalhaPermanenteJobTce: Lote de despesas % terminou em REJEITADO.%'
+          AND split_part(job.scope_key, '|', 1) = 'despesas'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ingestion_job_events AS evento
+              WHERE evento.job_id = job.id
+                AND evento.event_type = 'REPLAYED'
+                AND evento.details->>'trigger' = 'startup_orphan_failure_recovery'
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ingestion_jobs AS posterior
+              WHERE posterior.source = job.source
+                AND posterior.job_type = job.job_type
+                AND posterior.scope_key = job.scope_key
+                AND posterior.id > job.id
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ingestion_jobs AS ativo
+              WHERE ativo.source = job.source
+                AND ativo.job_type = job.job_type
+                AND ativo.scope_key = job.scope_key
+                AND ativo.status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')
+          )
+          AND EXISTS (
+              SELECT 1
+              FROM tce_despesa_ingestion_runs AS rejeitado
+              WHERE rejeitado.codigo_municipio_tce = split_part(job.scope_key, '|', 2)
+                AND rejeitado.competencia = split_part(job.scope_key, '|', 3)
+                AND rejeitado.status = 'REJEITADO'
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM tce_despesa_ingestion_runs AS mais_novo
+                    WHERE mais_novo.codigo_municipio_tce = rejeitado.codigo_municipio_tce
+                      AND mais_novo.competencia = rejeitado.competencia
+                      AND mais_novo.id > rejeitado.id
+                )
+                AND EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements(
+                        coalesce(rejeitado.problemas, '[]'::jsonb)
+                    ) AS problemas_itens(problema)
+                    WHERE problema->>'codigo' = 'ANULACAO_ORFA'
+                )
+          )
+        ORDER BY job.updated_at, job.id
+        LIMIT :limit
+        FOR UPDATE OF job SKIP LOCKED
+        """),
+        {"limit": limit},
+    ).scalars().all()
+
+    reabertos: list[int] = []
+    for candidato in candidatos:
+        job_id = int(candidato)
+        if replay_job_session(
+            session,
+            job_id=job_id,
+            event_details={"trigger": "startup_orphan_failure_recovery"},
+        ):
+            reabertos.append(job_id)
+    return reabertos
+
+
+def recuperar_falhas_orfas_legadas(*, batch_size: int = 1000) -> list[int]:
+    """Reabre todos os candidatos em lotes curtos, sem uma transação longa."""
+    if not 1 <= batch_size <= 5000:
+        raise ValueError("batch_size deve estar entre 1 e 5000.")
+    reabertos: list[int] = []
+    while True:
+        with orm.main_session() as session:
+            lote = recuperar_falhas_orfas_legadas_session(
+                session,
+                limit=batch_size,
+            )
+        reabertos.extend(lote)
+        if len(lote) < batch_size:
+            return reabertos
+
+
+def listar_jobs_failed_tce_session(
+    session: Session,
+    *,
+    job_type: str | None = None,
+    scope_prefix: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Lista jobs FAILED do TCE para inspeção/replay explícito em lote."""
+    if job_type is not None and not job_type.startswith("tce_"):
+        raise ValueError("job_type deve começar com 'tce_'.")
+    if scope_prefix is not None and not scope_prefix.strip():
+        raise ValueError("scope_prefix não pode ser vazio.")
+    if not 1 <= limit <= 1000:
+        raise ValueError("limit deve estar entre 1 e 1000.")
+    registros = session.execute(
+        text("""
+        SELECT job.id, job.job_type, job.scope_key, job.attempts, job.max_attempts,
+               job.last_error, job.last_error_context, job.updated_at
+        FROM ingestion_jobs AS job
+        WHERE job.source = 'TCE-CE'
+          AND left(job.job_type, 4) = 'tce_'
+          AND job.status = 'FAILED'
+          AND (:job_type IS NULL OR job.job_type = :job_type)
+          AND (
+              :scope_prefix IS NULL
+              OR left(job.scope_key, length(:scope_prefix)) = :scope_prefix
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ingestion_jobs posterior
+              WHERE posterior.source = job.source
+                AND posterior.job_type = job.job_type
+                AND posterior.scope_key = job.scope_key
+                AND posterior.id > job.id
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ingestion_jobs ativo
+              WHERE ativo.source = job.source
+                AND ativo.job_type = job.job_type
+                AND ativo.scope_key = job.scope_key
+                AND ativo.status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')
+          )
+        ORDER BY job.updated_at, job.id
+        LIMIT :limit
+        """),
+        {
+            "job_type": job_type,
+            "scope_prefix": scope_prefix,
+            "limit": limit,
+        },
+    ).mappings().all()
+    return [dict(registro) for registro in registros]
 
 
 class WorkerTce:

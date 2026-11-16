@@ -189,6 +189,78 @@ class TceJobQueueTest(unittest.TestCase):
         self.assertIn("FOR UPDATE SKIP LOCKED", statement.text)
         self.assertEqual(parametros, {"job_id": 7})
 
+    def test_lista_falhas_permanentes_permite_filtros_e_limite(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.mappings.return_value.all.return_value = [
+            {"id": 85038, "job_type": "tce_despesas", "scope_key": "despesas|026|2026-05"},
+        ]
+
+        jobs = queue.listar_jobs_failed_tce_session(
+            session,
+            job_type="tce_despesas",
+            scope_prefix="despesas|026|",
+            limit=25,
+        )
+
+        self.assertEqual(jobs[0]["id"], 85038)
+        statement, parametros = session.execute.call_args.args
+        self.assertIn("source = 'TCE-CE'", statement.text)
+        self.assertIn("status = 'FAILED'", statement.text)
+        self.assertIn("left(job.scope_key, length(:scope_prefix))", statement.text)
+        self.assertIn("posterior.id > job.id", statement.text)
+        self.assertIn("ativo.status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')", statement.text)
+        self.assertEqual(
+            parametros,
+            {
+                "job_type": "tce_despesas",
+                "scope_prefix": "despesas|026|",
+                "limit": 25,
+            },
+        )
+
+    def test_lista_falhas_permanentes_rejeita_tipo_de_outra_fonte(self) -> None:
+        with self.assertRaisesRegex(ValueError, "tce_"):
+            queue.listar_jobs_failed_tce_session(MagicMock(), job_type="pncp_collect")
+
+    def test_recuperador_reabre_uma_vez_apenas_orfas_legadas_e_registra_origem(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.scalars.return_value.all.return_value = [7, 8]
+        with patch(
+            "app.pipeline.tce_job_queue.replay_job_session",
+            side_effect=[True, False],
+        ) as replay:
+            reabertos = queue.recuperar_falhas_orfas_legadas_session(session)
+
+        self.assertEqual(reabertos, [7])
+        statement, parametros = session.execute.call_args.args
+        self.assertIn("last_error_context->>'categoria' = 'FalhaPermanenteJobTce'", statement.text)
+        self.assertIn("problema->>'codigo' = 'ANULACAO_ORFA'", statement.text)
+        self.assertIn("evento.details->>'trigger' = 'startup_orphan_failure_recovery'", statement.text)
+        self.assertIn("FOR UPDATE OF job SKIP LOCKED", statement.text)
+        self.assertEqual(parametros, {"limit": 1000})
+        self.assertEqual(
+            [
+                (chamada.args[0], chamada.kwargs)
+                for chamada in replay.call_args_list
+            ],
+            [
+                (
+                    session,
+                    {
+                        "job_id": 7,
+                        "event_details": {"trigger": "startup_orphan_failure_recovery"},
+                    },
+                ),
+                (
+                    session,
+                    {
+                        "job_id": 8,
+                        "event_details": {"trigger": "startup_orphan_failure_recovery"},
+                    },
+                ),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

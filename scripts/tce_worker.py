@@ -17,7 +17,11 @@ from app.core.config import (
     TCE_WORKER_IDLE_SECONDS,
 )
 from app.core.logging import configurar_logging
-from app.pipeline.tce_job_queue import WorkerTce, recuperar_leases_expirados
+from app.pipeline.tce_job_queue import (
+    WorkerTce,
+    recuperar_falhas_orfas_legadas,
+    recuperar_leases_expirados,
+)
 from app.pipeline.tce_schedule import executar_job
 
 
@@ -31,8 +35,20 @@ def _executar_slot(indice: int, parar: Event, *, once: bool) -> None:
         lease_seconds=TCE_JOB_LEASE_SECONDS,
     )
     ultimo_recovery = 0.0
+    recovery_orfas_legadas_concluida = False
     while not parar.is_set():
         try:
+            if indice == 1 and not recovery_orfas_legadas_concluida:
+                reabertos = recuperar_falhas_orfas_legadas()
+                recovery_orfas_legadas_concluida = True
+                if reabertos:
+                    logger.warning(
+                        "Jobs TCE legados com anulação órfã reabertos automaticamente",
+                        extra={
+                            "quantidade": len(reabertos),
+                            "job_ids_amostra": reabertos[:100],
+                        },
+                    )
             if indice == 1 and time.monotonic() - ultimo_recovery >= 30:
                 recuperados = recuperar_leases_expirados()
                 ultimo_recovery = time.monotonic()

@@ -101,7 +101,7 @@ Uma falha de coleta ou validação não substitui o lote publicado anteriormente
 
 ## Replay explícito
 
-Jobs `FAILED` não são reabertos automaticamente. Primeiro consulte a fila para identificar o ID e o diagnóstico:
+Em geral, jobs `FAILED` não são reabertos automaticamente. A recuperação automática limitada de jobs legados por `ANULACAO_ORFA` está descrita abaixo. Para os demais casos, consulte a fila para identificar o ID e o diagnóstico:
 
 ```bash
 docker compose -f compose.production.yaml run --rm api python scripts/tce_jobs.py status
@@ -114,6 +114,16 @@ docker compose -f compose.production.yaml run --rm api python scripts/tce_jobs.p
 ```
 
 O replay é registrado como evento e reinicia o contador operacional de tentativas. Evite replay enquanto a dependência de empenho estiver ausente, pois a nova execução pode encontrar o mesmo diagnóstico.
+
+Na inicialização, o worker reativa uma única vez jobs legados de despesas que foram classificados como falha permanente pelo código antigo, desde que a última rejeição do lote contenha `ANULACAO_ORFA`. A seleção exclui escopos com jobs mais recentes ou ativos, registra o replay como evento e não reabre falhas permanentes de outras categorias. Assim, ao implantar a correção, esses jobs entram na fila automaticamente e passam pelo fluxo novo de busca/retry.
+
+Para revisar falhas permanentes em lote, use `replay-failed` primeiro sem `--confirm`. A prévia lista até 100 jobs TCE `FAILED`, com os diagnósticos e tentativas. Limite por tipo ou prefixo de escopo; por exemplo, para despesas de Acaraú:
+
+```bash
+docker compose --env-file .env -f compose.production.yaml exec -T tce-worker python scripts/tce_jobs.py replay-failed --job-type tce_despesas --scope-prefix 'despesas|026|'
+```
+
+Depois de revisar a lista, acrescente `--confirm` para reativar os candidatos. Jobs com outro job ativo usando a mesma `dedupe_key` podem ser ignorados. O replay é explícito e reinicia `attempts`; falhas que continuarem ocorrerão dentro do limite configurado e manterão seu diagnóstico.
 
 ## Executar e acompanhar os serviços
 
