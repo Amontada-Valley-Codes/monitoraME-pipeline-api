@@ -30,6 +30,7 @@ ENDPOINT_PROPOSTAS_ABERTAS = "/v1/contratacoes/proposta"
 FONTE = "PNCP"
 TIPO = "CONTRATACAO"
 MODALIDADE_PREGAO_ELETRONICO = 6
+MODALIDADES_PNCP_PADRAO = tuple(range(1, 15))
 UFS_NORDESTE = ("AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE")
 logger = logging.getLogger(__name__)
 
@@ -148,10 +149,22 @@ class ClientePncp:
             tamanho_pagina=tamanho_pagina,
         )
 
-    def buscar_propostas_abertas(self, *, data_final: date, pagina: int, tamanho_pagina: int, modalidade: int | None = None) -> PaginaContratacoes:
+    def buscar_propostas_abertas(
+        self,
+        *,
+        data_final: date,
+        pagina: int,
+        tamanho_pagina: int,
+        modalidade: int | None = None,
+        uf: str | None = None,
+    ) -> PaginaContratacoes:
         parametros: dict[str, Any] = {"dataFinal": data_final.strftime("%Y%m%d")}
         if modalidade is not None:
             parametros["codigoModalidadeContratacao"] = modalidade
+        if uf is not None:
+            if uf not in UFS_NORDESTE:
+                raise ValueError("uf deve ser uma UF do Nordeste suportada")
+            parametros["uf"] = uf
         return self._buscar(ENDPOINT_PROPOSTAS_ABERTAS, parametros=parametros, pagina=pagina, tamanho_pagina=tamanho_pagina)
 
     def _adquirir_permissao(self) -> None:
@@ -413,19 +426,152 @@ def agendar_backfill_anual(
     return jobs
 
 
-def agendar_propostas_abertas(*, data_final: datetime, modalidades: list[int] | None = None, tamanho_pagina: int = 50, prioridade: int = 100) -> list[NovoJob]:
+def agendar_propostas_abertas(
+    *,
+    data_final: datetime,
+    modalidades: list[int] | None = None,
+    ufs: tuple[str, ...] | list[str] | None = ("CE",),
+    tamanho_pagina: int = 50,
+    prioridade: int = 100,
+) -> list[NovoJob]:
     if data_final.tzinfo is None:
         raise ValueError("data_final deve incluir timezone")
     if not 1 <= tamanho_pagina <= 50:
         raise ValueError("tamanho_pagina deve estar entre 1 e 50")
-    codigos = modalidades or [MODALIDADE_PREGAO_ELETRONICO]
+    if ufs is not None and (not ufs or any(uf not in UFS_NORDESTE for uf in ufs)):
+        raise ValueError("ufs deve conter somente UFs do Nordeste")
+    codigos = modalidades or list(MODALIDADES_PNCP_PADRAO)
     jobs: list[NovoJob] = []
-    for modalidade in codigos:
-        codigo = str(modalidade)
-        scope = f"propostas-abertas:{data_final.date().isoformat()}:modalidade:{codigo}:tamanho:{tamanho_pagina}"
-        dedupe_key = f"{scope}:config:{PNCP_QUERY_CONFIG_VERSION}"
-        jobs.append(NovoJob("incremental", TIPO, FONTE, scope, dedupe_key, prioridade, datetime.now(timezone.utc), window_end=data_final, page=1, parameters={"flow": "propostas_abertas", "codigoModalidadeContratacao": modalidade, "tamanhoPagina": tamanho_pagina}, config_version=PNCP_QUERY_CONFIG_VERSION))
+    for uf in (ufs or (None,)):
+        for modalidade in codigos:
+            codigo = str(modalidade)
+            uf_scope = f":uf:{uf}" if uf is not None else ""
+            scope = f"propostas-abertas:{data_final.date().isoformat()}{uf_scope}:modalidade:{codigo}:tamanho:{tamanho_pagina}"
+            dedupe_key = f"{scope}:config:{PNCP_QUERY_CONFIG_VERSION}"
+            jobs.append(NovoJob(
+                "incremental", TIPO, FONTE, scope, dedupe_key, prioridade,
+                datetime.now(timezone.utc), window_end=data_final, page=1,
+                parameters={
+                    "flow": "propostas_abertas",
+                    "dataFinal": data_final.date().isoformat(),
+                    "codigoModalidadeContratacao": modalidade,
+                    "uf": uf,
+                    "tamanhoPagina": tamanho_pagina,
+                },
+                config_version=PNCP_QUERY_CONFIG_VERSION,
+            ))
     return jobs
+
+
+def coletar_propostas_abertas(
+    job: JobReivindicado,
+    cliente: ClientePncp,
+    *,
+    tamanho_pagina: int = 50,
+) -> int:
+    """Coleta somente contratações que ainda recebem propostas, sem cursor histórico."""
+    if (
+        job.source != FONTE
+        or job.entity_type != TIPO
+        or job.job_type != "incremental"
+        or not job.scope_key.startswith("propostas-abertas:")
+    ):
+        raise ValueError("job nao representa uma consulta PNCP de propostas abertas")
+    tamanho_pagina = tamanho_pagina_do_job(job, tamanho_pagina)
+    try:
+        modalidade = int(job.parameters["codigoModalidadeContratacao"])
+        data_final = date.fromisoformat(str(job.parameters["dataFinal"]))
+        uf = job.parameters.get("uf")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("parametros do job de propostas abertas invalidos") from exc
+    if not isinstance(uf, str) or uf not in UFS_NORDESTE:
+        raise ValueError("job de propostas abertas exige uma UF suportada")
+    pagina = job.page if job.page is not None else 1
+    if isinstance(pagina, bool) or pagina != 1:
+        raise ValueError("consulta de propostas abertas deve reiniciar na pagina 1")
+
+    total_registros = 0
+    paginas_lidas = 0
+    raw_criados = 0
+    raw_reutilizados = 0
+    normalizacoes_criadas = 0
+    normalizacoes_reutilizadas = 0
+    while True:
+        inicio_pagina = time.monotonic()
+        resultado = cliente.buscar_propostas_abertas(
+            data_final=data_final,
+            modalidade=modalidade,
+            uf=uf,
+            pagina=pagina,
+            tamanho_pagina=tamanho_pagina,
+        )
+        for item in resultado.itens:
+            external_id, _ = identificar_contratacao_raw(item)
+            with orm.main_session() as session:
+                persistencia = salvar_raw_e_agendar_normalizacao_session(
+                    session,
+                    RegistroRawPncp(
+                        entity_type=TIPO,
+                        external_id=external_id,
+                        payload=item,
+                        collected_at=datetime.now(timezone.utc),
+                        source_updated_at=data_atualizacao_fonte(item.get("dataAtualizacao")),
+                        run_id=f"job:{job.id}:pagina:{pagina}",
+                    ),
+                )
+            total_registros += 1
+            raw_criados += int(persistencia.raw_criado)
+            raw_reutilizados += int(not persistencia.raw_criado)
+            normalizacoes_criadas += int(persistencia.job_criado)
+            normalizacoes_reutilizadas += int(not persistencia.job_criado)
+
+        paginas_lidas += 1
+        logger.info(
+            "Pagina PNCP de propostas abertas processada",
+            extra={
+                "job_id": job.id,
+                "flow": "propostas_abertas",
+                "uf": uf,
+                "modalidade": modalidade,
+                "data_final": data_final.isoformat(),
+                "pagina": pagina,
+                "paginas_totais": resultado.total_paginas,
+                "registros_pagina": len(resultado.itens),
+                "registros_acumulados": total_registros,
+                "duracao_pagina_segundos": round(time.monotonic() - inicio_pagina, 3),
+            },
+        )
+        if resultado.total_paginas is not None:
+            if not resultado.itens and pagina < resultado.total_paginas:
+                raise PncpColetaError(
+                    "pagina vazia antes do fim informado pelo PNCP",
+                    endpoint=ENDPOINT_PROPOSTAS_ABERTAS,
+                    page=pagina,
+                )
+            if pagina >= resultado.total_paginas:
+                break
+        elif len(resultado.itens) < tamanho_pagina:
+            break
+        pagina += 1
+
+    logger.info(
+        "Coleta PNCP de propostas abertas concluida",
+        extra={
+            "job_id": job.id,
+            "flow": "propostas_abertas",
+            "uf": uf,
+            "modalidade": modalidade,
+            "data_final": data_final.isoformat(),
+            "paginas_lidas": paginas_lidas,
+            "registros_recebidos": total_registros,
+            "raw_criados": raw_criados,
+            "raw_reutilizados": raw_reutilizados,
+            "jobs_normalizacao_criados": normalizacoes_criadas,
+            "jobs_normalizacao_reutilizados": normalizacoes_reutilizadas,
+            "cursor_confirmado": False,
+        },
+    )
+    return total_registros
 
 
 def tamanho_pagina_do_job(job: JobReivindicado, padrao: int = 50) -> int:
