@@ -105,34 +105,34 @@ def _joins(consulta: Any, anulacoes: Any) -> Any:
     )
 
 
-def _grupo_fornecedor() -> tuple[Any, ...]:
-    identidade_tipo = case(
-        (TceEmpenho.cnpj_fornecedor.is_not(None), literal("1")),
-        else_=TceEmpenho.tipo_documento_fornecedor,
+def _identidade_fornecedor() -> tuple[Any, Any]:
+    """Cria a identidade canônica a reutilizar na mesma consulta agregada.
+
+    O mesmo ``ClauseElement`` precisa estar no SELECT, GROUP BY e ORDER BY.
+    Recriar o CASE gera parâmetros posicionais distintos para o literal ``1``
+    e o PostgreSQL deixa de reconhecer as expressões como equivalentes.
+    """
+    return (
+        case(
+            (TceEmpenho.cnpj_fornecedor.is_not(None), literal("1")),
+            else_=TceEmpenho.tipo_documento_fornecedor,
+        ),
+        case(
+            (TceEmpenho.cnpj_fornecedor.is_not(None), TceEmpenho.cnpj_fornecedor),
+            else_=TceEmpenho.documento_fornecedor,
+        ),
     )
-    identidade_documento = case(
-        (TceEmpenho.cnpj_fornecedor.is_not(None), TceEmpenho.cnpj_fornecedor),
-        else_=TceEmpenho.documento_fornecedor,
-    )
+
+
+def _grupo_fornecedor(
+    identidade_tipo: Any,
+    identidade_documento: Any,
+) -> tuple[Any, ...]:
     return (
         identidade_tipo,
         identidade_documento,
         FornecedorCache.cnpj,
         FornecedorCache.opencnpj_status,
-    )
-
-
-def _tipo_identidade_fornecedor() -> Any:
-    return case(
-        (TceEmpenho.cnpj_fornecedor.is_not(None), literal("1")),
-        else_=TceEmpenho.tipo_documento_fornecedor,
-    )
-
-
-def _documento_identidade_fornecedor() -> Any:
-    return case(
-        (TceEmpenho.cnpj_fornecedor.is_not(None), TceEmpenho.cnpj_fornecedor),
-        else_=TceEmpenho.documento_fornecedor,
     )
 
 
@@ -250,9 +250,10 @@ def listar_fornecedores_publicados_paginados(
         ),
         else_="NAO_DISPONIVEL",
     )
+    identidade_tipo, identidade_documento = _identidade_fornecedor()
     consulta = select(
-        _tipo_identidade_fornecedor().label("tipo_documento_fornecedor"),
-        _documento_identidade_fornecedor().label("documento_fornecedor"),
+        identidade_tipo.label("tipo_documento_fornecedor"),
+        identidade_documento.label("documento_fornecedor"),
         func.max(TceEmpenho.cnpj_fornecedor).label("cnpj_fornecedor"),
         nome.label("nome_fornecedor"),
         func.max(expressoes["porte"]).label("porte_fornecedor"),
@@ -273,7 +274,7 @@ def listar_fornecedores_publicados_paginados(
         func.count().over().label("_total_items"),
     )
     consulta = _joins(consulta, contexto["anulacoes"]).where(*filtros).group_by(
-        *_grupo_fornecedor()
+        *_grupo_fornecedor(identidade_tipo, identidade_documento)
     )
     ordenacoes = {
         "supplier": nome,
@@ -286,18 +287,19 @@ def listar_fornecedores_publicados_paginados(
     direcao = coluna.asc() if ordem == "asc" else coluna.desc()
     consulta = consulta.order_by(
         direcao,
-        TceEmpenho.tipo_documento_fornecedor,
-        TceEmpenho.documento_fornecedor,
+        identidade_tipo,
+        identidade_documento,
     ).limit(tamanho_pagina).offset((pagina - 1) * tamanho_pagina)
 
+    grupo_identidade_tipo, grupo_identidade_documento = _identidade_fornecedor()
     grupos = select(
-        _tipo_identidade_fornecedor(),
-        _documento_identidade_fornecedor(),
+        grupo_identidade_tipo,
+        grupo_identidade_documento,
         FornecedorCache.cnpj,
         FornecedorCache.opencnpj_status,
     )
     grupos = _joins(grupos, contexto["anulacoes"]).where(*filtros).group_by(
-        *_grupo_fornecedor()
+        *_grupo_fornecedor(grupo_identidade_tipo, grupo_identidade_documento)
     ).subquery()
     with orm.main_session() as session:
         registros = session.execute(consulta).mappings().all()
@@ -346,9 +348,10 @@ def obter_resumo_fornecedor_publicado(
             TceEmpenho.tipo_documento_fornecedor == tipo_documento,
             TceEmpenho.documento_fornecedor == documento,
         ]
+    identidade_tipo, identidade_documento = _identidade_fornecedor()
     resumo = select(
-        _tipo_identidade_fornecedor(),
-        _documento_identidade_fornecedor(),
+        identidade_tipo,
+        identidade_documento,
         func.max(TceEmpenho.cnpj_fornecedor).label("cnpj_fornecedor"),
         func.max(TceEmpenho.nome_fornecedor).label("nome_fornecedor"),
         func.max(contexto["expressoes"]["porte"]).label("porte_fornecedor"),
@@ -378,8 +381,8 @@ def obter_resumo_fornecedor_publicado(
         func.max(TceEmpenho.data_empenho).label("ultimo_empenho"),
     )
     resumo = _joins(resumo, contexto["anulacoes"]).where(*filtros_fornecedor).group_by(
-        _tipo_identidade_fornecedor(),
-        _documento_identidade_fornecedor(),
+        identidade_tipo,
+        identidade_documento,
     )
 
     competencia = func.to_char(TceEmpenho.data_empenho, "YYYY-MM")
