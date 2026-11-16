@@ -68,9 +68,10 @@ Uma competência pode conter uma anulação cujo empenho correspondente ainda n�
 
 1. Mantém o diagnóstico e as chaves dos empenhos ausentes da rejeição.
 2. Aguarda 15 minutos antes da nova tentativa.
-3. Antes de consultar o TCE outra vez, verifica no banco se cada empenho referenciado já consta em lote publicado.
-4. Se ainda faltar alguma chave, registra o retry por dependência e aguarda, respeitando `max_attempts`.
-5. Se as chaves estiverem publicadas, repete a ingestão da competência. Se o limite se esgotar com chaves ausentes, encerra em `FAILED`, preservando a rejeição original e as chaves faltantes.
+3. Verifica no banco se cada empenho referenciado já consta em lote publicado.
+4. Para as chaves ainda ausentes, consulta o endpoint de notas de empenho do TCE filtrando município, exercício, órgão e unidade. Se encontrar uma chave, reingere a competência documental completa de origem, sem publicar um lote parcial.
+5. Se o empenho for publicado, repete a ingestão da competência dependente. Se a fonte não retornar a chave ou o lote de origem não puder ser publicado, registra o retry por dependência e aguarda, respeitando `max_attempts`.
+6. Se o limite se esgotar com chaves ausentes, encerra em `FAILED`, preservando a rejeição original e as chaves faltantes.
 
 ```mermaid
 flowchart TD
@@ -81,12 +82,19 @@ flowchart TD
     D -- Sim --> F[Carrega chaves da rejeicao anterior]
     F --> G[Consulta empenhos em lotes publicados]
     G --> H{Todas as chaves estao publicadas?}
-    H -- Sim --> I[Repete coleta e validacao]
-    I --> B
-    H -- Nao, ha tentativas --> J[Registra diagnostico e aguarda 15 minutos]
-    J --> K[RETRY_WAIT]
-    K --> A
-    H -- Nao, limite atingido --> L[FAILED preservando diagnostico e lote anterior]
+    H -- Nao --> I[Busca chaves na fonte por municipio exercicio orgao e unidade]
+    I --> J{Encontrou empenhos?}
+    J -- Sim --> K[Reingere snapshot completo da competencia de origem]
+    K --> L{Empenhos publicados?}
+    L -- Sim --> M[Repete coleta e validacao da competencia dependente]
+    M --> B
+    L -- Nao --> N{Ha tentativas?}
+    J -- Nao --> N
+    H -- Sim --> M
+    N -- Sim --> O[Registra diagnostico e aguarda 15 minutos]
+    O --> P[RETRY_WAIT]
+    P --> A
+    N -- Nao --> Q[FAILED preservando diagnostico e lote anterior]
 ```
 
 Uma falha de coleta ou validação não substitui o lote publicado anteriormente. Indicadores continuam considerando apenas lotes `PUBLICADO`.

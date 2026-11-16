@@ -23,6 +23,7 @@ from app.core.models import (
     TceDespesaIngestionRun,
     TcePagamentoIngestionRun,
 )
+from app.pipeline.cleaners import tce_despesas as cleaner_tce_despesas
 from app.pipeline.ingestion import ibge, tce
 from app.pipeline.ingestion.fornecedores import sincronizar_fornecedores
 from app.pipeline.persistence.tce_despesas import (
@@ -319,6 +320,98 @@ def _executar_catalogo(job: JobTceReivindicado) -> None:
     )
 
 
+def _chaves_anulacao_orfa(problemas: list[dict[str, object]]) -> list[str]:
+    return sorted({
+        str(problema["chave"])
+        for problema in problemas
+        if problema.get("codigo") == "ANULACAO_ORFA" and problema.get("chave")
+    })
+
+
+def _recuperar_empenhos_referenciados(
+    *,
+    codigo_municipio_tce: str,
+    competencia_dependente: str,
+    chaves_ausentes: list[str],
+) -> list[str]:
+    """Busca empenhos ausentes na fonte e reingere seus snapshots completos."""
+    grupos: dict[tuple[int, str, str], set[str]] = {}
+    for chave in chaves_ausentes:
+        partes = chave.split("|")
+        if len(partes) != 6 or partes[0] != codigo_municipio_tce:
+            continue
+        try:
+            exercicio_orcamento = int(partes[1])
+        except ValueError:
+            continue
+        if exercicio_orcamento < 10000 or exercicio_orcamento % 100:
+            continue
+        grupo = (exercicio_orcamento // 100, partes[2], partes[3])
+        grupos.setdefault(grupo, set()).add(chave)
+
+    competencias_origem: set[str] = set()
+    chaves_encontradas: set[str] = set()
+    registros_invalidos = 0
+    for (exercicio, codigo_orgao, codigo_unidade), chaves_grupo in grupos.items():
+        registros = tce.buscar_documentos_exercicio(
+            "notas_empenhos",
+            codigo_municipio=codigo_municipio_tce,
+            exercicio=exercicio,
+            codigo_orgao=codigo_orgao,
+            codigo_unidade_orcamentaria=codigo_unidade,
+        )
+        for registro in registros:
+            try:
+                empenho = cleaner_tce_despesas.mapear_nota_empenho(registro)
+            except (TypeError, ValueError):
+                registros_invalidos += 1
+                continue
+            chave_empenho = str(empenho["chave_empenho"])
+            if chave_empenho in chaves_grupo:
+                chaves_encontradas.add(chave_empenho)
+                competencias_origem.add(str(empenho["competencia"]))
+
+    if registros_invalidos:
+        logger.warning(
+            "Registros invalidos ignorados durante recuperacao de empenhos TCE",
+            extra={
+                "codigo_municipio": codigo_municipio_tce,
+                "registros_invalidos": registros_invalidos,
+            },
+        )
+
+    competencias_reingeridas: list[dict[str, object]] = []
+    for competencia_origem in sorted(competencias_origem):
+        if competencia_origem == competencia_dependente:
+            continue
+        resultado = executar_ingestao_competencia_tce(
+            competencia_origem,
+            codigo_municipio_tce=codigo_municipio_tce,
+        )
+        competencias_reingeridas.append({
+            "competencia": competencia_origem,
+            "status": resultado.status,
+            "run_id": resultado.run_id,
+        })
+
+    ausentes_atualizados = [
+        chave for chave in chaves_ausentes
+        if obter_empenho_publicado_por_chave(chave) is None
+    ]
+    logger.info(
+        "Recuperacao direcionada de empenhos TCE concluida",
+        extra={
+            "codigo_municipio": codigo_municipio_tce,
+            "competencia_dependente": competencia_dependente,
+            "chaves_solicitadas": chaves_ausentes,
+            "chaves_encontradas_na_fonte": sorted(chaves_encontradas),
+            "competencias_reingeridas": competencias_reingeridas,
+            "chaves_ainda_ausentes": ausentes_atualizados,
+        },
+    )
+    return ausentes_atualizados
+
+
 def _executar_despesas(job: JobTceReivindicado) -> None:
     _, codigo, competencia = job.scope_key.split("|")
     with orm.main_session() as session:
@@ -333,16 +426,18 @@ def _executar_despesas(job: JobTceReivindicado) -> None:
             .limit(1)
         )
     problemas_anteriores = list(rejeicao_anterior.problemas or []) if rejeicao_anterior else []
-    chaves_orfas = sorted({
-        str(problema["chave"])
-        for problema in problemas_anteriores
-        if problema.get("codigo") == "ANULACAO_ORFA" and problema.get("chave")
-    })
+    chaves_orfas = _chaves_anulacao_orfa(problemas_anteriores)
     if chaves_orfas:
         ausentes = [
             chave for chave in chaves_orfas
             if obter_empenho_publicado_por_chave(chave) is None
         ]
+        if ausentes:
+            ausentes = _recuperar_empenhos_referenciados(
+                codigo_municipio_tce=codigo,
+                competencia_dependente=competencia,
+                chaves_ausentes=ausentes,
+            )
         if ausentes:
             logger.info(
                 "Retry TCE aguardando publicacao de empenhos referenciados",
@@ -368,23 +463,42 @@ def _executar_despesas(job: JobTceReivindicado) -> None:
         codigo_municipio_tce=codigo,
     )
     if resultado.status != STATUS_DESPESA_PUBLICADO:
-        chaves_orfas = sorted({
-            str(problema["chave"])
-            for problema in (getattr(resultado, "problemas", None) or [])
-            if problema.get("codigo") == "ANULACAO_ORFA" and problema.get("chave")
-        })
+        problemas_resultado = list(getattr(resultado, "problemas", None) or [])
+        chaves_orfas = _chaves_anulacao_orfa(problemas_resultado)
         if chaves_orfas:
             ausentes = [
                 chave for chave in chaves_orfas
                 if obter_empenho_publicado_por_chave(chave) is None
             ]
-            raise AnulacaoOrfaAguardandoEmpenho(
-                codigo=codigo,
-                competencia=competencia,
-                run_id=resultado.run_id,
-                problemas=list(resultado.problemas),
-                chaves_ausentes=ausentes,
-            )
+            if ausentes:
+                ausentes = _recuperar_empenhos_referenciados(
+                    codigo_municipio_tce=codigo,
+                    competencia_dependente=competencia,
+                    chaves_ausentes=ausentes,
+                )
+            if chaves_orfas and not ausentes:
+                resultado = executar_ingestao_competencia_tce(
+                    competencia,
+                    codigo_municipio_tce=codigo,
+                )
+                if resultado.status == STATUS_DESPESA_PUBLICADO:
+                    return
+                problemas_resultado = list(
+                    getattr(resultado, "problemas", None) or []
+                )
+                chaves_orfas = _chaves_anulacao_orfa(problemas_resultado)
+                ausentes = [
+                    chave for chave in chaves_orfas
+                    if obter_empenho_publicado_por_chave(chave) is None
+                ]
+            if chaves_orfas and ausentes:
+                raise AnulacaoOrfaAguardandoEmpenho(
+                    codigo=codigo,
+                    competencia=competencia,
+                    run_id=resultado.run_id,
+                    problemas=problemas_resultado,
+                    chaves_ausentes=ausentes,
+                )
         raise FalhaPermanenteJobTce(
             f"Lote de despesas {codigo}/{competencia} terminou em {resultado.status}."
         )

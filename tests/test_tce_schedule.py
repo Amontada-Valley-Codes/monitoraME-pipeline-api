@@ -162,6 +162,10 @@ class TceScheduleTest(unittest.TestCase):
             patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
             patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce", return_value=resultado),
             patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value=None),
+            patch(
+                "app.pipeline.tce_schedule._recuperar_empenhos_referenciados",
+                side_effect=lambda **kwargs: kwargs["chaves_ausentes"],
+            ),
         ):
             with self.assertRaises(schedule.AnulacaoOrfaAguardandoEmpenho) as erro:
                 schedule.executar_job(_job("tce_despesas", "despesas|010|2026-11"))
@@ -184,6 +188,10 @@ class TceScheduleTest(unittest.TestCase):
             patch("app.pipeline.tce_schedule.orm.main_session", return_value=nullcontext(session)),
             patch("app.pipeline.tce_schedule.executar_ingestao_competencia_tce") as executar,
             patch("app.pipeline.tce_schedule.obter_empenho_publicado_por_chave", return_value=None) as buscar,
+            patch(
+                "app.pipeline.tce_schedule._recuperar_empenhos_referenciados",
+                side_effect=lambda **kwargs: kwargs["chaves_ausentes"],
+            ),
         ):
             session.scalar.return_value = rejeicao
             with self.assertRaises(schedule.AnulacaoOrfaAguardandoEmpenho) as erro:
