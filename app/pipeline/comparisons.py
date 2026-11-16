@@ -342,6 +342,9 @@ def consultar_comparacao_tce(
         "fonte": "TCE-CE/SIM",
         "origem_dados": "BANCO_LOCAL",
         "consultas_externas": False,
+        "last_successful_load_at": tce_observability.ultima_atualizacao_concluida(
+            item.get("last_successful_load_at") for item in carregamentos
+        ),
         "data_available": all(item.get("data_available", False) for item in carregamentos),
         "is_stale": any(item.get("is_stale", False) for item in carregamentos),
         "stale_reason": list(dict.fromkeys(

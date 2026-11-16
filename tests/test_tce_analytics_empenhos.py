@@ -369,6 +369,9 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             competencias_publicadas=["2026-02"],
             fornecedores_cache={},
             municipio_comprador="Acarau",
+            publicacoes_concluidas_em=[
+                datetime(2026, 3, 1, 9, 30, tzinfo=timezone.utc)
+            ],
         )
         base, metadata = analisys.montar_base_analitica_pagamentos_tce_somente_banco(
             "2026-02-01", "2026-02-28", codigo_municipio="004",
@@ -376,6 +379,10 @@ class ResolverMunicipioTceTest(unittest.TestCase):
         self.assertEqual(str(base.iloc[0]["valor"]), "10.55")
         self.assertEqual(base.iloc[0]["base_calculo"], "PAGAMENTOS_TCE")
         self.assertEqual(metadata["totais"]["pagamentos"], 1)
+        self.assertEqual(
+            metadata["last_successful_load_at"],
+            "2026-03-01T09:30:00+00:00",
+        )
         carregar_snapshot.return_value = SnapshotPagamentosTce(
             registros=[],
             competencias_ausentes=[{

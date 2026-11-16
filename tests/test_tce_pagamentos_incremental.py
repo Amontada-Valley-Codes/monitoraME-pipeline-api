@@ -73,7 +73,12 @@ class FakeSession:
 
 class IngestaoIncrementalPagamentosTest(unittest.TestCase):
     def test_analise_deduplica_repeticao_identica_e_rejeita_conflito(self):
-        run = SimpleNamespace(id=1, competencia="2025-01")
+        publicado_em = datetime(2025, 2, 1, 12, 0, tzinfo=timezone.utc)
+        run = SimpleNamespace(
+            id=1,
+            competencia="2025-01",
+            publicado_em=publicado_em,
+        )
         classificacoes = [
             SimpleNamespace(codigo_orgao="01", classificacao="EXECUTIVO_MUNICIPAL"),
             SimpleNamespace(codigo_orgao="02", classificacao="CAMARA"),
@@ -107,16 +112,20 @@ class IngestaoIncrementalPagamentosTest(unittest.TestCase):
                     persistence.orm, "main_session", return_value=nullcontext(sessao)
                 ),
             ):
-                return persistence.listar_pagamentos_para_analise(
+                publicacoes_concluidas_em = []
+                resultado = persistence.listar_pagamentos_para_analise(
                     codigo_municipio_tce="004", exercicio_orcamento=202500,
                     data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
+                    publicacoes_concluidas_em=publicacoes_concluidas_em,
                 )
+                return *resultado, publicacoes_concluidas_em
 
-        registros, ausentes = executar([
+        registros, ausentes, publicacoes = executar([
             SimpleNamespace(**base_pagamento), SimpleNamespace(**base_pagamento),
         ])
         self.assertEqual(ausentes, [])
         self.assertEqual(len(registros), 1)
+        self.assertEqual(publicacoes, [publicado_em])
 
         conflitante = {**base_pagamento, "valor_nota_pagamento_centavos": 2000}
         with self.assertRaisesRegex(ValueError, "conteudo conflitante"):

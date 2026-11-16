@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import calendar
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Iterable
 
 ORIGENS_CONHECIDAS = {
     "NO_MUNICIPIO_COMPRADOR",
@@ -46,6 +46,16 @@ def _data_hora(valor: Any) -> datetime | None:
     if resultado.tzinfo is None:
         return resultado.replace(tzinfo=timezone.utc)
     return resultado.astimezone(timezone.utc)
+
+
+def ultima_atualizacao_concluida(instantes: Iterable[Any]) -> str | None:
+    """Formata em UTC o instante concluido mais recente, ou ``None``."""
+    normalizados = [
+        instante
+        for valor in instantes
+        if (instante := _data_hora(valor)) is not None
+    ]
+    return max(normalizados).isoformat() if normalizados else None
 
 
 def _fim_competencia(valor: str) -> date:
@@ -233,8 +243,8 @@ def construir_metadados_carga(
     return {
         "data_available": bool(publicados_por_particao),
         "data_as_of": data_as_of,
-        "last_successful_load_at": (
-            instante_publicacao.isoformat() if instante_publicacao else None
+        "last_successful_load_at": ultima_atualizacao_concluida(
+            [instante_publicacao]
         ),
         "is_stale": bool(
             falha_mais_recente or snapshot_vencido or publicacao_sem_instante
