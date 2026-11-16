@@ -52,6 +52,8 @@ Com a API disponível, acesse:
 
 A configuração `.env.example` é voltada ao desenvolvimento local. A API local começa com o banco configurado no Compose; para experimentar ingestões, configure e inicie os workers correspondentes. Os workers consultam fontes externas e têm agendadores próprios, separados da API HTTP.
 
+O scheduler PNCP consulta contratações com propostas abertas no Ceará. Por padrão, usa `"dataFinal": "20271231"` e percorre as modalidades 1–14 e 16–18; ajuste `PNCP_SCHEDULER_OPEN_PROPOSALS_HORIZON_DAYS` e `PNCP_SCHEDULER_MODALIDADES` conforme a cobertura desejada. Consulte [o fluxo e os parâmetros do scheduler PNCP](docs/jobs-pncp.md).
+
 ### Testes
 
 Com as dependências Python instaladas, execute a suíte automatizada:

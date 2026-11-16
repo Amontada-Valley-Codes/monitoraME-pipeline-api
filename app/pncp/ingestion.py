@@ -30,7 +30,7 @@ ENDPOINT_PROPOSTAS_ABERTAS = "/v1/contratacoes/proposta"
 FONTE = "PNCP"
 TIPO = "CONTRATACAO"
 MODALIDADE_PREGAO_ELETRONICO = 6
-MODALIDADES_PNCP_PADRAO = tuple(range(1, 15))
+MODALIDADES_PNCP_PADRAO = (*range(1, 15), 16, 17, 18)
 UFS_NORDESTE = ("AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE")
 logger = logging.getLogger(__name__)
 

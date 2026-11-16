@@ -25,6 +25,7 @@ _FLOWS_VALIDOS = frozenset(("propostas_abertas",))
 _CICLO_FLOW = "scheduler"
 _CICLO_SCOPE = "completo"
 _CICLO_INTERVALO_PADRAO = 4 * 60 * 60
+_HORIZONTE_PROPOSTAS_ABERTAS_DIAS_PADRAO = 410
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class ConfiguracaoAgendamentoPncp:
     ufs: tuple[str, ...] | None = ("CE",)
     page_size: int = 50
     open_proposals_priority: int = 70
+    open_proposals_horizon_days: int = _HORIZONTE_PROPOSTAS_ABERTAS_DIAS_PADRAO
     cycle_interval_seconds: int = _CICLO_INTERVALO_PADRAO
 
     @classmethod
@@ -58,6 +60,10 @@ class ConfiguracaoAgendamentoPncp:
             ufs=ufs,
             page_size=_inteiro_positivo("PNCP_SCHEDULER_PAGE_SIZE", 50),
             open_proposals_priority=int(os.getenv("PNCP_SCHEDULER_OPEN_PROPOSALS_PRIORITY", "70")),
+            open_proposals_horizon_days=_inteiro_positivo(
+                "PNCP_SCHEDULER_OPEN_PROPOSALS_HORIZON_DAYS",
+                _HORIZONTE_PROPOSTAS_ABERTAS_DIAS_PADRAO,
+            ),
             cycle_interval_seconds=_inteiro_positivo("PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS", _CICLO_INTERVALO_PADRAO),
         )
         config.validar()
@@ -72,6 +78,8 @@ class ConfiguracaoAgendamentoPncp:
             raise ValueError("ufs deve conter UFs suportadas ou ser None")
         if not 1 <= self.page_size <= 50:
             raise ValueError("page_size deve estar entre 1 e 50")
+        if self.open_proposals_horizon_days < 1:
+            raise ValueError("open_proposals_horizon_days deve ser positivo")
         if self.cycle_interval_seconds < 1:
             raise ValueError("cycle_interval_seconds deve ser positivo")
 
@@ -118,7 +126,7 @@ def _jobs_ciclo(session: Session, *, config: ConfiguracaoAgendamentoPncp, agora:
     del session  # Propostas abertas não usam cursor histórico.
     agora_fortaleza = agora.astimezone(ZoneInfo("America/Fortaleza"))
     return agendar_propostas_abertas(
-        data_final=agora_fortaleza,
+        data_final=agora_fortaleza + timedelta(days=config.open_proposals_horizon_days),
         modalidades=list(config.modalidades),
         ufs=config.ufs,
         tamanho_pagina=config.page_size,
