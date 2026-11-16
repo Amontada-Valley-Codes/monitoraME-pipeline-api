@@ -37,10 +37,8 @@ def main() -> int:
                     "flows": config.flows,
                     "modalidades": config.modalidades,
                     "ufs": config.ufs,
-                    "window_days": config.window_days,
                     "page_size": config.page_size,
-                    "backfill_enabled": config.backfill_enabled,
-                    "backfill_start_year": config.backfill_start_year,
+                    "open_proposals_priority": config.open_proposals_priority,
                     "cycle_interval_seconds": config.cycle_interval_seconds,
                 },
             )
