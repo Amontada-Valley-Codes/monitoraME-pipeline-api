@@ -580,6 +580,78 @@ def recuperar_falhas_orfas_legadas_session(
     return reabertos
 
 
+def recuperar_falhas_permanentes_tce_session(
+    session: Session,
+    *,
+    limit: int = 1000,
+) -> list[int]:
+    """Reabre uma vez jobs de despesas cuja falha permanente pode ocultar dados."""
+    if not 1 <= limit <= 5000:
+        raise ValueError("limit deve estar entre 1 e 5000.")
+    candidatos = session.execute(
+        text("""
+        SELECT job.id
+        FROM ingestion_jobs AS job
+        WHERE job.source = 'TCE-CE'
+          AND job.job_type = 'tce_despesas'
+          AND job.status = 'FAILED'
+          AND (
+              job.last_error_context->>'categoria' = 'FalhaPermanenteJobTce'
+              OR job.last_error LIKE 'FalhaPermanenteJobTce:%'
+          )
+          AND split_part(job.scope_key, '|', 1) = 'despesas'
+          AND NOT EXISTS (
+              SELECT 1 FROM ingestion_job_events AS evento
+              WHERE evento.job_id = job.id
+                AND evento.event_type = 'REPLAYED'
+                AND evento.details->>'trigger' = 'startup_permanent_failure_recovery'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM ingestion_jobs AS posterior
+              WHERE posterior.source = job.source
+                AND posterior.job_type = job.job_type
+                AND posterior.scope_key = job.scope_key
+                AND posterior.id > job.id
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM ingestion_jobs AS ativo
+              WHERE ativo.source = job.source
+                AND ativo.job_type = job.job_type
+                AND ativo.scope_key = job.scope_key
+                AND ativo.status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')
+          )
+        ORDER BY job.updated_at, job.id
+        LIMIT :limit
+        FOR UPDATE OF job SKIP LOCKED
+        """),
+        {"limit": limit},
+    ).scalars().all()
+
+    reabertos: list[int] = []
+    for candidato in candidatos:
+        job_id = int(candidato)
+        if replay_job_session(
+            session,
+            job_id=job_id,
+            event_details={"trigger": "startup_permanent_failure_recovery"},
+        ):
+            reabertos.append(job_id)
+    return reabertos
+
+
+def recuperar_falhas_permanentes_tce(*, batch_size: int = 1000) -> list[int]:
+    """Busca e reabre falhas permanentes de despesas em transações curtas."""
+    if not 1 <= batch_size <= 5000:
+        raise ValueError("batch_size deve estar entre 1 e 5000.")
+    reabertos: list[int] = []
+    while True:
+        with orm.main_session() as session:
+            lote = recuperar_falhas_permanentes_tce_session(session, limit=batch_size)
+        reabertos.extend(lote)
+        if len(lote) < batch_size:
+            return reabertos
+
+
 def recuperar_falhas_orfas_legadas(*, batch_size: int = 1000) -> list[int]:
     """Reabre todos os candidatos em lotes curtos, sem uma transação longa."""
     if not 1 <= batch_size <= 5000:
@@ -786,6 +858,10 @@ __all__ = [
     "agendar_lote_session",
     "concluir_job_session",
     "falhar_job_session",
+    "recuperar_falhas_permanentes_tce",
+    "recuperar_falhas_permanentes_tce_session",
+    "recuperar_falhas_orfas_legadas",
+    "recuperar_falhas_orfas_legadas_session",
     "recuperar_leases_expirados",
     "recuperar_leases_expirados_session",
     "replay_job",

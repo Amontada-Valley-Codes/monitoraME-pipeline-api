@@ -19,12 +19,14 @@ class TceWorkerScriptTest(unittest.TestCase):
         with (
             patch("scripts.tce_worker.WorkerTce", return_value=worker),
             patch("scripts.tce_worker.recuperar_falhas_orfas_legadas", return_value=[7, 8]) as recuperar,
+            patch("scripts.tce_worker.recuperar_falhas_permanentes_tce", return_value=[9]) as recuperar_permanentes,
             patch("scripts.tce_worker.recuperar_leases_expirados", return_value=0),
             patch("scripts.tce_worker.time.monotonic", return_value=100),
         ):
             tce_worker._executar_slot(1, Event(), once=True)
 
         recuperar.assert_called_once_with()
+        recuperar_permanentes.assert_called_once_with()
         worker.executar_uma_vez.assert_called_once_with()
 
     def test_outros_slots_nao_disparam_recuperacao_de_inicio(self) -> None:
@@ -33,11 +35,13 @@ class TceWorkerScriptTest(unittest.TestCase):
         with (
             patch("scripts.tce_worker.WorkerTce", return_value=worker),
             patch("scripts.tce_worker.recuperar_falhas_orfas_legadas") as recuperar,
+            patch("scripts.tce_worker.recuperar_falhas_permanentes_tce") as recuperar_permanentes,
             patch("scripts.tce_worker.time.monotonic", return_value=100),
         ):
             tce_worker._executar_slot(2, Event(), once=True)
 
         recuperar.assert_not_called()
+        recuperar_permanentes.assert_not_called()
         worker.executar_uma_vez.assert_called_once_with()
 
 

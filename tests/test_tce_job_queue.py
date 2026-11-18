@@ -261,6 +261,28 @@ class TceJobQueueTest(unittest.TestCase):
             ],
         )
 
+    def test_recuperador_reabre_falha_permanente_apenas_uma_vez(self) -> None:
+        session = MagicMock()
+        session.execute.return_value.scalars.return_value.all.return_value = [7, 8]
+        with patch(
+            "app.pipeline.tce_job_queue.replay_job_session",
+            side_effect=[True, False],
+        ) as replay:
+            reabertos = queue.recuperar_falhas_permanentes_tce_session(session)
+
+        self.assertEqual(reabertos, [7])
+        statement, parametros = session.execute.call_args.args
+        self.assertIn("job.last_error LIKE 'FalhaPermanenteJobTce:%'", statement.text)
+        self.assertIn("job.last_error_context->>'categoria' = 'FalhaPermanenteJobTce'", statement.text)
+        self.assertIn("startup_permanent_failure_recovery", statement.text)
+        self.assertIn("posterior.id > job.id", statement.text)
+        self.assertIn("FOR UPDATE OF job SKIP LOCKED", statement.text)
+        self.assertEqual(parametros, {"limit": 1000})
+        self.assertEqual(
+            replay.call_args_list[0].kwargs["event_details"],
+            {"trigger": "startup_permanent_failure_recovery"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

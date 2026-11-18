@@ -115,7 +115,9 @@ docker compose -f compose.production.yaml run --rm api python scripts/tce_jobs.p
 
 O replay é registrado como evento e reinicia o contador operacional de tentativas. Evite replay enquanto a dependência de empenho estiver ausente, pois a nova execução pode encontrar o mesmo diagnóstico.
 
-Na inicialização, o worker reativa uma única vez jobs legados de despesas que foram classificados como falha permanente pelo código antigo, desde que a última rejeição do lote contenha `ANULACAO_ORFA`. A seleção exclui escopos com jobs mais recentes ou ativos, registra o replay como evento e não reabre falhas permanentes de outras categorias. Assim, ao implantar a correção, esses jobs entram na fila automaticamente e passam pelo fluxo novo de busca/retry.
+Na inicialização, o primeiro slot do worker busca jobs `tce_despesas` em `FAILED` cuja categoria estruturada ou `last_error` indique `FalhaPermanenteJobTce`. Cada job pode receber um replay automático, registrado no histórico com a origem `startup_permanent_failure_recovery`. A seleção ignora jobs substituídos por execuções mais recentes e escopos que já tenham job ativo, e reinicia a ingestão completa do município e competência. O replay mantém a proteção do pipeline: um lote rejeitado não substitui o lote anteriormente publicado. Falhas permanentes que persistirem após esse replay permanecem disponíveis para diagnóstico e replay manual.
+
+A recuperação legada mais específica para rejeições por `ANULACAO_ORFA` continua ativa e registrada separadamente. Para falhas permanentes novas, a busca cobre também registros cujo `last_error` tenha sido truncado, desde que `last_error_context.categoria` esteja preenchido.
 
 Para revisar falhas permanentes em lote, use `replay-failed` primeiro sem `--confirm`. A prévia lista até 100 jobs TCE `FAILED`, com os diagnósticos e tentativas. Limite por tipo ou prefixo de escopo; por exemplo, para despesas de Acaraú:
 
