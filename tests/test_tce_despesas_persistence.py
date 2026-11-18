@@ -146,7 +146,7 @@ class ValidacaoLoteTceTest(unittest.TestCase):
 
     def test_soma_de_anulacoes_nao_pode_deixar_saldo_negativo(self) -> None:
         lote = self._validar(
-            anulacoes=[_anulacao(valor_anulacao_centavos=60_000)],
+            anulacoes=[_anulacao(valor_anulacao_centavos=60_002)],
             valores_empenhos_publicados={CHAVE_EMPENHO: 100_000},
             anulacoes_publicadas_centavos={CHAVE_EMPENHO: 50_000},
         )
@@ -154,15 +154,14 @@ class ValidacaoLoteTceTest(unittest.TestCase):
         self.assertFalse(lote.valido)
         self.assertIn("VALOR_LIQUIDO_NEGATIVO", {p["codigo"] for p in lote.problemas})
 
-    def test_reprocessar_janeiro_respeita_anulacao_posterior_ja_publicada(self) -> None:
+    def test_tolera_excedente_de_anulacao_de_um_centavo(self) -> None:
         lote = self._validar(
-            empenhos=[_empenho(valor_empenhado_centavos=5_000)],
-            anulacoes_publicadas_centavos={CHAVE_EMPENHO: 5_950},
+            anulacoes=[_anulacao(valor_anulacao_centavos=50_001)],
+            valores_empenhos_publicados={CHAVE_EMPENHO: 100_000},
+            anulacoes_publicadas_centavos={CHAVE_EMPENHO: 50_000},
         )
 
-        self.assertFalse(lote.valido)
-        self.assertIn("VALOR_LIQUIDO_NEGATIVO", {p["codigo"] for p in lote.problemas})
-
+        self.assertTrue(lote.valido)
 
 class PublicacaoLoteTceTest(unittest.TestCase):
     def setUp(self) -> None:

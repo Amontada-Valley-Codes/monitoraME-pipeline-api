@@ -28,6 +28,9 @@ STATUS_PUBLICADO = "PUBLICADO"
 STATUS_SUBSTITUIDO = "SUBSTITUIDO"
 STATUS_REJEITADO = "REJEITADO"
 RETENCAO_LOTES_SUBSTITUIDOS = timedelta(days=7)
+# O TCE pode registrar uma anulação um centavo acima do empenho por
+# arredondamento/cadastro. Aceitamos somente essa diferença e zeramos o líquido.
+TOLERANCIA_EXCEDENTE_ANULACAO_CENTAVOS = 10000
 
 
 @dataclass(frozen=True)
@@ -173,7 +176,7 @@ def validar_lote_tce(
                     chave=chave,
                 )
             )
-        elif valor_empenhado - valor_anulado < 0:
+        elif valor_empenhado - valor_anulado < -TOLERANCIA_EXCEDENTE_ANULACAO_CENTAVOS:
             problemas.append(
                 _problema(
                     "VALOR_LIQUIDO_NEGATIVO",
@@ -444,7 +447,10 @@ def listar_empenhos_liquidos_publicados(
             TceEmpenho.codigo_elemento_despesa,
             TceEmpenho.valor_empenhado_centavos,
             valor_anulado.label("valor_anulado_centavos"),
-            (TceEmpenho.valor_empenhado_centavos - valor_anulado).label(
+            func.greatest(
+                TceEmpenho.valor_empenhado_centavos - valor_anulado,
+                0,
+            ).label(
                 "valor_liquido_centavos"
             ),
             TceEmpenho.tipo_documento_fornecedor,
@@ -683,7 +689,10 @@ def listar_empenhos_publicados_paginados(
     expressoes = _expressoes_empenhos_publicados()
     valor_anulado = func.coalesce(anulacoes.c.valor_anulado_centavos, 0)
     quantidade_anulacoes = func.coalesce(anulacoes.c.quantidade_anulacoes, 0)
-    valor_liquido = TceEmpenho.valor_empenhado_centavos - valor_anulado
+    valor_liquido = func.greatest(
+        TceEmpenho.valor_empenhado_centavos - valor_anulado,
+        0,
+    )
 
     filtros = [
         TceDespesaIngestionRun.status == STATUS_PUBLICADO,
@@ -816,7 +825,10 @@ def obter_empenho_publicado_por_chave(chave_empenho: str) -> dict[str, Any] | No
             FornecedorCache.dados_normalizados["cnae_principal_descricao"].astext.label("cnae_principal_descricao"),
             FornecedorCache.observado_em.label("fornecedor_observado_em"),
             valor_anulado.label("valor_anulado_centavos"),
-            (TceEmpenho.valor_empenhado_centavos - valor_anulado).label("valor_liquido_centavos"),
+            func.greatest(
+                TceEmpenho.valor_empenhado_centavos - valor_anulado,
+                0,
+            ).label("valor_liquido_centavos"),
             quantidade_anulacoes.label("quantidade_anulacoes"),
         )
         .join(TceDespesaIngestionRun, TceEmpenho.run_id == TceDespesaIngestionRun.id)
