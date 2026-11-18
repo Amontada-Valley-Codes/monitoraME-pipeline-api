@@ -40,7 +40,10 @@ def _contexto_consulta(
     expressoes = _expressoes_empenhos_publicados()
     valor_anulado = func.coalesce(anulacoes.c.valor_anulado_centavos, 0)
     quantidade_anulacoes = func.coalesce(anulacoes.c.quantidade_anulacoes, 0)
-    valor_liquido = TceEmpenho.valor_empenhado_centavos - valor_anulado
+    valor_liquido = func.greatest(
+        TceEmpenho.valor_empenhado_centavos - valor_anulado,
+        0,
+    )
     filtros = [
         TceDespesaIngestionRun.status == STATUS_PUBLICADO,
         executivo_tce(TceDespesaIngestionRun.codigo_municipio_tce, TceEmpenho.exercicio_orcamento, TceEmpenho.codigo_orgao),

@@ -66,6 +66,8 @@ O lease e o token impedem que um worker atrasado conclua um job depois de outro 
 
 Uma competência pode conter uma anulação cujo empenho correspondente ainda não foi publicado em outra competência. A validação retorna `ANULACAO_ORFA`. Como as competências podem ser processadas em paralelo, o worker trata esse diagnóstico como dependência potencialmente temporária:
 
+Uma divergência de até 1 centavo em que as anulações superam o empenho é tolerada na publicação. Nas consultas, o valor líquido desse empenho é limitado a zero para não expor saldo negativo por essa diferença. Excedentes maiores continuam rejeitando o lote.
+
 1. Mantém o diagnóstico e as chaves dos empenhos ausentes da rejeição.
 2. Aguarda 15 minutos antes da nova tentativa.
 3. Verifica no banco se cada empenho referenciado já consta em lote publicado.
