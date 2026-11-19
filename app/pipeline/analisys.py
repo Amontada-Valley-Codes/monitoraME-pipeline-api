@@ -297,7 +297,7 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         "competencias_pagamentos_incluidas": competencias_pagamentos,
         "pagamentos_estendidos_automaticamente": False,
         "competencias_ausentes": [
-            item
+            item.get("competencia") if isinstance(item, dict) else item
             for item in snapshot.competencias_ausentes
         ],
         "totais": {"pagamentos": len(registros)},
@@ -310,7 +310,7 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         "quality": {
             "coverage": "PARTIAL" if snapshot.competencias_ausentes else "COMPLETE",
             "missing_competencies": [
-                item
+                item.get("competencia") if isinstance(item, dict) else item
                 for item in snapshot.competencias_ausentes
             ],
         },
