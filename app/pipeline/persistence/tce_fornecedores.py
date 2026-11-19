@@ -274,7 +274,6 @@ def listar_fornecedores_publicados_paginados(
         func.count(
             func.distinct(TceDespesaIngestionRun.codigo_municipio_tce)
         ).label("quantidade_municipios"),
-        func.count().over().label("_total_items"),
     )
     consulta = _joins(consulta, contexto["anulacoes"]).where(*filtros).group_by(
         *_grupo_fornecedor(identidade_tipo, identidade_documento)
@@ -306,12 +305,7 @@ def listar_fornecedores_publicados_paginados(
     ).subquery()
     with orm.main_session() as session:
         registros = session.execute(consulta).mappings().all()
-        if registros:
-            total = int(registros[0]["_total_items"])
-        elif pagina == 1:
-            total = 0
-        else:
-            total = int(session.scalar(select(func.count()).select_from(grupos)) or 0)
+        total = int(session.scalar(select(func.count()).select_from(grupos)) or 0)
     return {
         "total": total,
         "registros": [_serializar_agregado(item) for item in registros],
