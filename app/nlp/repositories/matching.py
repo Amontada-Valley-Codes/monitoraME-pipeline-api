@@ -260,6 +260,7 @@ def consultar_batch_session(session: Session, *, batch_id: str) -> dict[str, obj
         return None
     return {
         "batch_id": batch.batch_id,
+        "schema_version": "matching.v1",
         "status": batch.status.lower(),
         "total_companies": batch.total_companies,
         "processed_companies": batch.processed_companies,
