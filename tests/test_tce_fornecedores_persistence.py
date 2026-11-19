@@ -44,6 +44,10 @@ class _SessaoCaptura:
         self.consultas.append(consulta)
         return _ResultadoVazio()
 
+    def scalar(self, consulta):
+        self.consultas.append(consulta)
+        return 0
+
 
 class FornecedoresPersistenceSqlTest(unittest.TestCase):
     def setUp(self) -> None:

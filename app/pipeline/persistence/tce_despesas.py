@@ -752,7 +752,6 @@ def listar_empenhos_publicados_paginados(
         valor_anulado.label("valor_anulado_centavos"),
         valor_liquido.label("valor_liquido_centavos"),
         quantidade_anulacoes.label("quantidade_anulacoes"),
-        func.count().over().label("_total_items"),
     )
     for tabela, condicao in joins:
         consulta = consulta.join(tabela, condicao)
@@ -789,12 +788,7 @@ def listar_empenhos_publicados_paginados(
     ).where(*filtros)
     with orm.main_session() as session:
         registros = session.execute(consulta).mappings().all()
-        if registros:
-            total = int(registros[0]["_total_items"])
-        elif pagina == 1:
-            total = 0
-        else:
-            total = int(session.scalar(contagem) or 0)
+        total = int(session.scalar(contagem) or 0)
     return {
         "total": total,
         "registros": [_serializar_registro_empenho(item) for item in registros],

@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Any
 import pandas as pd
@@ -91,6 +92,16 @@ def _competencias_entre_datas(data_inicial: str, data_final: str) -> list[str]:
         else:
             mes += 1
     return competencias
+
+
+def _fim_pagamentos_exercicio(data_inicial: str, data_final: str) -> str:
+    """Inclui pagamentos posteriores vinculados ao orçamento do exercício."""
+    inicio = date.fromisoformat(data_inicial)
+    fim = date.fromisoformat(data_final)
+    hoje = datetime.now(ZoneInfo("America/Fortaleza")).date()
+    if fim == date(inicio.year, 12, 31) and inicio.year < hoje.year:
+        return max(fim, hoje).isoformat()
+    return data_final
 
 
 def _enriquecer_registros_fornecedores(
@@ -246,12 +257,6 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         data_final=fim,
         exercicio_orcamento=exercicio_orcamento,
     )
-    if snapshot.competencias_ausentes:
-        raise CompetenciasTceIndisponiveisError(
-            "Lotes de pagamentos publicados ausentes: "
-            f"{snapshot.competencias_ausentes[:10]} "
-            f"(total={len(snapshot.competencias_ausentes)})."
-        )
     registros = [
         registro
         for registro in snapshot.registros
@@ -287,10 +292,14 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
                        "codigo_municipio": codigo_municipio,
                        "exercicio_orcamentario": exercicio_orcamento},
         "competencias_solicitadas": _competencias_entre_datas(data_inicial, data_final),
+        "competencias_com_dados": competencias_pagamentos,
         "competencias_publicadas": competencias_pagamentos,
         "competencias_pagamentos_incluidas": competencias_pagamentos,
         "pagamentos_estendidos_automaticamente": False,
-        "competencias_ausentes": [],
+        "competencias_ausentes": [
+            item.get("competencia") if isinstance(item, dict) else item
+            for item in snapshot.competencias_ausentes
+        ],
         "totais": {"pagamentos": len(registros)},
         "data_available": bool(registros),
         "last_successful_load_at": tce_observability.ultima_atualizacao_concluida(
@@ -298,7 +307,13 @@ def montar_base_analitica_pagamentos_tce_somente_banco(
         ),
         "is_stale": False,
         "source_status": "CURRENT" if registros else "EMPTY",
-        "quality": {"coverage": "COMPLETE", "missing_competencies": []},
+        "quality": {
+            "coverage": "PARTIAL" if snapshot.competencias_ausentes else "COMPLETE",
+            "missing_competencies": [
+                item.get("competencia") if isinstance(item, dict) else item
+                for item in snapshot.competencias_ausentes
+            ],
+        },
         "base_analitica": {"nome": "pagamentos_tce", "base_calculo": "PAGAMENTOS",
                            "dimensoes_empenho": ["natureza", "fornecedor"],
                            "escopo_fornecedor": "CNPJ_VALIDO"},
@@ -317,12 +332,6 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
         data_final=date.fromisoformat(data_final),
         exercicio_orcamento=exercicio_orcamento,
     )
-    if snapshot.competencias_ausentes:
-        amostra = snapshot.competencias_ausentes[:10]
-        raise CompetenciasTceIndisponiveisError(
-            "Lotes de pagamentos ausentes "
-            f"({len(snapshot.competencias_ausentes)} municipio/competencia): {amostra}"
-        )
     registros = [
         registro
         for registro in snapshot.registros
@@ -351,13 +360,17 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
             "exercicio_orcamentario": exercicio_orcamento,
         },
         "competencias_solicitadas": _competencias_entre_datas(data_inicial, data_final),
+        "competencias_com_dados": sorted(set(competencias_pagamentos)),
         "competencias_publicadas": sorted(set(competencias_pagamentos)),
         "competencias_pagamentos_incluidas": sorted(set(competencias_pagamentos)),
         "pagamentos_estendidos_automaticamente": bool(
             competencias_pagamentos
             and max(competencias_pagamentos) > date.fromisoformat(data_final).strftime("%Y-%m")
         ),
-        "competencias_ausentes": [],
+        "competencias_ausentes": [
+            item.get("competencia") if isinstance(item, dict) else item
+            for item in snapshot.competencias_ausentes
+        ],
         "totais": {"pagamentos": len(registros)},
         "data_available": bool(registros),
         "last_successful_load_at": tce_observability.ultima_atualizacao_concluida(
@@ -365,6 +378,13 @@ def montar_base_analitica_pagamentos_tce_estado_somente_banco(
         ),
         "base_analitica": {"nome": "pagamentos_tce", "base_calculo": "PAGAMENTOS",
                            "dimensoes_empenho": ["natureza", "fornecedor"]},
+        "quality": {
+            "coverage": "PARTIAL" if snapshot.competencias_ausentes else "COMPLETE",
+            "missing_competencies": [
+                item.get("competencia") if isinstance(item, dict) else item
+                for item in snapshot.competencias_ausentes
+            ],
+        },
         "unidade_monetaria": "CENTAVOS",
     }
 
@@ -569,6 +589,7 @@ def consultar_overview_tce(
     throttle_fornecedores: float = 0.3,
 ) -> dict[str, Any]:
     del throttle_fornecedores
+    data_final = _fim_pagamentos_exercicio(data_inicial, data_final)
     if codigo_municipio is None:
         return _consultar_overview_tce_estado(data_inicial, data_final)
     base, metadados = montar_base_analitica_pagamentos_tce_somente_banco(
@@ -618,6 +639,7 @@ def consultar_overview_municipal_tce(
 ) -> dict[str, Any]:
     """Calcula o overview municipal para todos os portes ou para o recorte pedido."""
     del throttle_fornecedores
+    data_final = _fim_pagamentos_exercicio(data_inicial, data_final)
     filtros = list(dict.fromkeys(company_sizes or []))
     invalidos = sorted(set(filtros) - set(PORTES_FILTRO_OVERVIEW_MUNICIPAL))
     if invalidos:
@@ -820,6 +842,7 @@ def _consultar_overview_tce_estado(
     data_final: str,
 ) -> dict[str, Any]:
     """Consolida pagamentos publicados de todo o Ceara."""
+    data_final = _fim_pagamentos_exercicio(data_inicial, data_final)
     exercicio = date.fromisoformat(data_inicial).year
     base, metadados = montar_base_analitica_pagamentos_tce_estado_somente_banco(
         data_inicial,

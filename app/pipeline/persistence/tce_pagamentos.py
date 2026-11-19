@@ -102,16 +102,19 @@ def listar_pagamentos_para_analise(
         competencias = _competencias_entre(competencia_inicial, competencia_final)
         por_competencia = {run.competencia: run for run in runs}
         ausentes = [item for item in competencias if item not in por_competencia]
-        if ausentes:
-            return [], ausentes
         if competencias_publicadas is not None:
-            competencias_publicadas.extend(competencias)
+            competencias_publicadas.extend(
+                item for item in competencias if item in por_competencia
+            )
         if publicacoes_concluidas_em is not None:
             publicacoes_concluidas_em.extend(
                 run.publicado_em
                 for competencia in competencias
-                if (run := por_competencia[competencia]).publicado_em is not None
+                if (run := por_competencia.get(competencia)) is not None
+                and run.publicado_em is not None
             )
+        if not por_competencia:
+            return [], ausentes
         classificacoes = session.scalars(select(TceOrgaoClassificacao).where(
             TceOrgaoClassificacao.codigo_municipio_tce == codigo_municipio_tce,
             TceOrgaoClassificacao.exercicio_orcamento == exercicio_orcamento,
@@ -122,7 +125,7 @@ def listar_pagamentos_para_analise(
         if not executivo or not camara:
             raise ValueError("Classificacao de orgaos incompleta para calcular pagamentos da Prefeitura.")
         pagamentos_no_periodo = session.scalars(select(TcePagamento).where(
-            TcePagamento.run_id.in_([run.id for run in runs]),
+            TcePagamento.run_id.in_([por_competencia[item].id for item in competencias if item in por_competencia]),
             TcePagamento.data_nota_pagamento >= data_inicial,
             TcePagamento.data_nota_pagamento <= data_final,
         )).all()
@@ -247,7 +250,7 @@ def listar_pagamentos_para_analise(
                 "nome_fornecedor": empenho.nome_fornecedor,
                 "codigo_municipio_tce": codigo_municipio_tce,
             })
-    return resultado, []
+    return resultado, ausentes
 
 
 def listar_pagamentos_municipais_para_analise(
@@ -310,7 +313,7 @@ def listar_pagamentos_estaduais_para_analise(
     competencias_publicadas: list[str] | None = None,
     publicacoes_concluidas_em: list[datetime] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Lista pagamentos estaduais somente quando todos os lotes municipais existem."""
+    """Lista pagamentos publicados e informa lacunas por município e competência."""
     from app.core.models import IbgeMunicipio
 
     database.init_db()
