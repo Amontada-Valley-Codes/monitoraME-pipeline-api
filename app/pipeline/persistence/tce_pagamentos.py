@@ -313,7 +313,7 @@ def listar_pagamentos_estaduais_para_analise(
     competencias_publicadas: list[str] | None = None,
     publicacoes_concluidas_em: list[datetime] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Lista pagamentos estaduais somente quando todos os lotes municipais existem."""
+    """Lista pagamentos publicados e informa lacunas por município e competência."""
     from app.core.models import IbgeMunicipio
 
     database.init_db()

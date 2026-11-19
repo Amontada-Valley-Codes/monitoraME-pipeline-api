@@ -218,3 +218,14 @@ Rotas com envelope de erro próprio (despesas, fornecedores, comparações e PNC
 ```
 
 As rotas TCE analíticas que usam o handler padrão do FastAPI retornam `{"detail":"mensagem"}` para erro de validação ou indisponibilidade.
+# Cobertura dos pagamentos TCE
+
+Os overviews municipal e estadual calculam com os lotes publicados, mesmo quando
+faltam competências. `competencias_ausentes` e `quality.missing_competencies`
+informam lacunas de publicação; um mês publicado sem pagamentos consta em
+`competencias_publicadas` e tem valor zero. No resultado estadual, a lacuna
+também identifica `codigo_municipio` na consulta de persistência. Para consultas
+de um exercício encerrado até 31 de dezembro, a leitura de pagamentos se estende
+até a data atual, mantendo `exercicio_orcamento` (por exemplo, `202500` para
+pagamentos de 2025 realizados em 2026). `parametros.data_final` mostra a data
+final efetivamente consultada.

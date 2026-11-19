@@ -392,13 +392,12 @@ class ResolverMunicipioTceTest(unittest.TestCase):
             fornecedores_cache={},
             municipio_comprador="Acarau",
         )
-        with self.assertRaisesRegex(
-            analisys.CompetenciasTceIndisponiveisError,
-            "Lotes de pagamentos publicados ausentes",
-        ):
-            analisys.montar_base_analitica_pagamentos_tce_somente_banco(
-                "2026-02-01", "2026-02-28", codigo_municipio="004",
-            )
+        base, metadata = analisys.montar_base_analitica_pagamentos_tce_somente_banco(
+            "2026-02-01", "2026-02-28", codigo_municipio="004",
+        )
+        self.assertTrue(base.empty)
+        self.assertEqual(metadata["competencias_ausentes"], ["2026-02"])
+        self.assertEqual(metadata["quality"]["coverage"], "PARTIAL")
 
 
 if __name__ == "__main__":
