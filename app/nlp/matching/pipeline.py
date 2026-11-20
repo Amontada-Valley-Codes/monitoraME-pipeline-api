@@ -81,6 +81,14 @@ def _executar_matching_local(
         semantic_profile = construir_perfil_semantico(profile, model, descricoes_catalogo=catalog)
         semantic_profiles[str(profile.company_id)] = semantic_profile
         _renovar_lease_matching(leased_job)
+        logger.info("Vetor de consulta do perfil gerado", extra={
+            "batch_id": batch_id,
+            "company_id": str(profile.company_id),
+            "cnaes_recebidos": len(profile.cnaes),
+            "consultas_semanticas_geradas": len(semantic_profile.consultas),
+            "cnaes_sem_descricao": len(semantic_profile.cnaes_sem_descricao),
+            "model_version": semantic_profile.model_version,
+        })
         if not semantic_profile.consultas:
             failed_profiles += 1
             logger.warning("Perfil sem CNAE com descricao utilizavel", extra={
@@ -256,6 +264,12 @@ def processar_batch_enfileirado(job: Any, *, model: E5EmbeddingModel, k: int = 2
             raise ValueError("batch enfileirado sem snapshot de perfis")
         profiles = [CompanyProfile.model_validate(item) for item in batch.profiles]
         batch_instant = batch.created_at
+    logger.info("Snapshot de perfis carregado para matching NLP", extra={
+        "batch_id": batch_id,
+        "job_id": job.id,
+        "perfis_recebidos": len(profiles),
+        "model_version": model.model_version,
+    })
     results, created = executar_matching_local(
         profiles, batch_id=batch_id, model=model, k=k, as_of=batch_instant,
         leased_job=job,
@@ -264,6 +278,14 @@ def processar_batch_enfileirado(job: Any, *, model: E5EmbeddingModel, k: int = 2
         with orm.main_session() as session:
             if not concluir_job_session(session, job_id=job.id, lease_token=job.lease_token):
                 raise RuntimeError("lease de matching expirou antes de concluir batch já processado")
+    logger.info("Batch de matching NLP processado", extra={
+        "batch_id": batch_id,
+        "job_id": job.id,
+        "perfis_recebidos": len(profiles),
+        "resultados_persistidos": len(results),
+        "novo_processamento": created,
+        "model_version": model.model_version,
+    })
     return results, created
 
 
