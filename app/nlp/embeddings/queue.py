@@ -45,9 +45,14 @@ def _agendar_segmentos_session(
         return 0
     identidades = [_identidade(segmento, model_version) for segmento in segmentos]
     dedupes = {_dedupe_key(identidade) for identidade in identidades}
-    existentes = set(session.scalars(
-        select(IngestionJob.dedupe_key).where(IngestionJob.dedupe_key.in_(dedupes))
-    ))
+    historico = session.execute(
+        select(IngestionJob.dedupe_key, IngestionJob.status, IngestionJob.last_error)
+        .where(IngestionJob.dedupe_key.in_(dedupes))
+    ).all()
+    existentes = {
+        dedupe for dedupe, status, erro in historico
+        if status != "FAILED" or erro != "Segmento PNCP removido durante limpeza de editais"
+    }
     agendados = 0
     for segmento, identidade in zip(segmentos, identidades, strict=True):
         dedupe = _dedupe_key(identidade)

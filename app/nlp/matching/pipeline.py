@@ -121,6 +121,7 @@ def _executar_matching_local(
             semantic_profile = semantic_profiles[str(profile.company_id)]
             if not semantic_profile.consultas:
                 continue
+            resultados_antes = len(results)
             candidates = buscar_contratacoes_top_k(
                 session, semantic_profile.consultas,
                 model_version=semantic_profile.model_version, k=k,
@@ -214,6 +215,14 @@ def _executar_matching_local(
                     ),
                 )
                 results.append(matching)
+            logger.info("Perfil avaliado no matching NLP", extra={
+                "batch_id": batch_id,
+                "company_id": str(profile.company_id),
+                "candidatos_recuperados": len(candidates),
+                "oportunidades_disponiveis": len(opportunities),
+                "resultados_gerados": len(results) - resultados_antes,
+                "model_version": semantic_profile.model_version,
+            })
 
     with orm.main_session() as session:
         if leased_job is not None and not concluir_job_session(
