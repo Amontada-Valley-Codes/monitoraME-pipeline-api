@@ -49,9 +49,16 @@ def _agendar_segmentos_session(
         select(IngestionJob.dedupe_key, IngestionJob.status, IngestionJob.last_error)
         .where(IngestionJob.dedupe_key.in_(dedupes))
     ).all()
+    status_ativos = {"PENDING", "RUNNING", "RETRY_WAIT"}
     existentes = {
-        dedupe for dedupe, status, erro in historico
-        if status != "FAILED" or erro != "Segmento PNCP removido durante limpeza de editais"
+        dedupe
+        for dedupe, status, erro in historico
+        if status in status_ativos
+        or status == "QUARANTINED"
+        or (
+            status == "FAILED"
+            and erro != "Segmento PNCP removido durante limpeza de editais"
+        )
     }
     agendados = 0
     for segmento, identidade in zip(segmentos, identidades, strict=True):
