@@ -115,7 +115,9 @@ def executar_worker(
     worker_id = f"matching-nlp:{socket.gethostname()}:{uuid4().hex[:8]}"
     processados = 0
     embeddings_faltantes_anterior: int | None = None
-    diagnostico_anterior: tuple[object, ...] | None = None
+    ultimo_resumo = 0.0
+    embeddings_concluidos = 0
+    batches_concluidos = 0
     modelo_carregado = False
     ultimo_trabalho = time.monotonic()
     ultimo_recovery = 0.0
@@ -163,25 +165,23 @@ def executar_worker(
                 logger.info("Trabalho NLP preparado na fila", extra={"leases_recuperados": recuperados, "jobs_embeddings_agendados": agendados, "model_version": model.model_version})
             if embeddings_faltantes:
                 jobs_por_status = diagnostico_embeddings["jobs_embeddings_por_status"]
-                fingerprint = (
-                    embeddings_faltantes,
-                    tuple(sorted(diagnostico_embeddings["faltantes_por_segment_type"].items())),
-                    tuple(sorted(jobs_por_status.items())),
-                )
-                if fingerprint != diagnostico_anterior:
+                if ultimo_resumo == 0.0 or time.monotonic() - ultimo_resumo >= 60:
                     ativos = sum(int(jobs_por_status.get(status, 0)) for status in ("PENDING", "RUNNING", "RETRY_WAIT"))
                     falhos = sum(int(jobs_por_status.get(status, 0)) for status in ("FAILED", "QUARANTINED"))
                     motivo = "JOBS_ATIVOS_PROCESSANDO" if ativos else "SEM_JOB_ATIVO_PARA_FALTANTES"
-                    if falhos:
-                        motivo = "HA_JOBS_FALHOS_OU_QUARENTENADOS"
                     logger.warning("Batch de matching bloqueado: corpus de oportunidades ainda sem vetores", extra={
                         **diagnostico_embeddings,
                         "motivo_bloqueio": motivo,
                         "jobs_ativos": ativos,
                         "jobs_falhos_ou_quarentenados": falhos,
+                        "embeddings_persistidos_nesta_execucao": embeddings_concluidos,
+                        "variacao_faltantes": (
+                            embeddings_faltantes_anterior - embeddings_faltantes
+                            if embeddings_faltantes_anterior is not None else None
+                        ),
                         "model_version": model.model_version,
                     })
-                    diagnostico_anterior = fingerprint
+                    ultimo_resumo = time.monotonic()
             elif matching_pendente and embeddings_faltantes_anterior and embeddings_faltantes == 0:
                 logger.info("Embeddings de oportunidades completos; batches de matching liberados", extra={"model_version": model.model_version})
             embeddings_faltantes_anterior = embeddings_faltantes
@@ -216,10 +216,12 @@ def executar_worker(
                     model.load()
                     modelo_carregado = True
                 if job.job_type == MATCHING_JOB_TYPE:
-                    resultado, _ = processar_batch_enfileirado(job, model=model)
-                    detalhes = {"batch_id": job.scope_key, "results": len(resultado), "job_type": job.job_type}
+                    resultado, criado = processar_batch_enfileirado(job, model=model)
+                    batches_concluidos += 1
+                    detalhes = {"batch_id": job.scope_key, "results": len(resultado), "job_type": job.job_type, "novo_processamento": criado}
                 else:
                     resultado = processar_job(job, model)
+                    embeddings_concluidos += int(resultado == "stored")
                     detalhes = {"resultado": resultado, **contexto_job}
                 processados += 1
                 logger.info("Job NLP concluido", extra={"job_id": job.id, **detalhes, "attempt": job.attempts, "worker_id": worker_id})
@@ -244,4 +246,9 @@ def executar_worker(
         except Exception:
             logger.exception("Falha no ciclo do worker de embeddings")
             time.sleep(idle_seconds)
-    logger.info("Worker de embeddings finalizado", extra={"jobs_processados": processados})
+    logger.info("Worker NLP finalizado", extra={
+        "worker_id": worker_id, "jobs_processados": processados,
+        "embeddings_persistidos": embeddings_concluidos,
+        "batches_concluidos": batches_concluidos,
+        "model_version": model.model_version,
+    })
