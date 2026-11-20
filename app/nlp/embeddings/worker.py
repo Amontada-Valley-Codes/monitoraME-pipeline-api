@@ -20,7 +20,7 @@ from app.nlp.embeddings.model import E5EmbeddingModel
 from app.nlp.corpus import sincronizar_corpus
 from app.nlp.embeddings.queue import (
     agendar_embeddings_pendentes_session,
-    contar_embeddings_faltantes_session,
+    diagnosticar_embeddings_faltantes_session,
 )
 from app.nlp.matching.pipeline import processar_batch_enfileirado
 from app.pncp.jobs import (
@@ -115,6 +115,7 @@ def executar_worker(
     worker_id = f"matching-nlp:{socket.gethostname()}:{uuid4().hex[:8]}"
     processados = 0
     embeddings_faltantes_anterior: int | None = None
+    diagnostico_anterior: tuple[object, ...] | None = None
     modelo_carregado = False
     ultimo_trabalho = time.monotonic()
     ultimo_recovery = 0.0
@@ -147,10 +148,12 @@ def executar_worker(
                     session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
                 )
                 matching_pendente = existe_batch_matching_pronto_session(session)
+                diagnostico_embeddings: dict[str, Any] = {}
                 if matching_pendente:
-                    embeddings_faltantes = contar_embeddings_faltantes_session(
+                    diagnostico_embeddings = diagnosticar_embeddings_faltantes_session(
                         session, model_version=model.model_version,
                     )
+                    embeddings_faltantes = int(diagnostico_embeddings["embeddings_faltantes"])
                     if job is None and embeddings_faltantes == 0:
                         job = reivindicar_proximo_job_session(
                             session, worker_id=worker_id, lease_seconds=7200,
@@ -158,8 +161,27 @@ def executar_worker(
                         )
             if recuperados or agendados:
                 logger.info("Trabalho NLP preparado na fila", extra={"leases_recuperados": recuperados, "jobs_embeddings_agendados": agendados, "model_version": model.model_version})
-            if embeddings_faltantes and embeddings_faltantes != embeddings_faltantes_anterior:
-                logger.warning("Batch de matching bloqueado por embeddings de oportunidades pendentes", extra={"embeddings_faltantes": embeddings_faltantes, "model_version": model.model_version})
+            if embeddings_faltantes:
+                jobs_por_status = diagnostico_embeddings["jobs_embeddings_por_status"]
+                fingerprint = (
+                    embeddings_faltantes,
+                    tuple(sorted(diagnostico_embeddings["faltantes_por_segment_type"].items())),
+                    tuple(sorted(jobs_por_status.items())),
+                )
+                if fingerprint != diagnostico_anterior:
+                    ativos = sum(int(jobs_por_status.get(status, 0)) for status in ("PENDING", "RUNNING", "RETRY_WAIT"))
+                    falhos = sum(int(jobs_por_status.get(status, 0)) for status in ("FAILED", "QUARANTINED"))
+                    motivo = "JOBS_ATIVOS_PROCESSANDO" if ativos else "SEM_JOB_ATIVO_PARA_FALTANTES"
+                    if falhos:
+                        motivo = "HA_JOBS_FALHOS_OU_QUARENTENADOS"
+                    logger.warning("Batch de matching bloqueado: corpus de oportunidades ainda sem vetores", extra={
+                        **diagnostico_embeddings,
+                        "motivo_bloqueio": motivo,
+                        "jobs_ativos": ativos,
+                        "jobs_falhos_ou_quarentenados": falhos,
+                        "model_version": model.model_version,
+                    })
+                    diagnostico_anterior = fingerprint
             elif matching_pendente and embeddings_faltantes_anterior and embeddings_faltantes == 0:
                 logger.info("Embeddings de oportunidades completos; batches de matching liberados", extra={"model_version": model.model_version})
             embeddings_faltantes_anterior = embeddings_faltantes

@@ -173,8 +173,51 @@ def contar_embeddings_faltantes_session(session: Session, *, model_version: str)
     ) or 0)
 
 
+def diagnosticar_embeddings_faltantes_session(
+    session: Session, *, model_version: str,
+) -> dict[str, object]:
+    """Resume faltantes, segmentos afetados e estado geral da fila NLP."""
+    embeddings = NlpProcurementEmbedding
+    tem_embedding = exists(select(1).where(
+        embeddings.source == NlpProcurementSegment.source,
+        embeddings.external_id == NlpProcurementSegment.external_id,
+        embeddings.segment_type == NlpProcurementSegment.segment_type,
+        embeddings.segment_key == NlpProcurementSegment.segment_key,
+        embeddings.text_hash == NlpProcurementSegment.text_hash,
+        embeddings.model_version == model_version,
+    ))
+    faltantes = (
+        select(
+            NlpProcurementSegment.segment_type,
+            func.count().label("count"),
+            func.min(NlpProcurementSegment.prepared_at).label("oldest_prepared_at"),
+        )
+        .where(
+            NlpProcurementSegment.status == "READY",
+            NlpProcurementSegment.text_hash.is_not(None),
+            not_(tem_embedding),
+        )
+        .group_by(NlpProcurementSegment.segment_type)
+    )
+    por_tipo = {
+        str(tipo): {"count": int(count), "oldest_prepared_at": oldest.isoformat() if oldest else None}
+        for tipo, count, oldest in session.execute(faltantes)
+    }
+    fila = dict(session.execute(
+        select(IngestionJob.status, func.count())
+        .where(IngestionJob.job_type == JOB_TYPE)
+        .group_by(IngestionJob.status)
+    ).all())
+    return {
+        "embeddings_faltantes": sum(item["count"] for item in por_tipo.values()),
+        "faltantes_por_segment_type": por_tipo,
+        "jobs_embeddings_por_status": {str(status): int(count) for status, count in fila.items()},
+    }
+
+
 __all__ = [
     "agendar_embeddings_oportunidades_session",
     "agendar_embeddings_pendentes_session",
     "contar_embeddings_faltantes_session",
+    "diagnosticar_embeddings_faltantes_session",
 ]
