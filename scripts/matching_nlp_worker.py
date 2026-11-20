@@ -1,19 +1,15 @@
 """Entry point do worker NLP de embeddings e batches de matching."""
 from __future__ import annotations
 
-import logging
 import os
 import argparse
 
+from app.core.logging import configurar_logging
 from app.nlp.embeddings.worker import executar_worker
 
 
 def main() -> int:
-    nivel = os.getenv("LOG_LEVEL", "INFO").upper()
-    logging.basicConfig(
-        level=nivel,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    configurar_logging()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--drain", action="store_true",
