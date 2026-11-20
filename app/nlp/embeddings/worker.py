@@ -43,6 +43,26 @@ def existe_batch_matching_pronto_session(session: Any) -> bool:
         IngestionJob.next_run_at <= datetime.now(timezone.utc),
     ))))
 
+def resumir_job(job: Any) -> dict[str, Any]:
+    """Extrai identidade operacional segura para logs, sem texto do corpus."""
+    if job.job_type == MATCHING_JOB_TYPE:
+        return {"batch_id": job.scope_key, "job_type": job.job_type}
+    try:
+        identidade = json.loads(job.scope_key)
+    except (TypeError, json.JSONDecodeError):
+        return {"job_type": job.job_type, "scope_key_valid": False}
+    if not isinstance(identidade, dict):
+        return {"job_type": job.job_type, "scope_key_valid": False}
+    return {
+        "job_type": job.job_type,
+        "source": identidade.get("source"),
+        "external_id": identidade.get("external_id"),
+        "segment_type": identidade.get("segment_type"),
+        "segment_key": identidade.get("segment_key"),
+        "model_version": identidade.get("model_version"),
+    }
+
+
 def processar_job(job: Any, model: E5EmbeddingModel) -> str:
     identidade = json.loads(job.scope_key)
     if not isinstance(identidade, dict) or set(identidade) != {
@@ -99,7 +119,7 @@ def executar_worker(
     ultimo_trabalho = time.monotonic()
     ultimo_recovery = 0.0
     corpus_bootstrap_concluido = False
-    logger.info("Worker de embeddings iniciado", extra={"worker_id": worker_id, "model_version": model.model_version})
+    logger.info("Worker NLP iniciado", extra={"worker_id": worker_id, "model_version": model.model_version, "device": model.device})
     while stop_after is None or processados < stop_after:
         try:
             with orm.main_session() as session:
@@ -114,7 +134,7 @@ def executar_worker(
                 if not corpus_bootstrap_concluido:
                     resumo = sincronizar_corpus(session, page_size=200)
                     corpus_bootstrap_concluido = True
-                    logger.info("Corpus NLP inicial preparado", extra={
+                    logger.info("Corpus de oportunidades sincronizado para embeddings", extra={
                         "opportunities_scanned": resumo.opportunities_scanned,
                         "segments_created": resumo.segments_created,
                         "segments_without_text": resumo.segments_without_text,
@@ -137,9 +157,11 @@ def executar_worker(
                             job_type=MATCHING_JOB_TYPE,
                         )
             if recuperados or agendados:
-                logger.info("Fila NLP atualizada", extra={"leases_recuperados": recuperados, "jobs_agendados": agendados})
+                logger.info("Trabalho NLP preparado na fila", extra={"leases_recuperados": recuperados, "jobs_embeddings_agendados": agendados, "model_version": model.model_version})
             if embeddings_faltantes and embeddings_faltantes != embeddings_faltantes_anterior:
-                logger.warning("Matching aguardando vetores completos", extra={"embeddings_faltantes": embeddings_faltantes})
+                logger.warning("Batch de matching bloqueado por embeddings de oportunidades pendentes", extra={"embeddings_faltantes": embeddings_faltantes, "model_version": model.model_version})
+            elif matching_pendente and embeddings_faltantes_anterior and embeddings_faltantes == 0:
+                logger.info("Embeddings de oportunidades completos; batches de matching liberados", extra={"model_version": model.model_version})
             embeddings_faltantes_anterior = embeddings_faltantes
             if job is None:
                 unload_after = float(os.getenv("NLP_MODEL_IDLE_UNLOAD_SECONDS", "60"))
@@ -160,6 +182,11 @@ def executar_worker(
                 continue
             ultimo_trabalho = time.monotonic()
             try:
+                contexto_job = resumir_job(job)
+                logger.info("Job NLP reivindicado para processamento", extra={
+                    "job_id": job.id, "attempt": job.attempts, "worker_id": worker_id,
+                    **contexto_job,
+                })
                 if not modelo_carregado:
                     logger.info("Carregando modelo de embeddings sob demanda", extra={
                         "model_version": model.model_version, "device": model.device,
@@ -168,12 +195,12 @@ def executar_worker(
                     modelo_carregado = True
                 if job.job_type == MATCHING_JOB_TYPE:
                     resultado, _ = processar_batch_enfileirado(job, model=model)
-                    detalhes = {"batch_id": job.scope_key, "results": len(resultado)}
+                    detalhes = {"batch_id": job.scope_key, "results": len(resultado), "job_type": job.job_type}
                 else:
                     resultado = processar_job(job, model)
-                    detalhes = {"resultado": resultado}
+                    detalhes = {"resultado": resultado, **contexto_job}
                 processados += 1
-                logger.info("Job NLP concluido", extra={"job_id": job.id, **detalhes, "attempt": job.attempts})
+                logger.info("Job NLP concluido", extra={"job_id": job.id, **detalhes, "attempt": job.attempts, "worker_id": worker_id})
             except Exception as exc:
                 with orm.main_session() as session:
                     status = falhar_job_session(
@@ -190,7 +217,7 @@ def executar_worker(
                             if status == "FAILED":
                                 batch.failed_companies = batch.total_companies - batch.processed_companies
                             batch.updated_at = datetime.now(timezone.utc)
-                logger.exception("Falha em job NLP", extra={"job_id": job.id, "status": status, "job_type": job.job_type})
+                logger.exception("Falha em job NLP", extra={"job_id": job.id, "status": status, "worker_id": worker_id, **contexto_job})
                 processados += 1
         except Exception:
             logger.exception("Falha no ciclo do worker de embeddings")
