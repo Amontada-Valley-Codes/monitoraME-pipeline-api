@@ -1,6 +1,8 @@
 # Hybrid matching engine
 
-`calcular_matching` usa `hybrid-matching-v6`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados. Use um novo `batch_id` ao recalcular snapshots anteriores. A classificação local `pncp-object-categories-v1` reconhece termos explícitos de objeto e itens nas categorias ativas; texto sem sinal suficiente permanece sem categoria e recebe `OPPORTUNITY_CATEGORY_UNCONFIRMED`.
+`calcular_matching` usa `hybrid-matching-v7`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados. Use um novo `batch_id` ao recalcular snapshots anteriores. A classificação local `pncp-object-categories-v1` reconhece termos explícitos de objeto e itens nas categorias ativas; texto sem sinal suficiente permanece sem categoria e recebe `OPPORTUNITY_CATEGORY_UNCONFIRMED`.
+
+Quando `CompanyProfile.categories` vem vazio ou incompleto, `cnae-description-categories-v1` acrescenta categorias ao perfil apenas durante o score. Usa primeiro associações ativas `DIRETA` ou `RELACIONADA` com confiança de ao menos 0,7 e, na ausência delas para aquele CNAE, termos específicos da descrição. Associações `CONDICIONAL` não confirmam categoria. O snapshot recebido permanece intacto; o log registra os CNAEs que sustentaram cada inferência e os não classificados. Resultados com inferência recebem `COMPANY_CATEGORIES_INFERRED`. Essa evidência é relacionada ao critério CNAE-categoria; pesos e corte HIGH permanecem inalterados e exigem validação com editais rotulados.
 
 ## Relevance score
 
