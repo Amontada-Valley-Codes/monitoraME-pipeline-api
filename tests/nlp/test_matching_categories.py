@@ -88,6 +88,30 @@ class MatchingCategoriesTests(unittest.TestCase):
             [],
         )
 
+    def test_item_incidental_nao_classifica_objeto_especifico(self) -> None:
+        for objeto in (
+            "Aquisição de máquinas fotográficas profissionais com acessórios",
+            "Consulta e busca de informações cadastrais de pessoas físicas e jurídicas",
+        ):
+            with self.subTest(objeto=objeto):
+                self.assertEqual(
+                    classificar_categorias_edital(
+                        objeto, ["Software de apoio e consultoria em tecnologia da informação"],
+                        categorias_ativas={"software"},
+                    ),
+                    [],
+                )
+
+    def test_item_classifica_quando_objeto_e_generico(self) -> None:
+        self.assertEqual(
+            classificar_categorias_edital(
+                "Contratação de itens conforme termo de referência",
+                ["Desenvolvimento de software sob encomenda"],
+                categorias_ativas={"software"},
+            ),
+            ["software"],
+        )
+
     def test_segmentos_sao_consultados_em_blocos_sem_perder_chaves(self) -> None:
         session = MagicMock()
         keys = [("PNCP", str(i), "OBJECT", "object") for i in range(SEGMENT_QUERY_CHUNK_SIZE + 1)]

@@ -10,7 +10,7 @@ from app.nlp.matching.scoring import TaxonomyAssociation
 from app.nlp.profiles.schemas import CompanyProfile
 
 
-CATEGORY_RULE_VERSION = "pncp-object-categories-v1"
+CATEGORY_RULE_VERSION = "pncp-object-categories-v2"
 COMPANY_CATEGORY_RULE_VERSION = "cnae-description-categories-v1"
 MIN_ASSOCIATION_CONFIDENCE = 0.7
 
@@ -47,7 +47,17 @@ def classificar_categorias_edital(
     objeto: str | None, itens: Sequence[str], *, categorias_ativas: set[str],
 ) -> list[str]:
     """Reconhece apenas sinais explícitos presentes na taxonomia ativa."""
-    textos = [_normalizar(texto) for texto in [objeto or "", *itens] if texto]
+    objeto_normalizado = _normalizar(objeto or "")
+    termos_genericos = {
+        "a", "as", "o", "os", "de", "da", "das", "do", "dos", "e", "em", "para", "com", "por",
+        "contratacao", "aquisicao", "prestacao", "servico", "servicos", "fornecimento",
+        "objeto", "itens", "item", "conforme", "edital", "termo", "referencia", "anexo",
+        "condicoes", "especificacoes", "necessidades", "eventual", "futura", "futuro",
+    }
+    termos_especificos = [termo for termo in objeto_normalizado.split() if termo not in termos_genericos]
+    textos = [objeto_normalizado]
+    if len(termos_especificos) < 3:
+        textos.extend(_normalizar(item) for item in itens if item)
     return [
         categoria for categoria, padroes in _PATTERNS.items()
         if categoria in categorias_ativas
