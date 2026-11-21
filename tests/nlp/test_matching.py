@@ -8,6 +8,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
+from sqlalchemy.dialects import postgresql
+
 from app.nlp.matching.eligibility import avaliar_elegibilidade
 from app.nlp.matching.engine import calcular_matching
 from app.nlp.matching.jobs import agendar_recalculo_perfil_session
@@ -16,10 +18,46 @@ from app.nlp.matching.scoring import TaxonomyAssociation, WEIGHTS, calcular_scor
 from app.nlp.profiles.builder import construir_perfil_semantico
 from app.nlp.embeddings.model import EmbeddingBatch
 from app.nlp.profiles.schemas import CompanyProfile
-from app.nlp.repositories.matching import enfileirar_batch_session, hash_payload
+from app.nlp.repositories.matching import (
+    enfileirar_batch_session,
+    hash_payload,
+    listar_resultados_batch_session,
+    listar_resultados_filtrados_session,
+)
 
 
 NOW = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+
+
+class MatchingResultQueryTests(TestCase):
+    def test_consulta_high_filtra_contagem_e_paginacao_no_banco(self) -> None:
+        session = MagicMock()
+        session.scalar.return_value = 0
+        session.scalars.return_value = []
+
+        results, total = listar_resultados_filtrados_session(session, limit=2)
+
+        self.assertEqual((results, total), ([], 0))
+        for statement in (session.scalar.call_args.args[0], session.scalars.call_args.args[0]):
+            compiled = str(statement.compile(
+                dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
+            ))
+            self.assertIn("HIGH", compiled)
+
+    def test_pagina_do_batch_filtra_high_antes_do_limit(self) -> None:
+        session = MagicMock()
+        session.scalars.return_value = []
+
+        results, cursor = listar_resultados_batch_session(
+            session, batch_id="batch-1", limit=2, high_only=True,
+        )
+
+        self.assertEqual((results, cursor), ([], None))
+        statement = str(session.scalars.call_args.args[0].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
+        ))
+        self.assertIn("HIGH", statement)
+        self.assertIn("LIMIT", statement)
 
 
 def empresa(**updates) -> CompanyProfile:

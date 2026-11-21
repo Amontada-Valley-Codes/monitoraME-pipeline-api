@@ -257,7 +257,7 @@ def consultar_resultados_batch(
         if status is None:
             return None
         results, next_cursor = listar_resultados_batch_session(
-            session, batch_id=batch_id, limit=limit, cursor=cursor,
+            session, batch_id=batch_id, limit=limit, cursor=cursor, high_only=True,
         )
         return {
             "batch_id": batch_id,
