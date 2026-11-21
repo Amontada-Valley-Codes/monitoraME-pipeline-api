@@ -14,6 +14,7 @@ from app.core.models import (
     NlpProcurementSegment, PncpOportunidade, PncpTaxonomiaCnae,
 )
 from app.nlp.embeddings.model import E5EmbeddingModel
+from app.nlp.matching.categories import CATEGORY_RULE_VERSION, classificar_categorias_edital
 from app.nlp.matching.engine import calcular_matching
 from app.nlp.matching.postgres_retrieval import buscar_contratacoes_top_k
 from app.nlp.matching.schemas import MatchingResult, ProcurementProfile
@@ -28,6 +29,21 @@ from app.nlp.repositories.matching import (
 from app.pncp.jobs import concluir_job_session, renovar_lease_session
 
 logger = logging.getLogger(__name__)
+SEGMENT_QUERY_CHUNK_SIZE = 200
+
+
+def _carregar_segmentos_evidencia(session: Any, keys: list[tuple[str, str, str, str]]) -> dict[tuple[str, str, str, str], NlpProcurementSegment]:
+    """Evita uma única expressão IN extensa para batches grandes."""
+    unique_keys = list(dict.fromkeys(keys))
+    stored: dict[tuple[str, str, str, str], NlpProcurementSegment] = {}
+    for start in range(0, len(unique_keys), SEGMENT_QUERY_CHUNK_SIZE):
+        chunk = unique_keys[start:start + SEGMENT_QUERY_CHUNK_SIZE]
+        for row in session.scalars(select(NlpProcurementSegment).where(
+            tuple_(NlpProcurementSegment.source, NlpProcurementSegment.external_id,
+                   NlpProcurementSegment.segment_type, NlpProcurementSegment.segment_key).in_(chunk)
+        )):
+            stored[(row.source, row.external_id, row.segment_type, row.segment_key)] = row
+    return stored
 
 
 def _renovar_lease_matching(job: Any | None) -> None:
@@ -118,6 +134,7 @@ def _executar_matching_local(
                 category=row["categoria_slug"], relation_type=row["tipo"],
                 confidence=float(row["confianca"]), condition=row["condicao"],
             ))
+        active_categories = {association.category for values in associations.values() for association in values}
 
         for profile in profiles:
             semantic_profile = semantic_profiles[str(profile.company_id)]
@@ -155,15 +172,7 @@ def _executar_matching_local(
                 (item.source, item.procurement_id, segment["segment_type"], segment["segment_key"])
                 for item in candidates for segment in item.segments[:10]
             ]
-            stored_segments = {
-                (row.source, row.external_id, row.segment_type, row.segment_key): row
-                for row in session.scalars(
-                    select(NlpProcurementSegment).where(
-                        tuple_(NlpProcurementSegment.source, NlpProcurementSegment.external_id,
-                               NlpProcurementSegment.segment_type, NlpProcurementSegment.segment_key).in_(segment_keys)
-                    )
-                )
-            } if segment_keys else {}
+            stored_segments = _carregar_segmentos_evidencia(session, segment_keys)
             for candidate in candidates:
                 key = (candidate.source, candidate.procurement_id)
                 opportunity = opportunities.get(key)
@@ -194,7 +203,11 @@ def _executar_matching_local(
                     source=candidate.source, external_id=candidate.procurement_id,
                     object=opportunity.objeto,
                     complementary_text=(opportunity.dados_semanticos or {}).get("informacao_complementar"),
-                    items=items_by_opportunity.get(key, []), categories=[],
+                    items=items_by_opportunity.get(key, []),
+                    categories=classificar_categorias_edital(
+                        opportunity.objeto, items_by_opportunity.get(key, []),
+                        categorias_ativas=active_categories,
+                    ),
                     modality_code=str(modality_code) if modality_code is not None else None,
                     status=status, deadline=opportunity.prazo_proposta_final,
                     revoked=True if "REVOG" in status_upper or "REVOG" in official_upper else (False if opportunity.official_status is not None else None),
@@ -214,7 +227,7 @@ def _executar_matching_local(
                     additional_warnings=(
                         ["PROFILE_CNAE_DESCRIPTION_INCOMPLETE"]
                         if semantic_profile.cnaes_sem_descricao else []
-                    ),
+                    ) + (["OPPORTUNITY_CATEGORY_UNCONFIRMED"] if not procurement.categories else []),
                 )
                 results.append(matching)
             logger.info("Perfil avaliado no matching NLP", extra={
@@ -222,6 +235,7 @@ def _executar_matching_local(
                 "company_id": str(profile.company_id),
                 "candidatos_recuperados": len(candidates),
                 "top_k_configurado": top_k,
+                "category_rule_version": CATEGORY_RULE_VERSION,
                 "oportunidades_disponiveis": len(opportunities),
                 "resultados_gerados": len(results) - resultados_antes,
                 "model_version": semantic_profile.model_version,
