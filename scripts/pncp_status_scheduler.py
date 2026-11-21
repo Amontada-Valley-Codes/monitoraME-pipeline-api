@@ -5,7 +5,10 @@ import argparse
 import logging
 import time
 
+from app.core.logging import configurar_logging
 from app.pncp.derived_status import reavaliar_status_persistidos
+
+logger = logging.getLogger("app.pncp.status_scheduler")
 
 
 def main() -> int:
@@ -13,10 +16,10 @@ def main() -> int:
     parser.add_argument("--interval-seconds", type=int, default=60)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
+    configurar_logging()
     while True:
         alterados = reavaliar_status_persistidos()
-        logging.getLogger(__name__).info("Status PNCP reavaliados", extra={"alterados": alterados})
+        logger.info("Status PNCP reavaliados", extra={"alterados": alterados})
         if args.once:
             return 0
         time.sleep(max(5, args.interval_seconds))

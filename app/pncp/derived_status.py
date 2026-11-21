@@ -122,11 +122,17 @@ def aplicar_status_session(session: Session, oportunidade: PncpOportunidade, *, 
              "derived_status": oportunidade.derived_status,
              "reason_codes": oportunidade.reason_codes or [],
              "data_confidence": oportunidade.data_confidence}
+    semanticos = oportunidade.dados_semanticos or {}
     oficial = oportunidade.situacao if official_status is None else official_status
-    prazo = encerramento if encerramento is not None else oportunidade.prazo_proposta_final
-    resultado = avaliar_status(official_status=oficial, inicio=inicio, encerramento=prazo,
+    abertura = inicio if inicio is not None else semanticos.get("data_abertura_proposta")
+    prazo = encerramento if encerramento is not None else (
+        semanticos.get("prazo_proposta_final_origem") or oportunidade.prazo_proposta_final
+    )
+    resultado = avaliar_status(official_status=oficial, inicio=abertura, encerramento=prazo,
         modalidade=modalidade if modalidade is not None else oportunidade.modalidade,
-        forma_participacao=forma_participacao, resultado_estado=resultado_estado, agora=agora)
+        forma_participacao=(forma_participacao if forma_participacao is not None
+                            else semanticos.get("forma_participacao_origem")),
+        resultado_estado=resultado_estado, agora=agora)
     oportunidade.official_status = str(oficial) if oficial is not None else None
     oportunidade.derived_status = resultado["derived_status"]
     oportunidade.reason_codes = resultado["reason_codes"]

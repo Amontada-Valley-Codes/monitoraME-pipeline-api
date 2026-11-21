@@ -24,3 +24,5 @@
 O estado local de item `PARCIAL` significa que há resultados disponíveis sem homologação confirmada e, sozinho, resulta em `RESULTADO_PUBLICADO`. Só a evidência de item `FINAL` permite inferir homologação total (todos `FINAL`) ou parcial (mistura de `FINAL` com itens ainda não `FINAL`).
 
 O processo `python scripts/pncp_status_scheduler.py` reavalia a visão local a cada 60 segundos sem chamadas ao PNCP, permitindo transições por passagem do tempo. Execute-o como processo operacional dedicado. A normalização de uma nova versão atualiza o estado na mesma transação.
+
+Em produção, o serviço Compose `pncp-status-scheduler` executa essa reavaliação e corrige estados persistidos que tenham sido calculados sem a data de abertura. Atualizações de resultados de itens recuperam as datas da oportunidade antes de recalcular o estado, mesmo quando o chamador não as informa explicitamente.

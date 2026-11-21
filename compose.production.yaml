@@ -102,6 +102,16 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  pncp-status-scheduler:
+    <<: *app-service
+    image: ${PNCP_SCHEDULER_IMAGE:-pncp-scheduler:production}
+    init: true
+    command: ["python", "scripts/pncp_status_scheduler.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   pncp-worker-normalizacao:
     <<: *app-service
     image: ${PNCP_NORMALIZATION_IMAGE:-pncp-worker-normalizacao:production}
