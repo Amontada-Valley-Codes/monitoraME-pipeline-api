@@ -4,14 +4,67 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.nlp.matching.categories import classificar_categorias_edital
+from app.nlp.matching.categories import classificar_categorias_cnaes, classificar_categorias_edital
 from app.nlp.matching.engine import calcular_matching
 from app.nlp.matching.pipeline import SEGMENT_QUERY_CHUNK_SIZE, _carregar_segmentos_evidencia
 from app.nlp.matching.scoring import TaxonomyAssociation
+from app.nlp.profiles.schemas import CnaeProfile
 from tests.nlp.test_matching import empresa, oportunidade, NOW
 
 
 class MatchingCategoriesTests(unittest.TestCase):
+    def test_inferencia_por_descricao_preserva_categorias_explicitas(self) -> None:
+        profile = empresa(categories=["consultoria-gestao"]).model_copy(update={
+            "cnaes": [
+                CnaeProfile(code="6202300", description="Desenvolvimento e licenciamento de programas de computador customizáveis", is_primary=True),
+                CnaeProfile(code="7490104", description="Atividades de intermediação e agenciamento de serviços", is_primary=False),
+                CnaeProfile(code="8291100", description="Atividades de cobranças e informações cadastrais", is_primary=False),
+            ],
+        })
+
+        classified = classificar_categorias_cnaes(
+            profile, associations={}, active_categories={"software", "consultoria-gestao"},
+        )
+
+        self.assertEqual(classified.categories, ("consultoria-gestao", "software"))
+        self.assertEqual(classified.inferred_from_cnaes, {"software": ("6202300",)})
+        self.assertEqual(classified.unclassified_cnaes, ("7490104", "8291100"))
+        self.assertEqual(profile.categories, ["consultoria-gestao"])
+
+    def test_mapa_ativo_prevalece_e_relacao_condicional_nao_confirma(self) -> None:
+        profile = empresa(categories=[]).model_copy(update={
+            "cnaes": [
+                CnaeProfile(code="6204000", description="Consultoria em tecnologia da informação", is_primary=True),
+                CnaeProfile(code="7490104", description="Intermediação de software", is_primary=False),
+            ],
+        })
+        classified = classificar_categorias_cnaes(
+            profile,
+            associations={
+                "6204000": [TaxonomyAssociation("software", "DIRETA", 0.9)],
+                "7490104": [TaxonomyAssociation("software", "CONDICIONAL", 0.95, "verificar objeto")],
+            },
+            active_categories={"software"},
+        )
+        self.assertEqual(classified.categories, ("software",))
+        self.assertEqual(classified.inferred_from_cnaes, {"software": ("6204000",)})
+        self.assertEqual(classified.unclassified_cnaes, ("7490104",))
+
+    def test_categoria_inferida_sozinha_nao_produz_high(self) -> None:
+        profile = empresa(categories=[])
+        associations = {"6201501": [TaxonomyAssociation("software", "DIRETA", 0.95)]}
+        classified = classificar_categorias_cnaes(
+            profile, associations=associations, active_categories={"software"},
+        )
+        result = calcular_matching(
+            profile.model_copy(update={"categories": list(classified.categories)}),
+            oportunidade(object=None, complementary_text=None, items=[], categories=["software"]),
+            taxonomy_version="cnae-objeto-v1", cnae_categories=associations, as_of=NOW,
+        )
+        self.assertEqual(result.compatibility_level.value, "LOW")
+        self.assertIn("CATEGORY_MATCH", result.reason_codes)
+        self.assertIn("CNAE_MATCH", result.reason_codes)
+
     def test_classifica_apenas_categoria_com_sinal_explicito_e_ativa(self) -> None:
         categories = {"software", "alimentacao"}
         self.assertEqual(

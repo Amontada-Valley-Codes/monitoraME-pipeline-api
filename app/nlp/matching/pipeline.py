@@ -14,7 +14,10 @@ from app.core.models import (
     NlpProcurementSegment, PncpOportunidade, PncpTaxonomiaCnae,
 )
 from app.nlp.embeddings.model import E5EmbeddingModel
-from app.nlp.matching.categories import CATEGORY_RULE_VERSION, classificar_categorias_edital
+from app.nlp.matching.categories import (
+    CATEGORY_RULE_VERSION, COMPANY_CATEGORY_RULE_VERSION,
+    classificar_categorias_cnaes, classificar_categorias_edital,
+)
 from app.nlp.matching.engine import calcular_matching
 from app.nlp.matching.postgres_retrieval import buscar_contratacoes_top_k
 from app.nlp.matching.schemas import MatchingResult, ProcurementProfile
@@ -140,6 +143,23 @@ def _executar_matching_local(
             semantic_profile = semantic_profiles[str(profile.company_id)]
             if not semantic_profile.consultas:
                 continue
+            category_classification = classificar_categorias_cnaes(
+                profile, associations=associations, active_categories=active_categories,
+                catalog=catalog,
+            )
+            scoring_profile = profile.model_copy(update={
+                "categories": list(category_classification.categories),
+            })
+            inferred_new_categories = set(category_classification.categories) - set(profile.categories)
+            logger.info("Categorias da empresa preparadas para matching NLP", extra={
+                "batch_id": batch_id,
+                "company_id": str(profile.company_id),
+                "category_rule_version": COMPANY_CATEGORY_RULE_VERSION,
+                "categorias_explicitas": len(profile.categories),
+                "categorias_inferidas": len(inferred_new_categories),
+                "cnaes_por_categoria": category_classification.inferred_from_cnaes,
+                "cnaes_sem_categoria": category_classification.unclassified_cnaes,
+            })
             resultados_antes = len(results)
             candidates = buscar_contratacoes_top_k(
                 session, semantic_profile.consultas,
@@ -216,7 +236,7 @@ def _executar_matching_local(
                     url=opportunity.url_oficial, version=opportunity.payload_hash,
                 )
                 matching = calcular_matching(
-                    profile, procurement, taxonomy_version=taxonomy_version,
+                    scoring_profile, procurement, taxonomy_version=taxonomy_version,
                     cnae_categories=associations,
                     semantic_score=max(0.0, min(1.0, candidate.score)),
                     semantic_object_score=max((float(s["score"]) for s in candidate.segments if s["segment_type"] == "OBJECT"), default=0.0),
@@ -227,7 +247,8 @@ def _executar_matching_local(
                     additional_warnings=(
                         ["PROFILE_CNAE_DESCRIPTION_INCOMPLETE"]
                         if semantic_profile.cnaes_sem_descricao else []
-                    ) + (["OPPORTUNITY_CATEGORY_UNCONFIRMED"] if not procurement.categories else []),
+                    ) + (["OPPORTUNITY_CATEGORY_UNCONFIRMED"] if not procurement.categories else [])
+                    + (["COMPANY_CATEGORIES_INFERRED"] if inferred_new_categories else []),
                 )
                 results.append(matching)
             logger.info("Perfil avaliado no matching NLP", extra={

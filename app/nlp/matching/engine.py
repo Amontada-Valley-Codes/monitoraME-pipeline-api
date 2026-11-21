@@ -17,7 +17,7 @@ from app.nlp.matching.scoring import TaxonomyAssociation, calcular_score, calibr
 from app.nlp.profiles.schemas import CompanyProfile
 
 
-MATCHING_VERSION = "hybrid-matching-v6"
+MATCHING_VERSION = "hybrid-matching-v7"
 
 
 def calcular_matching(
