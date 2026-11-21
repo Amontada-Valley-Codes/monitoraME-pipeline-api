@@ -162,23 +162,18 @@ def listar_resultados_filtrados_session(
     session: Session,
     *,
     company_id: str | None = None,
-    compatibility_level: str | None = None,
     batch_id: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
-    """Consulta snapshots de compatibilidade com filtros para auditoria local."""
+    """Consulta resultados HIGH persistidos, antes da contagem e paginação."""
     if not 1 <= limit <= 500:
         raise ValueError("limit deve estar entre 1 e 500")
     if offset < 0:
         raise ValueError("offset deve ser maior ou igual a zero")
-    filtros = []
+    filtros = [NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH"]
     if company_id is not None:
         filtros.append(NlpMatchingResult.company_id == company_id)
-    if compatibility_level is not None:
-        filtros.append(
-            NlpMatchingResult.result["compatibility_level"].as_string() == compatibility_level
-        )
     if batch_id is not None:
         filtros.append(NlpMatchingResult.batch_id == batch_id)
 
@@ -212,10 +207,15 @@ def listar_resultados_filtrados_session(
 
 def listar_resultados_batch_session(
     session: Session, *, batch_id: str, limit: int = 100, cursor: str | None = None,
+    high_only: bool = False,
 ) -> tuple[list[dict[str, object]], str | None]:
     if not 1 <= limit <= 500:
         raise ValueError("limit deve estar entre 1 e 500")
     statement = select(NlpMatchingResult).where(NlpMatchingResult.batch_id == batch_id)
+    if high_only:
+        statement = statement.where(
+            NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH"
+        )
     if cursor:
         try:
             raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
