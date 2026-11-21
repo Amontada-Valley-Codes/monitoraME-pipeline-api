@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
+import os
 from typing import Any, Sequence
 
 from sqlalchemy import select, tuple_
@@ -42,14 +43,15 @@ def _executar_matching_local(
     *,
     batch_id: str,
     model: E5EmbeddingModel,
-    k: int = 20,
+    k: int | None = None,
     as_of: datetime | None = None,
     leased_job: Any | None = None,
 ) -> tuple[list[MatchingResult], bool]:
     """Executa e persiste um batch local; repetição idêntica é idempotente."""
     if not profiles:
         raise ValueError("batch deve conter ao menos um perfil")
-    if k < 1:
+    top_k = k if k is not None else int(os.getenv("NLP_RETRIEVAL_TOP_K", "20"))
+    if top_k < 1:
         raise ValueError("k deve ser maior que zero")
     instant = as_of or datetime.now(timezone.utc)
     if instant.tzinfo is None:
@@ -124,7 +126,7 @@ def _executar_matching_local(
             resultados_antes = len(results)
             candidates = buscar_contratacoes_top_k(
                 session, semantic_profile.consultas,
-                model_version=semantic_profile.model_version, k=k,
+                model_version=semantic_profile.model_version, k=top_k,
                 derived_statuses=("ABERTA", "ENCERRANDO_EM_BREVE"),
             )
             _renovar_lease_matching(leased_job)
@@ -219,6 +221,7 @@ def _executar_matching_local(
                 "batch_id": batch_id,
                 "company_id": str(profile.company_id),
                 "candidatos_recuperados": len(candidates),
+                "top_k_configurado": top_k,
                 "oportunidades_disponiveis": len(opportunities),
                 "resultados_gerados": len(results) - resultados_antes,
                 "model_version": semantic_profile.model_version,
@@ -265,7 +268,7 @@ def consultar_resultados_batch(
         }
 
 
-def processar_batch_enfileirado(job: Any, *, model: E5EmbeddingModel, k: int = 20) -> tuple[list[MatchingResult], bool]:
+def processar_batch_enfileirado(job: Any, *, model: E5EmbeddingModel, k: int | None = None) -> tuple[list[MatchingResult], bool]:
     batch_id = job.scope_key
     with orm.main_session() as session:
         batch = session.get(NlpMatchingBatch, batch_id)
@@ -303,7 +306,7 @@ def executar_matching_local(
     *,
     batch_id: str,
     model: E5EmbeddingModel,
-    k: int = 20,
+    k: int | None = None,
     as_of: datetime | None = None,
     leased_job: Any | None = None,
 ) -> tuple[list[MatchingResult], bool]:
