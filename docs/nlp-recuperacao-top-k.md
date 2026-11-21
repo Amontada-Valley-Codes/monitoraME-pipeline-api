@@ -24,6 +24,10 @@ que repetem um edital entre os vizinhos. O limite final é K oportunidades
 únicas. Consultas com filtros têm HNSW iterative scan habilitado para mitigar
 perda de candidatos causada pela aplicação de filtros após o scan vetorial.
 
+O processamento dos batches de matching também usa `NLP_RETRIEVAL_TOP_K` quando
+o chamador não informa `k`; `.env.example` configura 100. O log por perfil
+registra `top_k_configurado` para confirmar o valor efetivamente aplicado.
+
 Os filtros estruturados são opcionais e não são inferidos do perfil:
 
 - `modality_codes`: códigos PNCP armazenados nos metadados normalizados;

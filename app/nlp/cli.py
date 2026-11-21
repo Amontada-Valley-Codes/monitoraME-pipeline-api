@@ -29,7 +29,7 @@ def main() -> int:
     parser.add_argument("--company-id", help="UUID usado por matching-results.")
     parser.add_argument("--eligible-only", action="store_true", help="Filtra matching-results para eligibility=ELIGIBLE.")
     parser.add_argument("--compatible-only", action="store_true", help="Filtra matching-results para compatibility_level MEDIUM ou HIGH.")
-    parser.add_argument("--k", type=int, default=20, help="Candidatos Top-K por perfil.")
+    parser.add_argument("--k", type=int, help="Candidatos Top-K por perfil; usa NLP_RETRIEVAL_TOP_K por padrão.")
     parser.add_argument("--limit", type=int, default=100, help="Máximo de resultados consultados.")
     parser.add_argument("--cursor", help="Cursor opaco para paginação de resultados do batch.")
     args = parser.parse_args()
