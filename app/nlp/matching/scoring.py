@@ -192,6 +192,10 @@ def calcular_score(
 
     coverage = sum(WEIGHTS[key] for key in values)
     score = sum(WEIGHTS[key] * value for key, value in values.items())
+    categoria_edital_ausente = bool(company_categories) and not opportunity_categories
+    if categoria_edital_ausente and values.get("object", 0) > 0 and values.get("items", 0) > 0:
+        score *= 100 / (100 - WEIGHTS["category"])
+        warnings_extra.append("CATEGORY_WEIGHT_REDISTRIBUTED")
     preference_coverage = sum(PREFERENCE_WEIGHTS[key] for key in preferences)
     preference_score = sum(PREFERENCE_WEIGHTS[key] * value for key, value in preferences.items()) / preference_coverage * 100 if preference_coverage else None
     evidence = tuple(
@@ -207,6 +211,11 @@ def calcular_score(
     if score >= 75 and coverage < 50:
         score = 74.999999
         warnings.append("HIGH_WITH_LOW_EVIDENCE_COVERAGE")
+    if score >= 75 and categoria_edital_ausente and (
+        values.get("object", 0) < 0.5 or values.get("items", 0) < 0.5
+    ):
+        score = 74.999999
+        warnings.append("HIGH_WITH_WEAK_OBJECT_OR_ITEMS")
     if score >= 75 and _escopo_software_nao_confirmado(company, opportunity):
         score = 74.999999
         warnings.append("DELIVERY_SCOPE_UNCONFIRMED")
