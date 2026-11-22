@@ -32,7 +32,7 @@ _HORIZONTE_PROPOSTAS_ABERTAS_DIAS_PADRAO = 410
 class ConfiguracaoAgendamentoPncp:
     flows: tuple[str, ...] = ("propostas_abertas",)
     modalidades: tuple[int, ...] = MODALIDADES_PNCP_PADRAO
-    ufs: tuple[str, ...] | None = ("CE",)
+    ufs: tuple[str, ...] = UFS_NORDESTE
     page_size: int = 50
     open_proposals_priority: int = 70
     open_proposals_horizon_days: int = _HORIZONTE_PROPOSTAS_ABERTAS_DIAS_PADRAO
@@ -48,11 +48,12 @@ class ConfiguracaoAgendamentoPncp:
             "PNCP_SCHEDULER_MODALIDADES",
             ",".join(str(codigo) for codigo in MODALIDADES_PNCP_PADRAO),
         )
-        ufs_configuradas = os.getenv("PNCP_SCHEDULER_UFS", "CE").strip()
-        ufs = None if ufs_configuradas == "*" else tuple(
-            uf.upper() for uf in _lista_texto("PNCP_SCHEDULER_UFS", "CE")
+        ufs_padrao = ",".join(UFS_NORDESTE)
+        ufs_configuradas = os.getenv("PNCP_SCHEDULER_UFS", ufs_padrao).strip()
+        ufs = UFS_NORDESTE if ufs_configuradas == "*" else tuple(
+            uf.upper() for uf in _lista_texto("PNCP_SCHEDULER_UFS", ufs_padrao)
         )
-        if ufs is not None and (not ufs or any(uf not in UFS_NORDESTE for uf in ufs)):
+        if not ufs or any(uf not in UFS_NORDESTE for uf in ufs):
             raise ValueError("PNCP_SCHEDULER_UFS deve conter UFs suportadas ou *")
         config = cls(
             flows=flows,
@@ -74,8 +75,8 @@ class ConfiguracaoAgendamentoPncp:
             raise ValueError("flows deve ser somente propostas_abertas")
         if not self.modalidades or any(codigo < 1 for codigo in self.modalidades):
             raise ValueError("modalidades deve conter codigos positivos")
-        if self.ufs is not None and (not self.ufs or any(uf not in UFS_NORDESTE for uf in self.ufs)):
-            raise ValueError("ufs deve conter UFs suportadas ou ser None")
+        if not self.ufs or any(uf not in UFS_NORDESTE for uf in self.ufs):
+            raise ValueError("ufs deve conter UFs suportadas")
         if not 1 <= self.page_size <= 50:
             raise ValueError("page_size deve estar entre 1 e 50")
         if self.open_proposals_horizon_days < 1:

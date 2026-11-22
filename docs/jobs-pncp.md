@@ -1,6 +1,6 @@
 # Jobs PNCP: propostas com recebimento aberto
 
-O pipeline PNCP mantém oportunidades públicas para os consumidores do MonitoraME. A coleta automatizada deste deployment busca somente contratações que ainda recebem propostas, pela consulta `GET /v1/contratacoes/proposta`. O scheduler limita o escopo ao Ceará (`CE`) e percorre as modalidades configuradas (por padrão, códigos 1 a 14 e 16 a 18). O `dataFinal` é calculado como a data local atual mais o horizonte configurado; o padrão de 410 dias foi escolhido para consultar prazos futuros, em vez de restringir a busca aos encerramentos do dia. Não agenda consultas de publicação, atualização ou backfill histórico.
+O pipeline PNCP mantém oportunidades públicas para os consumidores do MonitoraME. A coleta automatizada deste deployment busca somente contratações que ainda recebem propostas, pela consulta `GET /v1/contratacoes/proposta`. O scheduler percorre as nove UFs do Nordeste e as modalidades configuradas (por padrão, códigos 1 a 14 e 16 a 18), com uma consulta por UF e modalidade. O `dataFinal` é calculado como a data local atual mais o horizonte configurado; o padrão de 410 dias foi escolhido para consultar prazos futuros, em vez de restringir a busca aos encerramentos do dia. Não agenda consultas de publicação, atualização ou backfill histórico.
 
 Esse endpoint é próprio para consultar contratações com recebimento de propostas aberto. Ele aceita a data final da consulta e filtros opcionais por modalidade e UF. Os filtros reduzem o conjunto consultado; a condição de recebimento aberto é determinada pela consulta oficial do PNCP.
 
@@ -22,14 +22,14 @@ flowchart TD
     K --> L[Consumidores leem dados locais]
 ```
 
-Cada job representa uma combinação de UF, modalidade e data final. Com a configuração padrão, são criados até 14 jobs por ciclo para o Ceará. Os jobs usam deduplicação e a fila considera somente itens PNCP. A coleta percorre todas as páginas válidas e persiste RAW antes da normalização; retries são idempotentes e não dependem de cursor histórico. O ciclo do scheduler só agenda uma nova rodada após os jobs do ciclo anterior terminarem e o intervalo configurado passar.
+Cada job representa uma combinação de UF, modalidade e data final. Com a configuração padrão, são criados 153 jobs por ciclo (9 UFs × 17 modalidades). Os jobs usam deduplicação e a fila considera somente itens PNCP. A coleta percorre todas as páginas válidas e persiste RAW antes da normalização; retries são idempotentes e não dependem de cursor histórico. O ciclo do scheduler só agenda uma nova rodada após os jobs do ciclo anterior terminarem e o intervalo configurado passar.
 
 ## Configuração
 
 | Variável | Padrão | Uso |
 |---|---:|---|
 | `PNCP_SCHEDULER_FLOWS` | `propostas_abertas` | Único fluxo aceito pelo scheduler recorrente. Fluxos de publicação ou atualização interrompem a configuração para evitar coleta fora do escopo. |
-| `PNCP_SCHEDULER_UFS` | `CE` | UFs consultadas; `*` significa todas as UFs do Nordeste suportadas pelo projeto. |
+| `PNCP_SCHEDULER_UFS` | `AL,BA,CE,MA,PB,PE,PI,RN,SE` | UFs consultadas; `*` expande para as nove UFs, cada uma em jobs separados. |
 | `PNCP_SCHEDULER_MODALIDADES` | `1,2,...,14,16,17,18` | Modalidades consultadas, separadas por vírgula. |
 | `PNCP_SCHEDULER_PAGE_SIZE` | `50` | Registros máximos por página, limitado pela API a 50. |
 | `PNCP_SCHEDULER_CYCLE_INTERVAL_SECONDS` | `14400` | Intervalo mínimo de quatro horas entre ciclos completos. |

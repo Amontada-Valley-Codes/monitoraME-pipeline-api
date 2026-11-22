@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from app.pncp.ingestion import (
     ClientePncp,
     MODALIDADES_PNCP_PADRAO,
+    UFS_NORDESTE,
     agendar_propostas_abertas,
     coletar_propostas_abertas,
 )
@@ -49,7 +50,7 @@ class PropostasAbertasPncpTest(unittest.TestCase):
         self.assertTrue(all(job.parameters["dataFinal"] == "2026-11-15" for job in jobs))
         self.assertEqual({job.parameters["uf"] for job in jobs}, {"CE", "MA"})
 
-    def test_ciclo_do_scheduler_agenda_somente_propostas_abertas_no_ceara(self) -> None:
+    def test_ciclo_do_scheduler_agenda_propostas_abertas_por_uf_do_nordeste(self) -> None:
         config = ConfiguracaoAgendamentoPncp()
         jobs = _jobs_ciclo(
             MagicMock(),
@@ -57,9 +58,9 @@ class PropostasAbertasPncpTest(unittest.TestCase):
             agora=datetime(2026, 11, 15, 12, tzinfo=timezone.utc),
         )
 
-        self.assertEqual(len(jobs), len(MODALIDADES_PNCP_PADRAO))
+        self.assertEqual(len(jobs), len(MODALIDADES_PNCP_PADRAO) * len(UFS_NORDESTE))
         self.assertTrue(all(job.scope_key.startswith("propostas-abertas:") for job in jobs))
-        self.assertTrue(all(job.parameters["uf"] == "CE" for job in jobs))
+        self.assertEqual({job.parameters["uf"] for job in jobs}, set(UFS_NORDESTE))
         self.assertEqual(
             {job.parameters["codigoModalidadeContratacao"] for job in jobs},
             set(MODALIDADES_PNCP_PADRAO),
