@@ -13,6 +13,7 @@ from app.nlp.profiles.schemas import CompanyProfile
 WEIGHTS: dict[str, int] = {"category": 20, "object": 10, "complementary": 20, "items": 35, "cnae": 15}
 PREFERENCE_WEIGHTS: dict[str, int] = {"region": 50, "modality": 25, "operations": 25}
 SEMANTIC_SCORE_FLOOR = 0.88
+ITEMS_SEMANTIC_SCORE_FLOOR = 0.80
 GENERIC_TOKENS = {
     "servico", "servicos", "comum", "comuns", "engenharia", "manutencao", "reparacao",
     "reparo", "aquisicao", "contratacao", "contratar", "fornecimento", "fornecer",
@@ -68,10 +69,10 @@ def _similaridade(texto_a: str, texto_b: str) -> float:
     return len(a & b) / len(a | b)
 
 
-def _calibrar_semantica(score: float | None) -> float:
+def _calibrar_semantica(score: float | None, *, floor: float = SEMANTIC_SCORE_FLOOR) -> float:
     if score is None:
         return 0.0
-    return max(0.0, min(1.0, (score - SEMANTIC_SCORE_FLOOR) / (1 - SEMANTIC_SCORE_FLOOR)))
+    return max(0.0, min(1.0, (score - floor) / (1 - floor)))
 
 
 def calibrar_relevancia_semantica(score: float | None) -> float | None:
@@ -127,7 +128,7 @@ def calcular_score(
             (_similaridade(desc, item) for desc in descriptions for item in opportunity.items if item),
             default=0.0,
         )
-        semantic = _calibrar_semantica(semantic_items_score)
+        semantic = _calibrar_semantica(semantic_items_score, floor=ITEMS_SEMANTIC_SCORE_FLOOR)
         values["items"] = max(lexical, semantic)
         details["items"] = f"Itens (peso {WEIGHTS['items']}%); melhor correspondência lexical={lexical:.4f}, semântico calibrado={semantic:.4f}; {len(opportunity.items)} itens avaliados."
 
