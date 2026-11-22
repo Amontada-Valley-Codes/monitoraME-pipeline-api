@@ -116,6 +116,7 @@ def executar_worker(
     processados = 0
     embeddings_faltantes_anterior: int | None = None
     ultimo_resumo = 0.0
+    ultimo_diagnostico = 0.0
     embeddings_concluidos = 0
     batches_concluidos = 0
     modelo_carregado = False
@@ -149,12 +150,16 @@ def executar_worker(
                 job = reivindicar_proximo_job_session(
                     session, worker_id=worker_id, lease_seconds=1800, job_type=JOB_TYPE
                 )
-                matching_pendente = existe_batch_matching_pronto_session(session)
+                # A contagem percorre o corpus inteiro; uma vez por minuto basta
+                # para liberar batches mesmo depois que a fila de embeddings esvazia.
+                verificar_matching = time.monotonic() - ultimo_diagnostico >= 60
+                matching_pendente = verificar_matching and existe_batch_matching_pronto_session(session)
                 diagnostico_embeddings: dict[str, Any] = {}
                 if matching_pendente:
                     diagnostico_embeddings = diagnosticar_embeddings_faltantes_session(
                         session, model_version=model.model_version,
                     )
+                    ultimo_diagnostico = time.monotonic()
                     embeddings_faltantes = int(diagnostico_embeddings["embeddings_faltantes"])
                     if job is None and embeddings_faltantes == 0:
                         job = reivindicar_proximo_job_session(
@@ -184,7 +189,8 @@ def executar_worker(
                     ultimo_resumo = time.monotonic()
             elif matching_pendente and embeddings_faltantes_anterior and embeddings_faltantes == 0:
                 logger.info("Embeddings de oportunidades completos; batches de matching liberados", extra={"model_version": model.model_version})
-            embeddings_faltantes_anterior = embeddings_faltantes
+            if diagnostico_embeddings:
+                embeddings_faltantes_anterior = embeddings_faltantes
             if job is None:
                 unload_after = float(os.getenv("NLP_MODEL_IDLE_UNLOAD_SECONDS", "60"))
                 if (
