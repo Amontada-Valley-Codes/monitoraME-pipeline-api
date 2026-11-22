@@ -51,6 +51,11 @@ O container é CPU-only, com batch size 1, limite configurável por
 dos vetores. O cache precisa de saída de rede ao Hugging Face apenas na
 primeira execução ou quando a revisão ainda não estiver baixada.
 
+Com batch de matching pendente, o worker consulta os embeddings faltantes no
+máximo uma vez por minuto, inclusive quando a fila de embeddings esvazia. A
+consulta percorre o corpus e não precisa ser repetida após cada vetor; o
+matching pode começar até um minuto depois da conclusão do último embedding.
+
 ## Rede e limites de integração
 
 Em produção, a API do Pipeline publica os endpoints autenticados de matching
