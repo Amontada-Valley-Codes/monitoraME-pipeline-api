@@ -334,7 +334,7 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(job.job_type, "nlp_matching")
         self.assertEqual(first_dedupe, second_dedupe)
         self.assertIn("profile-1", job.scope_key)
-        self.assertIn("hybrid-matching-v9", job.scope_key)
+        self.assertIn("hybrid-matching-v10", job.scope_key)
 
     def test_batch_async_guarda_snapshot_minimo_e_enfileira_job_deduplicavel(self) -> None:
         session = MagicMock()
