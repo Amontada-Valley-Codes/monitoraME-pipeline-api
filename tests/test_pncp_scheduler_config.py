@@ -4,15 +4,15 @@ import os
 import unittest
 from unittest.mock import patch
 
-from app.pncp.scheduler import ConfiguracaoAgendamentoPncp, MODALIDADES_PNCP_PADRAO
+from app.pncp.scheduler import ConfiguracaoAgendamentoPncp, MODALIDADES_PNCP_PADRAO, UFS_NORDESTE
 
 
 class ConfiguracaoAgendamentoPncpTest(unittest.TestCase):
-    def test_padrao_restringe_ao_ceara_e_habilita_todas_modalidades(self) -> None:
+    def test_padrao_abrange_nordeste_e_habilita_todas_modalidades(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             config = ConfiguracaoAgendamentoPncp.do_ambiente()
 
-        self.assertEqual(config.ufs, ("CE",))
+        self.assertEqual(config.ufs, UFS_NORDESTE)
         self.assertEqual(config.flows, ("propostas_abertas",))
         self.assertEqual(config.modalidades, (*range(1, 15), 16, 17, 18))
         self.assertEqual(MODALIDADES_PNCP_PADRAO, config.modalidades)
@@ -34,6 +34,12 @@ class ConfiguracaoAgendamentoPncpTest(unittest.TestCase):
         self.assertEqual(config.ufs, ("CE",))
         self.assertEqual(config.modalidades, (6, 8))
         self.assertEqual(config.open_proposals_horizon_days, 500)
+
+    def test_asterisco_expande_ufs_em_jobs_separados(self) -> None:
+        with patch.dict(os.environ, {"PNCP_SCHEDULER_UFS": "*"}, clear=True):
+            config = ConfiguracaoAgendamentoPncp.do_ambiente()
+
+        self.assertEqual(config.ufs, UFS_NORDESTE)
 
     def test_recusa_fluxos_que_incluem_editais_encerrados(self) -> None:
         with patch.dict(
