@@ -1,6 +1,6 @@
 # Hybrid matching engine
 
-`calcular_matching` usa `hybrid-matching-v9`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados. Use um novo `batch_id` ao recalcular snapshots anteriores. A classificação local `pncp-object-categories-v2` reconhece termos explícitos do objeto nas categorias ativas; consulta os itens apenas quando o objeto tem menos de três termos específicos. Texto sem sinal suficiente permanece sem categoria e recebe `OPPORTUNITY_CATEGORY_UNCONFIRMED`. A evidência semântica dos itens usa piso 0,80; objeto, complemento e relevância exibida preservam piso 0,88.
+`calcular_matching` usa `hybrid-matching-v10`. Resultados registram as versoes do schema, das regras, da taxonomia e do modelo. Para reproduzir, fixe `as_of` e as versoes dos dados. Use um novo `batch_id` ao recalcular snapshots anteriores. A classificação local `pncp-object-categories-v2` reconhece termos explícitos do objeto nas categorias ativas; consulta os itens apenas quando o objeto tem menos de três termos específicos. Texto sem sinal suficiente permanece sem categoria e recebe `OPPORTUNITY_CATEGORY_UNCONFIRMED`. A evidência semântica dos itens usa piso 0,80; objeto, complemento e relevância exibida preservam piso 0,88.
 
 Quando `CompanyProfile.categories` vem vazio ou incompleto, `cnae-description-categories-v1` acrescenta categorias ao perfil apenas durante o score. Usa primeiro associações ativas `DIRETA` ou `RELACIONADA` com confiança de ao menos 0,7 e, na ausência delas para aquele CNAE, termos específicos da descrição. Associações `CONDICIONAL` não confirmam categoria. O snapshot recebido permanece intacto; o log registra os CNAEs que sustentaram cada inferência e os não classificados. Resultados com inferência recebem `COMPANY_CATEGORIES_INFERRED`. Essa evidência é relacionada ao critério CNAE-categoria; pesos e corte HIGH permanecem inalterados e exigem validação com editais rotulados.
 
@@ -12,7 +12,7 @@ O perfil interno da contratação aceita até 10.000 descrições de itens para 
 
 O worker consulta os segmentos de evidência em blocos de até 200 chaves para evitar uma expressão SQL extensa quando o Top-K aumenta. O Top-K continua sendo o limite de editais avaliados; esta mudança não implementa varredura integral do corpus.
 
-Niveis: LOW 0-49, MEDIUM 50-74 e HIGH 75-100. Os pesos e cortes precisam de validacao humana antes de uso comercial.
+Niveis: LOW 0-49, MEDIUM 50-74 e HIGH 75-100. Para perfis de software, editais que exigem hardware ou licenças de fabricantes específicos só atingem HIGH quando a oferta declarada da empresa confirma esse escopo; caso contrário, o resultado fica em MEDIUM com `DELIVERY_SCOPE_UNCONFIRMED`. Os pesos e cortes precisam de validacao humana antes de uso comercial.
 
 ## Preferencias
 

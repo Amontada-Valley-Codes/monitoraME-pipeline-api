@@ -69,6 +69,26 @@ def _similaridade(texto_a: str, texto_b: str) -> float:
     return len(a & b) / len(a | b)
 
 
+def _escopo_software_nao_confirmado(company: CompanyProfile, opportunity: ProcurementProfile) -> bool:
+    """Evita HIGH para entregas de terceiros ou hardware sem oferta declarada."""
+    if "software" not in set(company.categories) or not opportunity.object:
+        return False
+    objeto = " ".join(sorted(_tokens(opportunity.object)))
+    ofertas = " ".join(
+        [company.business_description or "", *(
+            " ".join([item.description, *item.keywords]) for item in company.products_and_services
+        )]
+    )
+    ofertas_normalizadas = _tokens(ofertas)
+    fornecedores = {"oracle", "microsoft", "autocad", "canva", "kaspersky", "veeam"}
+    marcas_exigidas = fornecedores & _tokens(opportunity.object)
+    if marcas_exigidas and not marcas_exigidas <= ofertas_normalizadas:
+        return True
+    exige_hardware = bool(re.search(r"\b(hardware|equipamentos|servidores|maquinas)\b", objeto))
+    oferece_hardware = bool({"hardware", "equipamentos", "servidores", "maquinas"} & ofertas_normalizadas)
+    return exige_hardware and not oferece_hardware
+
+
 def _calibrar_semantica(score: float | None, *, floor: float = SEMANTIC_SCORE_FLOOR) -> float:
     if score is None:
         return 0.0
@@ -187,4 +207,7 @@ def calcular_score(
     if score >= 75 and coverage < 50:
         score = 74.999999
         warnings.append("HIGH_WITH_LOW_EVIDENCE_COVERAGE")
+    if score >= 75 and _escopo_software_nao_confirmado(company, opportunity):
+        score = 74.999999
+        warnings.append("DELIVERY_SCOPE_UNCONFIRMED")
     return ScoreBreakdown(round(score, 6), preference_score, float(preference_coverage), float(coverage), evidence, reasons, tuple(warnings))
