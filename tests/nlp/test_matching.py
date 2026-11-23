@@ -30,7 +30,7 @@ NOW = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
 
 
 class MatchingResultQueryTests(TestCase):
-    def test_consulta_high_filtra_contagem_e_paginacao_no_banco(self) -> None:
+    def test_consulta_score_maior_que_40_filtra_contagem_e_paginacao_no_banco(self) -> None:
         session = MagicMock()
         session.scalar.return_value = 0
         session.scalars.return_value = []
@@ -42,8 +42,25 @@ class MatchingResultQueryTests(TestCase):
             compiled = str(statement.compile(
                 dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
             ))
-            self.assertIn("HIGH", compiled)
+            self.assertIn("score > 40.0", compiled)
+            self.assertNotIn("compatibility_level", compiled)
             self.assertIn("COMPLETED", compiled)
+
+    def test_pagina_do_batch_filtra_score_antes_do_limit(self) -> None:
+        session = MagicMock()
+        session.scalars.return_value = []
+
+        results, cursor = listar_resultados_batch_session(
+            session, batch_id="batch-1", limit=2, score_gt=40.0,
+        )
+
+        self.assertEqual((results, cursor), ([], None))
+        statement = str(session.scalars.call_args.args[0].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
+        ))
+        self.assertIn("score > 40.0", statement)
+        self.assertNotIn("compatibility_level", statement)
+        self.assertIn("LIMIT", statement)
 
     def test_pagina_do_batch_filtra_high_antes_do_limit(self) -> None:
         session = MagicMock()

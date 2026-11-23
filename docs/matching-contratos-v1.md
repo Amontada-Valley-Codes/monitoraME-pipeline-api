@@ -51,8 +51,8 @@ de estado e resultados paginados.
 
 As regras locais e a definição de confiança ficam em
 [`matching-deterministico.md`](matching-deterministico.md). Resultados LOW
-e MEDIUM permanecem persistidos para diagnóstico, mas as rotas de resultados
-HTTP retornam apenas HIGH; os estados de elegibilidade permanecem explícitos.
+e MEDIUM permanecem persistidos para diagnóstico. As rotas de resultados
+HTTP retornam LOW, MEDIUM e HIGH quando `score > 40`; os estados de elegibilidade permanecem explícitos.
 
 ## Integração HTTP implementada
 
@@ -104,7 +104,7 @@ diagnóstico seguro e resumido, nunca payload ou dados pessoais.
 ### `GET /internal/matching/batches/{batch_id}/results`
 
 Consulta resultados prontos do lote usando `MatchingResultsPage`.
-Somente resultados HIGH entram em `results`; o cursor avança entre esses resultados.
+Somente resultados com `score > 40` entram em `results`; o cursor avança entre esses resultados.
 
 - Query proposta: `cursor` opaco opcional e `limit` opcional, padrão 100,
   mínimo 1 e máximo 500. Cursor inválido/expirado retorna `400` com erro

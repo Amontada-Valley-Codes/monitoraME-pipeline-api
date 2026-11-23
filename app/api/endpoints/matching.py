@@ -174,7 +174,8 @@ def obter_resultados_batch_matching(
     summary="Lista resultados de compatibilidade NLP",
     description=(
         "Consulta snapshots persistidos sem executar matching nem acessar fontes externas. "
-        "Retorna apenas HIGH. Os filtros por empresa e batch são opcionais. Use `batch_id` para limitar "
+        "Retorna resultados com score maior que 40 (LOW, MEDIUM e HIGH). "
+        "Os filtros por empresa e batch são opcionais. Use `batch_id` para limitar "
         "a consulta a uma execução específica."
     ),
 )
@@ -199,7 +200,7 @@ def listar_resultados_matching(
     dependencies=[Depends(exigir_token_matching)],
     summary="Lista resultados de compatibilidade de uma empresa",
     description=(
-        "Consulta apenas os editais HIGH para uma empresa, opcionalmente por batch."
+        "Consulta os editais com score maior que 40 para uma empresa, opcionalmente por batch."
     ),
 )
 def listar_resultados_empresa(
