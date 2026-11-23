@@ -54,6 +54,8 @@ A configuração `.env.example` é voltada ao desenvolvimento local. A API local
 
 O scheduler PNCP consulta contratações com propostas abertas nas nove UFs do Nordeste, em jobs separados por UF e modalidade. Por padrão, calcula `dataFinal` como a data local mais 410 dias e percorre as modalidades 1–14 e 16–18; ajuste `PNCP_SCHEDULER_UFS`, `PNCP_SCHEDULER_OPEN_PROPOSALS_HORIZON_DAYS` e `PNCP_SCHEDULER_MODALIDADES` conforme a cobertura desejada. Consulte [o fluxo e os parâmetros do scheduler PNCP](docs/jobs-pncp.md).
 
+O matching NLP enfileirado congela os editais abertos e encerrando em breve no início do batch e compara todos em blocos de 200, retomando do último bloco confirmado após falhas. Resultados parciais não são publicados; consulte [o fluxo de recuperação e matching](docs/nlp-recuperacao-top-k.md).
+
 ### Testes
 
 Com as dependências Python instaladas, execute a suíte automatizada:

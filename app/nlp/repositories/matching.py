@@ -110,7 +110,7 @@ def preparar_batch_reexecucao_session(session: Session, *, batch_id: str) -> Non
 
 def salvar_resultados_session(
     session: Session, *, batch_id: str, results: Sequence[MatchingResult],
-    total_companies: int, failed_companies: int = 0,
+    total_companies: int, failed_companies: int = 0, finalize: bool = True,
 ) -> None:
     for result in results:
         row = {
@@ -135,6 +135,8 @@ def salvar_resultados_session(
                 "procurement_version", "model_version", "matching_version", "taxonomy_version",
             ], set_=update,
         ))
+    if not finalize:
+        return
     batch = session.get(NlpMatchingBatch, batch_id)
     if batch is None:
         raise ValueError("batch não registrado")
@@ -151,7 +153,9 @@ def listar_resultados_session(
         raise ValueError("limit deve estar entre 1 e 500")
     rows = session.scalars(
         select(NlpMatchingResult)
+        .join(NlpMatchingBatch, NlpMatchingBatch.batch_id == NlpMatchingResult.batch_id)
         .where(NlpMatchingResult.company_id == company_id)
+        .where(NlpMatchingBatch.status.in_(("COMPLETED", "PARTIAL")))
         .order_by(NlpMatchingResult.processed_at.desc(), NlpMatchingResult.score.desc())
         .limit(limit)
     )
@@ -171,17 +175,23 @@ def listar_resultados_filtrados_session(
         raise ValueError("limit deve estar entre 1 e 500")
     if offset < 0:
         raise ValueError("offset deve ser maior ou igual a zero")
-    filtros = [NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH"]
+    filtros = [
+        NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH",
+        NlpMatchingBatch.status.in_(("COMPLETED", "PARTIAL")),
+    ]
     if company_id is not None:
         filtros.append(NlpMatchingResult.company_id == company_id)
     if batch_id is not None:
         filtros.append(NlpMatchingResult.batch_id == batch_id)
 
     total = int(session.scalar(
-        select(func.count()).select_from(NlpMatchingResult).where(*filtros)
+        select(func.count()).select_from(NlpMatchingResult)
+        .join(NlpMatchingBatch, NlpMatchingBatch.batch_id == NlpMatchingResult.batch_id)
+        .where(*filtros)
     ) or 0)
     rows = session.scalars(
         select(NlpMatchingResult)
+        .join(NlpMatchingBatch, NlpMatchingBatch.batch_id == NlpMatchingResult.batch_id)
         .where(*filtros)
         .order_by(
             NlpMatchingResult.processed_at.desc(),
@@ -211,7 +221,12 @@ def listar_resultados_batch_session(
 ) -> tuple[list[dict[str, object]], str | None]:
     if not 1 <= limit <= 500:
         raise ValueError("limit deve estar entre 1 e 500")
-    statement = select(NlpMatchingResult).where(NlpMatchingResult.batch_id == batch_id)
+    statement = (
+        select(NlpMatchingResult)
+        .join(NlpMatchingBatch, NlpMatchingBatch.batch_id == NlpMatchingResult.batch_id)
+        .where(NlpMatchingResult.batch_id == batch_id)
+        .where(NlpMatchingBatch.status.in_(("COMPLETED", "PARTIAL")))
+    )
     if high_only:
         statement = statement.where(
             NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH"

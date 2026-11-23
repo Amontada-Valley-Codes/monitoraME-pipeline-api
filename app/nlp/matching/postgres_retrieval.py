@@ -6,7 +6,7 @@ import math
 import os
 from typing import Any, Sequence
 
-from sqlalchemy import literal_column, select, text
+from sqlalchemy import literal_column, select, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.models import NlpProcurementEmbedding, NlpProcurementSegment, PncpOportunidade
@@ -184,3 +184,84 @@ def buscar_contratacoes_top_k(
         key=lambda item: (-item.score, item.source, item.procurement_id),
     )
     return ordenados[:top_k]
+
+
+def comparar_contratacoes_bloco(
+    session: Session,
+    consultas: Sequence[ConsultaCnae],
+    *,
+    model_version: str,
+    opportunity_keys: Sequence[tuple[str, str]],
+) -> list[CandidatoContratacao]:
+    """Compara todos os editais de um bloco, sem limite ANN por segmento."""
+    if not opportunity_keys:
+        return []
+    if not consultas:
+        raise ValueError("perfil sem consultas semanticas")
+    for consulta in consultas:
+        _validar_vector(consulta.vector)
+
+    import numpy as np
+
+    candidatos = {key: CandidatoContratacao(*key, 0.0) for key in opportunity_keys}
+    melhores: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    query = (
+        select(
+            NlpProcurementEmbedding.source,
+            NlpProcurementEmbedding.external_id,
+            NlpProcurementEmbedding.segment_type,
+            NlpProcurementEmbedding.segment_key,
+            NlpProcurementEmbedding.vector,
+        )
+        .join(
+            NlpProcurementSegment,
+            (NlpProcurementSegment.source == NlpProcurementEmbedding.source)
+            & (NlpProcurementSegment.external_id == NlpProcurementEmbedding.external_id)
+            & (NlpProcurementSegment.segment_type == NlpProcurementEmbedding.segment_type)
+            & (NlpProcurementSegment.segment_key == NlpProcurementEmbedding.segment_key)
+            & (NlpProcurementSegment.text_hash == NlpProcurementEmbedding.text_hash),
+        )
+        .where(
+            tuple_(NlpProcurementEmbedding.source, NlpProcurementEmbedding.external_id).in_(opportunity_keys),
+            NlpProcurementEmbedding.model_version == model_version,
+            NlpProcurementSegment.status == "READY",
+            NlpProcurementEmbedding.segment_type.in_(("OBJECT", "COMPLEMENTARY", "ITEM", "LOT")),
+        )
+        .execution_options(yield_per=256)
+    )
+    consultas_matrix = np.asarray([consulta.vector for consulta in consultas], dtype=np.float32).T
+    rows: list[Any] = []
+
+    def avaliar_rows() -> None:
+        if not rows:
+            return
+        vectors = np.asarray([row.vector for row in rows], dtype=np.float32)
+        scores = vectors @ consultas_matrix
+        for index, row in enumerate(rows):
+            candidato = candidatos[(row.source, row.external_id)]
+            for consulta_index, consulta in enumerate(consultas):
+                score = float(scores[index, consulta_index])
+                candidato.score = max(candidato.score, score)
+                candidato.cnaes.add(consulta.codigo)
+                key = (row.source, row.external_id, row.segment_type, consulta.codigo)
+                if key not in melhores or score > melhores[key]["score"]:
+                    melhores[key] = {
+                        "segment_type": row.segment_type,
+                        "segment_key": row.segment_key,
+                        "score": score,
+                        "cnae": consulta.codigo,
+                    }
+        rows.clear()
+
+    for row in session.execute(query):
+        rows.append(row)
+        if len(rows) >= 256:
+            avaliar_rows()
+    avaliar_rows()
+    for (source, external_id, _, _), evidence in melhores.items():
+        candidatos[(source, external_id)].segments.append(evidence)
+    for candidato in candidatos.values():
+        candidato.segments.sort(key=lambda item: (
+            -item["score"], item["cnae"], item["segment_type"], item["segment_key"],
+        ))
+    return list(candidatos.values())
