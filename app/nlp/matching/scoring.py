@@ -10,10 +10,13 @@ from app.nlp.profiles.schemas import CompanyProfile
 
 
 # Objeto de compras frequentemente contém texto padronizado e pouco discriminante.
-WEIGHTS: dict[str, int] = {"category": 20, "object": 10, "complementary": 20, "items": 35, "cnae": 15}
+WEIGHTS: dict[str, int] = {
+    "category": 15, "object": 10, "complementary": 5,
+    "items": 35, "cnae": 10, "delivery": 25,
+}
 PREFERENCE_WEIGHTS: dict[str, int] = {"region": 50, "modality": 25, "operations": 25}
-SEMANTIC_SCORE_FLOOR = 0.88
-ITEMS_SEMANTIC_SCORE_FLOOR = 0.80
+SEMANTIC_SCORE_FLOOR = 0.75
+ITEMS_SEMANTIC_SCORE_FLOOR = 0.70
 GENERIC_TOKENS = {
     "servico", "servicos", "comum", "comuns", "engenharia", "manutencao", "reparacao",
     "reparo", "aquisicao", "contratacao", "contratar", "fornecimento", "fornecer",
@@ -87,6 +90,36 @@ def _escopo_software_nao_confirmado(company: CompanyProfile, opportunity: Procur
     exige_hardware = bool(re.search(r"\b(hardware|equipamentos|servidores|maquinas)\b", objeto))
     oferece_hardware = bool({"hardware", "equipamentos", "servidores", "maquinas"} & ofertas_normalizadas)
     return exige_hardware and not oferece_hardware
+
+
+def _entrega_principal_confirmada(company: CompanyProfile, opportunity: ProcurementProfile) -> str | None:
+    """Confirma apenas entregas explícitas compatíveis com o CNAE principal."""
+    if not opportunity.object:
+        return None
+    objeto = unicodedata.normalize("NFKD", opportunity.object.casefold())
+    objeto = "".join(char for char in objeto if not unicodedata.combining(char))
+    objeto = " ".join(re.findall(r"[\w]+", objeto))
+    principal = company.primary_cnae
+    itens = opportunity.items
+    if principal.startswith(("6201", "6202")):
+        if _escopo_software_nao_confirmado(company, opportunity):
+            return None
+        if any(_tokens(item) & {"hardware", "equipamentos", "servidores", "oracle", "microsoft"} for item in itens):
+            return None
+        if re.search(r"\b(fabrica de software|desenvolvimento de (software|sistemas|aplicativos)|desenvolvimento e (evolucao|sustentacao))\b", objeto):
+            return "Desenvolvimento de software exigido no objeto e previsto no CNAE principal."
+    if principal == "5620101":
+        tokens = _tokens(opportunity.object)
+        refeicao = bool(tokens & {"refeicao", "refeicoes"})
+        fornecimento = bool(tokens & {"fornecimento", "fornecer", "preparo", "preparacao"})
+        fora_escopo = bool(tokens & {"cartao", "cartoes", "voucher", "vale", "concessao", "exploracao"})
+        fora_escopo = fora_escopo or any(
+            _tokens(item) & {"cartao", "cartoes", "voucher", "vale", "concessao", "exploracao"}
+            for item in itens
+        )
+        if refeicao and fornecimento and not fora_escopo:
+            return "Fornecimento de refeições preparadas exigido no objeto e previsto no CNAE principal."
+    return None
 
 
 def _calibrar_semantica(score: float | None, *, floor: float = SEMANTIC_SCORE_FLOOR) -> float:
@@ -168,7 +201,16 @@ def calcular_score(
     if opportunity_categories and mapped_categories:
         matched = sorted(opportunity_categories & mapped_categories)
         values["cnae"] = sum(associations[c].confidence for c in matched) / len(opportunity_categories | mapped_categories)
-        details["cnae"] = f"Taxonomia {taxonomy_version}; categorias coincidentes: {', '.join(matched) or 'nenhuma'}."
+        condicionais = sorted(conditional_categories & opportunity_categories)
+        details["cnae"] = (
+            f"Taxonomia {taxonomy_version}; categorias coincidentes: {', '.join(matched) or 'nenhuma'}."
+            + (f" Relações CONDICIONAL não confirmadas: {', '.join(condicionais)}." if condicionais else "")
+        )
+
+    entrega = _entrega_principal_confirmada(company, opportunity)
+    if entrega and values.get("category", 0) > 0 and values.get("cnae", 0) > 0:
+        values["delivery"] = 1.0
+        details["delivery"] = entrega
 
     preferences: dict[str, float] = {}
     preference_details: dict[str, str] = {}
@@ -203,7 +245,9 @@ def calcular_score(
         + [MatchingEvidence(criterion=f"preference_{k}", score=round(v, 6), details=preference_details[k]) for k, v in preferences.items()]
     )
     reasons = tuple(f"{k.upper()}_MATCH" if v > 0 else f"{k.upper()}_NO_MATCH" for k, v in values.items())
-    warnings = [f"{k.upper()}_DATA_MISSING" for k in WEIGHTS if k not in values]
+    warnings = [f"{k.upper()}_DATA_MISSING" for k in WEIGHTS if k != "delivery" and k not in values]
+    if "delivery" not in values:
+        warnings.append("DELIVERY_SCOPE_UNCONFIRMED")
     warnings.extend(warnings_extra)
     warnings.extend(f"PREFERENCE_{k.upper()}_NOT_COMPARABLE" for k in PREFERENCE_WEIGHTS if k not in preferences)
     if conditional_categories & opportunity_categories:

@@ -117,8 +117,8 @@ class DeterministicScoringTests(TestCase):
         first = calcular_matching(empresa(), oportunidade(), **kwargs)
         second = calcular_matching(empresa(), oportunidade(), **kwargs)
         self.assertEqual(first.model_dump(), second.model_dump())
-        self.assertGreater(first.score, 75)
-        self.assertEqual(first.data_confidence, 100)
+        self.assertGreater(first.score, 50)
+        self.assertEqual(first.data_confidence, 95)
         self.assertEqual(first.taxonomy_version, "cnae-objeto-v2")
         self.assertTrue(first.evidence)
         self.assertEqual(first.processed_at, NOW)
@@ -129,11 +129,11 @@ class DeterministicScoringTests(TestCase):
             taxonomy_version="tax-v1", cnae_categories={}, semantic_score=0.91,
             model_version="e5@sha", as_of=NOW,
         )
-        self.assertEqual(result.semantic_relevance, 25)
+        self.assertAlmostEqual(result.semantic_relevance, 64)
         self.assertEqual(result.model_version, "e5@sha")
         self.assertIn("LEGAL_ELIGIBILITY_NOT_VERIFIED", result.warning_codes)
         object_evidence = next(item for item in result.evidence if item.criterion == "object")
-        self.assertEqual(object_evidence.score, 0.25)
+        self.assertEqual(object_evidence.score, 0.64)
         self.assertIn("semântico calibrado", object_evidence.details)
 
     def test_score_semantico_fora_da_escala_e_rejeitado(self) -> None:
@@ -336,7 +336,7 @@ class DeterministicScoringTests(TestCase):
         self.assertEqual(job.job_type, "nlp_matching")
         self.assertEqual(first_dedupe, second_dedupe)
         self.assertIn("profile-1", job.scope_key)
-        self.assertIn("hybrid-matching-v11", job.scope_key)
+        self.assertIn("hybrid-matching-v12", job.scope_key)
 
     def test_batch_async_guarda_snapshot_minimo_e_enfileira_job_deduplicavel(self) -> None:
         session = MagicMock()
