@@ -25,7 +25,7 @@ from app.nlp.matching.scoring import TaxonomyAssociation
 from app.nlp.profiles.builder import construir_perfil_semantico
 from app.nlp.profiles.schemas import CompanyProfile
 from app.nlp.repositories.matching import (
-    hash_payload, listar_resultados_batch_session, listar_resultados_session,
+    MIN_LISTED_SCORE, hash_payload, listar_resultados_batch_session, listar_resultados_session,
     consultar_batch_session, marcar_batch_falha_session, preparar_batch_reexecucao_session,
     registrar_batch_session, salvar_resultados_session,
 )
@@ -432,7 +432,7 @@ def consultar_resultados_batch(
         if status is None:
             return None
         results, next_cursor = listar_resultados_batch_session(
-            session, batch_id=batch_id, limit=limit, cursor=cursor, high_only=True,
+            session, batch_id=batch_id, limit=limit, cursor=cursor, score_gt=MIN_LISTED_SCORE,
         )
         return {
             "batch_id": batch_id,

@@ -229,6 +229,7 @@ seguro, sem dados pessoais nem payload.
 ### Resultados: `GET /internal/matching/batches/{batch_id}/results`
 
 Esperado: `200 OK` com página `MatchingResultsPage`:
+O retorno inclui resultados LOW, MEDIUM e HIGH com `score > 40`, antes da paginação.
 
 ```json
 {

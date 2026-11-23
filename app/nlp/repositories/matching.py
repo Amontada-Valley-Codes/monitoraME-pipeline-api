@@ -16,6 +16,8 @@ from app.nlp.matching.schemas import MatchingResult
 from app.nlp.profiles.schemas import CompanyProfile
 from app.pncp.jobs import NovoJob, agendar_job_session
 
+MIN_LISTED_SCORE = 40.0
+
 
 def _profile_payload(profile: CompanyProfile) -> dict[str, object]:
     payload = profile.model_dump(mode="json")
@@ -155,6 +157,7 @@ def listar_resultados_session(
         select(NlpMatchingResult)
         .join(NlpMatchingBatch, NlpMatchingBatch.batch_id == NlpMatchingResult.batch_id)
         .where(NlpMatchingResult.company_id == company_id)
+        .where(NlpMatchingResult.score > MIN_LISTED_SCORE)
         .where(NlpMatchingBatch.status.in_(("COMPLETED", "PARTIAL")))
         .order_by(NlpMatchingResult.processed_at.desc(), NlpMatchingResult.score.desc())
         .limit(limit)
@@ -170,13 +173,13 @@ def listar_resultados_filtrados_session(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
-    """Consulta resultados HIGH persistidos, antes da contagem e paginação."""
+    """Consulta resultados com score acima de 40 antes da contagem e paginação."""
     if not 1 <= limit <= 500:
         raise ValueError("limit deve estar entre 1 e 500")
     if offset < 0:
         raise ValueError("offset deve ser maior ou igual a zero")
     filtros = [
-        NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH",
+        NlpMatchingResult.score > MIN_LISTED_SCORE,
         NlpMatchingBatch.status.in_(("COMPLETED", "PARTIAL")),
     ]
     if company_id is not None:
@@ -217,7 +220,7 @@ def listar_resultados_filtrados_session(
 
 def listar_resultados_batch_session(
     session: Session, *, batch_id: str, limit: int = 100, cursor: str | None = None,
-    high_only: bool = False,
+    high_only: bool = False, score_gt: float | None = None,
 ) -> tuple[list[dict[str, object]], str | None]:
     if not 1 <= limit <= 500:
         raise ValueError("limit deve estar entre 1 e 500")
@@ -231,6 +234,8 @@ def listar_resultados_batch_session(
         statement = statement.where(
             NlpMatchingResult.result["compatibility_level"].as_string() == "HIGH"
         )
+    if score_gt is not None:
+        statement = statement.where(NlpMatchingResult.score > score_gt)
     if cursor:
         try:
             raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
