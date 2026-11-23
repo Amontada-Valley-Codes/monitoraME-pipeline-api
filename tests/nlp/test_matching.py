@@ -43,6 +43,7 @@ class MatchingResultQueryTests(TestCase):
                 dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
             ))
             self.assertIn("HIGH", compiled)
+            self.assertIn("COMPLETED", compiled)
 
     def test_pagina_do_batch_filtra_high_antes_do_limit(self) -> None:
         session = MagicMock()
@@ -57,6 +58,7 @@ class MatchingResultQueryTests(TestCase):
             dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
         ))
         self.assertIn("HIGH", statement)
+        self.assertIn("COMPLETED", statement)
         self.assertIn("LIMIT", statement)
 
 

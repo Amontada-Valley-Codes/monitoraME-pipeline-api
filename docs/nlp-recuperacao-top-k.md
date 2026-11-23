@@ -24,9 +24,19 @@ que repetem um edital entre os vizinhos. O limite final é K oportunidades
 únicas. Consultas com filtros têm HNSW iterative scan habilitado para mitigar
 perda de candidatos causada pela aplicação de filtros após o scan vetorial.
 
-O processamento dos batches de matching também usa `NLP_RETRIEVAL_TOP_K` quando
-o chamador não informa `k`; `.env.example` configura 100. O log por perfil
-registra `top_k_configurado` para confirmar o valor efetivamente aplicado.
+As buscas Top-K e as execuções locais com `k` explícito continuam usando
+`NLP_RETRIEVAL_TOP_K` (o `.env.example` configura 100). Batches enfileirados
+sem `k` explícito agora congelam a lista de oportunidades `ABERTA` e
+`ENCERRANDO_EM_BREVE` e avaliam todos os IDs em blocos de 200. A comparação
+vetorial do bloco usa os embeddings persistidos e calcula a maior similaridade
+por CNAE e tipo de segmento, sem depender da posição de cada item no HNSW.
+Resultados e offset do bloco são persistidos na mesma transação; uma tentativa
+seguinte retoma do primeiro bloco não confirmado. O job renova o lease após
+cada bloco. Resultados de batches `RUNNING` ou `FAILED` não aparecem nas rotas
+de consulta, evitando publicação parcial. Editais sem vetor utilizável recebem
+`SEMANTIC_DATA_MISSING` e são avaliados apenas com as evidências disponíveis.
+O limite de tamanho do bloco controla memória e duração de transações, não
+reduz a cobertura dos editais congelados no snapshot.
 
 Os filtros estruturados são opcionais e não são inferidos do perfil:
 
