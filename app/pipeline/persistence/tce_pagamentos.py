@@ -208,18 +208,14 @@ def listar_pagamentos_para_analise(
                     )
             else:
                 indice[empenho.chave_empenho] = (empenho, competencia)
-        orfas = sorted({
-            pagamento.chave_pagamento for pagamento in pagamentos
-            if pagamento.chave_empenho not in indice
-        })
-        if orfas:
-            raise ValueError(
-                "Pagamentos sem empenho publicado correspondente: "
-                f"{orfas[:10]} (total={len(orfas)})."
-            )
         resultado = []
         for pagamento in pagamentos:
-            empenho, _competencia_empenho = indice[pagamento.chave_empenho]
+            correspondencia = indice.get(pagamento.chave_empenho)
+            if correspondencia is None:
+                # Sem dimensoes do empenho nao e possivel classificar o
+                # fornecedor/natureza; mantenha o pagamento fora do overview.
+                continue
+            empenho, _competencia_empenho = correspondencia
             if (
                 str(empenho.tipo_documento_fornecedor or "").strip() != "1"
                 or not empenho.cnpj_fornecedor
