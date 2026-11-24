@@ -133,7 +133,7 @@ class IngestaoIncrementalPagamentosTest(unittest.TestCase):
                 SimpleNamespace(**base_pagamento), SimpleNamespace(**conflitante),
             ])
 
-    def test_analise_rejeita_pagamento_sem_empenho_publicado(self):
+    def test_analise_ignora_pagamento_sem_empenho_publicado(self):
         run = SimpleNamespace(id=1, competencia="2025-01")
         classificacoes = [
             SimpleNamespace(codigo_orgao="01", classificacao="EXECUTIVO_MUNICIPAL", confianca="ALTA"),
@@ -166,11 +166,13 @@ class IngestaoIncrementalPagamentosTest(unittest.TestCase):
             patch.object(persistence.database, "init_db"),
             patch.object(persistence.orm, "main_session", return_value=nullcontext(sessao)),
         ):
-            with self.assertRaisesRegex(ValueError, "sem empenho publicado"):
-                persistence.listar_pagamentos_para_analise(
-                    codigo_municipio_tce="004", exercicio_orcamento=202500,
-                    data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
-                )
+            registros, ausentes = persistence.listar_pagamentos_para_analise(
+                codigo_municipio_tce="004", exercicio_orcamento=202500,
+                data_inicial=date(2025, 1, 1), data_final=date(2025, 1, 31),
+            )
+
+        self.assertEqual(registros, [])
+        self.assertEqual(ausentes, [])
 
     def test_coleta_divide_por_orgao_e_unidade_quando_teto_e_atingido(self):
         def registro(numero, unidade):
