@@ -139,6 +139,13 @@ GET /pipeline/tce/comparisons?codigo_municipio_tce=004&codigo_municipio_tce=010&
 {"fonte":"TCE-CE/SIM","origem_dados":"BANCO_LOCAL","consultas_externas":false,"medida":"VALOR_NOTA_PAGAMENTO_NAO_ESTORNADA","parametros":{"codigo_municipio_tce":["004","010"],"data_inicial":"2025-01-01","data_final":"2025-12-31","exercicio_orcamentario":2025},"municipios":[],"comparacao":{"kpis":[],"participacao_por_porte_empresarial":[],"elementos_despesa":[],"evolucao_compras_consideradas":[],"destino_recursos":[]}}
 ```
 
+Além do cache da resposta completa, a comparação mantém resultados individuais
+por município, intervalo e filtros analíticos. Assim, outras comparações que
+reutilizem municípios no mesmo período podem reaproveitar os respectivos
+overviews sem recalculá-los. `X-Refresh-Force: true`, `X-Force-Refresh: true`
+ou `Cache-Control: no-cache` recalculam e substituem tanto os overviews
+municipais usados quanto a resposta agregada.
+
 ### `GET /pipeline/tce/despesas`
 
 ```json

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import StringConstraints
 from app.api.errors import REQUEST_ID_HEADER, obter_request_id, resposta_erro
+from app.api import response_cache
 from app.api.schemas.comparisons import CompanySize, SupplierOrigin
 from app.api.schemas.empenhos import EmpenhoSortField, SortOrder
 from app.api.schemas.fornecedores import SupplierDocumentType, SupplierSortField
@@ -457,6 +458,7 @@ def tce_comparisons(
             codigo_municipio_tce=codigo_municipio_tce,
             data_inicial=data_inicial,
             data_final=data_final,
+            force_refresh=response_cache.deve_forcar_atualizacao(request),
         )
     except comparisons.ComparisonRequestError as error:
         logger.info(
