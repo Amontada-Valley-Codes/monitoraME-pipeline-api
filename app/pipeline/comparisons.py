@@ -7,6 +7,7 @@ import pandas as pd
 
 from app.core import database
 from app.core.config import NATUREZAS_DESPESA_MONITORADAS, UF_PADRAO
+from app.api import response_cache
 from app.pipeline import kpis, tce_observability
 
 
@@ -18,6 +19,7 @@ _PORTES_FILTRO = {
     "UNKNOWN": "NAO_IDENTIFICADO",
 }
 _ORIGENS_FILTRO = dict(kpis.DESTINOS_RECURSOS_OVERVIEW)
+_CACHE_MUNICIPIO_COMPARACAO = "tce-comparison-municipality-v1"
 
 
 class ComparisonRequestError(ValueError):
@@ -224,11 +226,45 @@ def _montar_overview_local(
     return pagamento_metadados
 
 
+def _obter_overview_municipal_cacheado(
+    filtros: dict[str, Any],
+    *,
+    lado: str,
+    force_refresh: bool,
+) -> dict[str, Any]:
+    parametros_cache = {
+        "municipality_ibge_code": str(filtros["municipality_ibge_code"]),
+        "uf": str(filtros["uf"]).strip().upper(),
+        "start_date": str(filtros["start_date"]),
+        "end_date": str(filtros["end_date"]),
+        "company_sizes": list(filtros.get("company_sizes") or []),
+        "supplier_origins": list(filtros.get("supplier_origins") or []),
+        "expense_element_codes": list(filtros.get("expense_element_codes") or []),
+    }
+    cache_key = response_cache.chave_cache_interna(
+        _CACHE_MUNICIPIO_COMPARACAO,
+        parametros_cache,
+    )
+    if not force_refresh:
+        cacheado = response_cache.buscar_cache_interno(cache_key)
+        if isinstance(cacheado, dict):
+            return cacheado
+
+    overview = _montar_overview_local(filtros, lado=lado)
+    response_cache.salvar_cache_interno(
+        cache_key=cache_key,
+        namespace=_CACHE_MUNICIPIO_COMPARACAO,
+        body=overview,
+    )
+    return overview
+
+
 def consultar_comparacao_tce(
     *,
     codigo_municipio_tce: list[str],
     data_inicial: str,
     data_final: str,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     """Compara pagamentos de dois a quatro municipios no mesmo periodo."""
     import re
@@ -278,7 +314,11 @@ def consultar_comparacao_tce(
             "supplier_origins": [],
             "expense_element_codes": [],
         }
-        overview = _montar_overview_local(filtros, lado=f"municipios.{codigo}")
+        overview = _obter_overview_municipal_cacheado(
+            filtros,
+            lado=f"municipios.{codigo}",
+            force_refresh=force_refresh,
+        )
         municipios.append({
             "codigo_municipio_tce": codigo,
             "codigo_municipio_ibge": municipio["codigo_municipio_ibge"],

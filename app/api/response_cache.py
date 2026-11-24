@@ -63,6 +63,21 @@ def _chave_cache(request: Request, corpo: bytes) -> str:
     return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
 
+def chave_cache_interna(namespace: str, parametros: dict[str, Any]) -> str:
+    """Gera chave estavel para caches analiticos internos por entidade/filtro."""
+    fingerprint = json.dumps(
+        {
+            "schema": CACHE_SCHEMA_VERSION,
+            "namespace": namespace,
+            "parametros": parametros,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+
+
 def _buscar(cache_key: str) -> dict[str, Any] | None:
     with orm.main_session() as session:
         registro = session.scalar(
@@ -77,6 +92,21 @@ def _buscar(cache_key: str) -> dict[str, Any] | None:
             "content_type": registro.response_content_type,
             "body": registro.response_body,
         }
+
+
+def buscar_cache_interno(cache_key: str) -> Any | None:
+    """Busca um valor JSON armazenado por uma camada interna do pipeline."""
+    try:
+        registro = _buscar(cache_key)
+    except Exception as error:
+        logger.warning(
+            "Cache interno indisponivel; calculo seguira sem cache",
+            extra={"operation": "read", "error_type": type(error).__name__},
+        )
+        return None
+    if registro is None or registro["status"] != 200:
+        return None
+    return registro["body"]
 
 
 def _salvar(
@@ -114,6 +144,26 @@ def _salvar(
                     "expires_at": None,
                 },
             )
+        )
+
+
+def salvar_cache_interno(
+    *, cache_key: str, namespace: str, body: Any,
+) -> None:
+    """Persiste resultado analitico interno no mesmo armazenamento JSON da API."""
+    try:
+        _salvar(
+            cache_key=cache_key,
+            method="INTERNAL",
+            path=namespace,
+            status=200,
+            content_type="application/json",
+            body=body,
+        )
+    except Exception as error:
+        logger.warning(
+            "Nao foi possivel persistir cache interno",
+            extra={"operation": "write", "error_type": type(error).__name__},
         )
 
 
@@ -169,8 +219,11 @@ async def salvar_resposta(
 
 __all__ = [
     "MAX_CACHEABLE_REQUEST_BYTES",
+    "buscar_cache_interno",
     "buscar_resposta",
+    "chave_cache_interna",
     "deve_forcar_atualizacao",
     "rota_tem_cache",
+    "salvar_cache_interno",
     "salvar_resposta",
 ]
